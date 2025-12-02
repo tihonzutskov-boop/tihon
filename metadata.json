@@ -1,0 +1,5 @@
+{
+  "name": "GYDE",
+  "description": "An interactive gym floor map interface for building spatial training programs. Visualize your workout flow by selecting equipment directly from the gym layout.",
+  "requestFramePermissions": []
+}
