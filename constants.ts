@@ -15,7 +15,13 @@ const DEFAULT_ZONES: GymZone[] = [
     color: '#38bdf8', // Sky blue
     icon: 'Treadmill',
     machines: [
-      { id: 'tread-1', name: 'Treadmill 1', x: 20, y: 20, width: 30, height: 60 },
+      { 
+        id: 'tread-1', 
+        name: 'Treadmill 1', 
+        x: 20, y: 20, width: 30, height: 60,
+        videoUrl: 'https://www.youtube.com/embed/8iPEnn-ltC8',
+        longDescription: 'Standard treadmill for warmups and cardio intervals. Features incline settings up to 15% and speeds up to 12mph.'
+      },
       { id: 'tread-2', name: 'Treadmill 2', x: 60, y: 20, width: 30, height: 60 },
       { id: 'tread-3', name: 'Treadmill 3', x: 100, y: 20, width: 30, height: 60 },
       { id: 'tread-4', name: 'Treadmill 4', x: 140, y: 20, width: 30, height: 60 },
@@ -32,7 +38,13 @@ const DEFAULT_ZONES: GymZone[] = [
     color: '#38bdf8',
     icon: 'Waves',
     machines: [
-       { id: 'row-1', name: 'Rower A', x: 20, y: 15, width: 50, height: 30 },
+       { 
+         id: 'row-1', 
+         name: 'Rower A', 
+         x: 20, y: 15, width: 50, height: 30,
+         videoUrl: 'https://www.youtube.com/embed/H0r_Zcp4pG4',
+         longDescription: 'Concept2 Rower. Focus on driving with your legs before pulling with your arms. Great for full body conditioning.'
+       },
        { id: 'row-2', name: 'Rower B', x: 90, y: 15, width: 50, height: 30 },
        { id: 'row-3', name: 'Rower C', x: 160, y: 15, width: 30, height: 30 },
     ]
@@ -76,7 +88,13 @@ const DEFAULT_ZONES: GymZone[] = [
     color: '#f87171', // Red
     icon: 'Box',
     machines: [
-      { id: 'rack-1', name: 'Rack 1', x: 20, y: 20, width: 60, height: 60 },
+      { 
+        id: 'rack-1', 
+        name: 'Rack 1', 
+        x: 20, y: 20, width: 60, height: 60,
+        videoUrl: 'https://www.youtube.com/embed/SW_C1A-rejs',
+        longDescription: 'Power Rack suitable for Squats, Overhead Press, and Rack Pulls. Includes safety bars and pull-up handles.'
+      },
       { id: 'rack-2', name: 'Rack 2', x: 120, y: 20, width: 60, height: 60 },
       { id: 'rack-3', name: 'Rack 3', x: 20, y: 120, width: 60, height: 60 },
       { id: 'rack-4', name: 'Rack 4', x: 120, y: 120, width: 60, height: 60 },
@@ -103,6 +121,15 @@ const DEFAULT_ZONES: GymZone[] = [
     height: 100,
     color: '#c084fc',
     icon: 'Disc',
+    machines: [
+      {
+        id: 'leg-press-1',
+        name: 'Leg Press',
+        x: 10, y: 10, width: 60, height: 80,
+        videoUrl: 'https://www.youtube.com/embed/IZxyjW7MPJQ',
+        longDescription: '45-degree leg press machine. Ensure back is flat against the pad and do not lock knees at the top of the movement.'
+      }
+    ]
   },
   {
     id: 'zone-bench',

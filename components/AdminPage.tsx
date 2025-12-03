@@ -1112,6 +1112,39 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
                                 className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none"
                              />
                         </div>
+                        <div>
+                             <label className="block text-xs text-slate-500 mb-1">Video URL (YouTube)</label>
+                             <input 
+                                value={(selectedZone.machines || []).find(m => m.id === selectedMachineId)?.videoUrl || ''}
+                                onFocus={() => snapshot()}
+                                onChange={(e) => {
+                                    const newZones = gym.zones.map(z => {
+                                        if (z.id !== selectedZone.id) return z;
+                                        return { ...z, machines: (z.machines || []).map(m => m.id === selectedMachineId ? { ...m, videoUrl: e.target.value } : m) };
+                                    });
+                                    update({ ...gym, zones: newZones }, false);
+                                }}
+                                placeholder="https://youtube.com/..."
+                                className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none"
+                             />
+                        </div>
+                        <div>
+                             <label className="block text-xs text-slate-500 mb-1">Instructions / Description</label>
+                             <textarea 
+                                value={(selectedZone.machines || []).find(m => m.id === selectedMachineId)?.longDescription || ''}
+                                onFocus={() => snapshot()}
+                                onChange={(e) => {
+                                    const newZones = gym.zones.map(z => {
+                                        if (z.id !== selectedZone.id) return z;
+                                        return { ...z, machines: (z.machines || []).map(m => m.id === selectedMachineId ? { ...m, longDescription: e.target.value } : m) };
+                                    });
+                                    update({ ...gym, zones: newZones }, false);
+                                }}
+                                rows={4}
+                                placeholder="Detailed steps..."
+                                className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none resize-none"
+                             />
+                        </div>
                         <button 
                             onClick={deleteMachine}
                             className="w-full flex items-center justify-center px-4 py-2 bg-red-950/20 hover:bg-red-950/40 text-red-400 border border-red-900/30 rounded text-xs transition-colors"

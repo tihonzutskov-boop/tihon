@@ -20,6 +20,8 @@ interface GymMapProps {
   
   onZoneClick?: (zone: GymZone) => void;
   onMapClick?: () => void;
+  onMachineClick?: (machine: GymMachine) => void; // New prop for machine interaction
+
   selectedZoneId?: string | null;
   focusedZoneId?: string | null; // New: To trigger zoom
   
@@ -53,6 +55,8 @@ const GymMap: React.FC<GymMapProps> = ({
   
   onZoneClick = (_: GymZone) => {}, 
   onMapClick = () => {},
+  onMachineClick,
+
   selectedZoneId = null,
   focusedZoneId = null,
   
@@ -367,7 +371,14 @@ const GymMap: React.FC<GymMapProps> = ({
                                    onMachineDragStart(e, machine, zone.id);
                                  }
                                }}
-                               className={isMachineEdit ? 'cursor-move' : ''}
+                               onClick={(e) => {
+                                 // Handle Machine Click for Video viewing (User Mode)
+                                 if (!isEditable && onMachineClick) {
+                                     e.stopPropagation();
+                                     onMachineClick(machine);
+                                 }
+                               }}
+                               className={`${isMachineEdit ? 'cursor-move' : !isEditable ? 'cursor-pointer hover:opacity-80' : ''}`}
                             >
                               <rect 
                                 width={machine.width} height={machine.height} 

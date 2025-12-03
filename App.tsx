@@ -5,7 +5,8 @@ import ExerciseSelector from './components/ExerciseSelector';
 import ProgramList from './components/ProgramList';
 import LandingPage from './components/LandingPage';
 import AdminPage from './components/AdminPage';
-import { GymZone, WorkoutPlan, Exercise, Gym } from './types';
+import MachineDetailModal from './components/MachineDetailModal';
+import { GymZone, WorkoutPlan, Exercise, Gym, GymMachine } from './types';
 import { DEFAULT_GYM } from './constants';
 import { api } from './services/api';
 import { ChevronDown, MapPin, Loader2 } from 'lucide-react';
@@ -53,6 +54,7 @@ const App: React.FC = () => {
   const [selectedZone, setSelectedZone] = useState<GymZone | null>(null);
   const [focusedZoneId, setFocusedZoneId] = useState<string | null>(null); // New Zoom State
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
+  const [viewingMachine, setViewingMachine] = useState<GymMachine | null>(null); // Machine Modal State
   const [workoutPlan, setWorkoutPlan] = useState<WorkoutPlan>({
     id: 'current-1',
     name: 'New Session',
@@ -80,6 +82,10 @@ const App: React.FC = () => {
         setSelectedZone(null);
         setIsSelectorOpen(false);
     }
+  };
+
+  const handleMachineClick = (machine: GymMachine) => {
+    setViewingMachine(machine);
   };
 
   const handleCloseSelector = () => {
@@ -195,6 +201,7 @@ const App: React.FC = () => {
             annexes={annexes}
             onZoneClick={handleZoneClick}
             onMapClick={handleMapClick}
+            onMachineClick={handleMachineClick}
             selectedZoneId={selectedZone?.id || null}
             focusedZoneId={focusedZoneId} // Pass focus state
           />
@@ -222,6 +229,14 @@ const App: React.FC = () => {
             onClear={clearProgram}
           />
         </div>
+        
+        {/* Machine Video Modal */}
+        {viewingMachine && (
+           <MachineDetailModal 
+             machine={viewingMachine}
+             onClose={() => setViewingMachine(null)}
+           />
+        )}
       </main>
     </div>
   );

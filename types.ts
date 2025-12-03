@@ -17,6 +17,8 @@ export interface GymMachine {
   width: number;
   height: number;
   status?: 'active' | 'maintenance';
+  videoUrl?: string; // YouTube or MP4 link
+  longDescription?: string; // Detailed instructions
 }
 
 export interface GymZone {
