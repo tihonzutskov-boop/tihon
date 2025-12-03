@@ -3,13 +3,67 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { GymZone, EquipmentType, Gym, GymDimensions, GymEntrance, GymAnnex } from '../types';
 import GymMap from './GymMap';
 import { api } from '../services/api';
-import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Footprints, MapPin, LayoutTemplate, DoorOpen, Palette, BoxSelect, SquareDashed } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Footprints, MapPin, LayoutTemplate, DoorOpen, Palette, BoxSelect, SquareDashed, Undo2, Redo2 } from 'lucide-react';
 
 interface AdminPageProps {
   gyms: Gym[];
   setGyms: React.Dispatch<React.SetStateAction<Gym[]>>;
   onExit: () => void;
 }
+
+// --- History Hook ---
+const useGymHistory = (initialGym: Gym) => {
+  const [past, setPast] = useState<Gym[]>([]);
+  const [present, setPresent] = useState<Gym>(initialGym);
+  const [future, setFuture] = useState<Gym[]>([]);
+
+  // Call this to record a significant change (e.g., before drag start, or on specific button click)
+  const snapshot = useCallback(() => {
+    setPast(prev => [...prev, present]);
+    setFuture([]);
+  }, [present]);
+
+  // Call this to update state. 
+  // If saveToHistory is true, it snapshots the *previous* state before applying new.
+  // useful for one-off actions like "Add Zone"
+  const update = useCallback((newGym: Gym, saveToHistory = false) => {
+    if (saveToHistory) {
+      setPast(prev => [...prev, present]);
+      setFuture([]);
+    }
+    setPresent(newGym);
+  }, [present]);
+
+  const undo = useCallback(() => {
+    if (past.length === 0) return;
+    const previous = past[past.length - 1];
+    const newPast = past.slice(0, past.length - 1);
+    
+    setFuture(prev => [present, ...prev]);
+    setPresent(previous);
+    setPast(newPast);
+  }, [past, present]);
+
+  const redo = useCallback(() => {
+    if (future.length === 0) return;
+    const next = future[0];
+    const newFuture = future.slice(1);
+
+    setPast(prev => [...prev, present]);
+    setPresent(next);
+    setFuture(newFuture);
+  }, [future, present]);
+
+  return {
+    gym: present,
+    update,
+    snapshot,
+    undo,
+    redo,
+    canUndo: past.length > 0,
+    canRedo: future.length > 0
+  };
+};
 
 // --- Gym Dashboard Component ---
 const GymDashboard: React.FC<{ 
@@ -116,15 +170,9 @@ const GymDashboard: React.FC<{
 
 // --- Single Gym Editor Component ---
 interface GymLayoutEditorProps {
-  gym: Gym;
-  setGymZones: (zonesOrUpdater: GymZone[] | ((prev: GymZone[]) => GymZone[])) => void;
-  setGymDimensions: (dims: GymDimensions) => void;
-  setGymEntrance: (ent: GymEntrance) => void;
-  setGymAnnexes: (annexesOrUpdater: GymAnnex[] | ((prev: GymAnnex[]) => GymAnnex[])) => void;
-  updateGymName: (name: string) => void;
-  updateFloorColor: (color: string) => void;
+  initialGym: Gym;
+  onSave: (updatedGym: Gym) => Promise<void>;
   onBack: () => void;
-  onSaveTrigger: () => Promise<void>;
 }
 
 interface DragState {
@@ -139,19 +187,17 @@ interface DragState {
     height: number;
   };
   handle?: 'right' | 'bottom' | 'corner'; // specific for room resizing
+  viewParams?: { viewBox: string, offsetX: number, offsetY: number, width: number, height: number }; // snapshot of view for locking
 }
 
 const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ 
-  gym, 
-  setGymZones, 
-  setGymDimensions,
-  setGymEntrance,
-  setGymAnnexes,
-  updateGymName,
-  updateFloorColor,
-  onBack,
-  onSaveTrigger
+  initialGym,
+  onSave,
+  onBack
 }) => {
+  // Use History Hook for state management
+  const { gym, update, snapshot, undo, redo, canUndo, canRedo } = useGymHistory(initialGym);
+
   const zones = gym.zones;
   const dimensions = gym.dimensions || { width: 780, height: 580 };
   const entrance = gym.entrance || { side: 'bottom', offset: 50, width: 80 };
@@ -165,6 +211,28 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
   const mapContainerRef = useRef<HTMLDivElement>(null);
 
   const selectedZone = zones.find(z => z.id === selectedZoneId) || null;
+
+  // Keyboard Shortcuts for Undo/Redo
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check for Ctrl/Cmd key
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+      }
+      // Alternate Redo (Ctrl+Y)
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo]);
 
   const handleZoneClick = (zone: GymZone) => {
     if (!dragState && editMode === 'layout') {
@@ -180,7 +248,8 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
 
   const updateZone = (field: keyof GymZone, value: any) => {
     if (!selectedZoneId) return;
-    setGymZones(prev => prev.map(z => z.id === selectedZoneId ? { ...z, [field]: value } : z));
+    const newZones = gym.zones.map(z => z.id === selectedZoneId ? { ...z, [field]: value } : z);
+    update({ ...gym, zones: newZones }, false); // Input fields snapshot on focus
   };
 
   const addNewZone = () => {
@@ -197,7 +266,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
       icon: 'Square',
       description: ''
     };
-    setGymZones(prev => [...prev, newZone]);
+    update({ ...gym, zones: [...gym.zones, newZone] }, true);
     setSelectedZoneId(newZone.id);
   };
 
@@ -214,7 +283,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
       icon: 'Footprints',
       description: 'Main walkway'
     };
-    setGymZones(prev => [...prev, newZone]);
+    update({ ...gym, zones: [...gym.zones, newZone] }, true);
     setSelectedZoneId(newZone.id);
   };
   
@@ -226,12 +295,12 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
        width: 200,
        height: 200
     };
-    setGymAnnexes(prev => [...prev, newAnnex]);
+    update({ ...gym, annexes: [...(gym.annexes || []), newAnnex] }, true);
   };
 
   const deleteAnnex = (id: string) => {
      if(window.confirm('Delete this room extension?')) {
-        setGymAnnexes(prev => prev.filter(a => a.id !== id));
+        update({ ...gym, annexes: (gym.annexes || []).filter(a => a.id !== id) }, true);
      }
   };
 
@@ -240,10 +309,10 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
     if (!selectedZoneId) return;
     
     if (window.confirm('Are you sure you want to delete this zone?')) {
-      setGymZones(prev => prev.filter(z => z.id !== selectedZoneId));
+      update({ ...gym, zones: gym.zones.filter(z => z.id !== selectedZoneId) }, true);
       setSelectedZoneId(null);
     }
-  }, [selectedZoneId, setGymZones]);
+  }, [selectedZoneId, gym, update]);
 
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -270,124 +339,257 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
 
   const handleSave = async () => {
     setSaveState('saving');
-    await onSaveTrigger();
+    await onSave(gym);
     setSaveState('saved');
     setTimeout(() => {
       setSaveState('idle');
     }, 2000);
   };
 
+  // Helpers to snapshot view state for manual view locking
+  const calculateViewParams = () => {
+    // Duplicate logic from GymMap to lock the view
+    let maxX = dimensions.width;
+    let maxY = dimensions.height;
+    annexes.forEach(a => {
+      maxX = Math.max(maxX, a.x + a.width);
+      maxY = Math.max(maxY, a.y + a.height);
+    });
+    
+    const PADDING = 150;
+    const minViewWidth = 800;
+    const minViewHeight = 600;
+
+    const viewBoxWidth = Math.max(minViewWidth, maxX + PADDING);
+    const viewBoxHeight = Math.max(minViewHeight, maxY + PADDING);
+
+    const offsetX = (viewBoxWidth - maxX) / 2;
+    const offsetY = (viewBoxHeight - maxY) / 2;
+
+    return {
+      viewBox: `0 0 ${viewBoxWidth} ${viewBoxHeight}`,
+      offsetX,
+      offsetY,
+      width: viewBoxWidth,
+      height: viewBoxHeight
+    };
+  }
+
   // --- Drag & Resize Logic ---
   
   const handleZoneDragStart = (e: React.MouseEvent, zone: GymZone) => {
     if (editMode !== 'layout') return;
     e.preventDefault(); 
+    snapshot(); // Save state before drag
     setSelectedZoneId(zone.id);
+    
+    const viewParams = calculateViewParams();
+
     setDragState({
       mode: 'move-zone',
       itemId: zone.id,
       startX: e.clientX,
       startY: e.clientY,
-      initialData: { x: zone.x, y: zone.y, width: zone.width, height: zone.height }
+      initialData: { x: zone.x, y: zone.y, width: zone.width, height: zone.height },
+      viewParams
     });
   };
 
   const handleZoneResizeStart = (e: React.MouseEvent, zone: GymZone) => {
     if (editMode !== 'layout') return;
     e.preventDefault();
+    snapshot(); // Save state before resize
     setSelectedZoneId(zone.id);
+
+    const viewParams = calculateViewParams();
+
     setDragState({
       mode: 'resize-zone',
       itemId: zone.id,
       startX: e.clientX,
       startY: e.clientY,
-      initialData: { x: zone.x, y: zone.y, width: zone.width, height: zone.height }
+      initialData: { x: zone.x, y: zone.y, width: zone.width, height: zone.height },
+      viewParams
     });
   };
   
   const handleMainRoomResizeStart = (e: React.MouseEvent, handle: 'right' | 'bottom' | 'corner') => {
     if (editMode !== 'room') return;
     e.preventDefault();
+    snapshot(); // Save state before room resize
+
+    const viewParams = calculateViewParams();
+
     setDragState({
        mode: 'resize-room',
        itemId: 'main-room',
        startX: e.clientX,
        startY: e.clientY,
        initialData: { x: 0, y: 0, width: dimensions.width, height: dimensions.height },
-       handle
+       handle,
+       viewParams
     });
   };
 
   const handleAnnexDragStart = (e: React.MouseEvent, annex: GymAnnex) => {
     if (editMode !== 'room') return;
     e.preventDefault();
+    snapshot(); // Save state before annex move
+    
+    const viewParams = calculateViewParams();
+
     setDragState({
       mode: 'move-annex',
       itemId: annex.id,
       startX: e.clientX,
       startY: e.clientY,
-      initialData: { x: annex.x, y: annex.y, width: annex.width, height: annex.height }
+      initialData: { x: annex.x, y: annex.y, width: annex.width, height: annex.height },
+      viewParams
     });
   };
 
   const handleAnnexResizeStart = (e: React.MouseEvent, annex: GymAnnex) => {
     if (editMode !== 'room') return;
     e.preventDefault();
+    snapshot(); // Save state before annex resize
+
+    const viewParams = calculateViewParams();
+
     setDragState({
       mode: 'resize-annex',
       itemId: annex.id,
       startX: e.clientX,
       startY: e.clientY,
-      initialData: { x: annex.x, y: annex.y, width: annex.width, height: annex.height }
+      initialData: { x: annex.x, y: annex.y, width: annex.width, height: annex.height },
+      viewParams
     });
   };
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!dragState || !mapContainerRef.current) return;
-
-      // Calculate total bounds to ensure scaling matches GymMap
-      let maxX = dimensions.width;
-      let maxY = dimensions.height;
-      annexes.forEach(a => {
-         maxX = Math.max(maxX, a.x + a.width);
-         maxY = Math.max(maxY, a.y + a.height);
-      });
       
-      const PADDING = 150;
-      const minViewWidth = 800;
-      const minViewHeight = 600;
-      const viewBoxWidth = Math.max(minViewWidth, maxX + PADDING);
-      const viewBoxHeight = Math.max(minViewHeight, maxY + PADDING);
-
-      const rect = mapContainerRef.current.getBoundingClientRect();
-      const scaleX = viewBoxWidth / rect.width;
-      const scaleY = viewBoxHeight / rect.height;
+      // Use locked view params if available to prevent jitter, otherwise fallback (shouldn't happen with updated logic)
+      let scaleX = 1;
+      let scaleY = 1;
+      
+      if (dragState.viewParams) {
+          const rect = mapContainerRef.current.getBoundingClientRect();
+          scaleX = dragState.viewParams.width / rect.width;
+          scaleY = dragState.viewParams.height / rect.height;
+      } else {
+          // Fallback logic if for some reason viewParams aren't passed
+          // Calculate total bounds to ensure scaling matches GymMap
+          let maxX = dimensions.width;
+          let maxY = dimensions.height;
+          annexes.forEach(a => {
+             maxX = Math.max(maxX, a.x + a.width);
+             maxY = Math.max(maxY, a.y + a.height);
+          });
+          
+          const PADDING = 150;
+          const minViewWidth = 800;
+          const minViewHeight = 600;
+          const viewBoxWidth = Math.max(minViewWidth, maxX + PADDING);
+          const viewBoxHeight = Math.max(minViewHeight, maxY + PADDING);
+    
+          const rect = mapContainerRef.current.getBoundingClientRect();
+          scaleX = viewBoxWidth / rect.width;
+          scaleY = viewBoxHeight / rect.height;
+      }
 
       const deltaX = (e.clientX - dragState.startX) * scaleX;
       const deltaY = (e.clientY - dragState.startY) * scaleY;
 
-      const snap = (val: number) => Math.round(val / 10) * 10;
+      // --- Snapping Logic ---
+      const snapToGrid = (val: number) => Math.round(val / 10) * 10;
+      const SNAP_THRESHOLD = 15;
+
+      const getSnapLines = () => {
+         const xLines = [0, dimensions.width];
+         const yLines = [0, dimensions.height];
+         annexes.forEach(a => {
+            xLines.push(a.x, a.x + a.width);
+            yLines.push(a.y, a.y + a.height);
+         });
+         return { xLines, yLines };
+      };
+
+      const snapToEdges = (val: number, lines: number[]) => {
+         let best = null;
+         let minDiff = SNAP_THRESHOLD;
+         for (const line of lines) {
+            const diff = Math.abs(val - line);
+            if (diff < minDiff) {
+               minDiff = diff;
+               best = line;
+            }
+         }
+         return best;
+      };
+
+      const { xLines, yLines } = getSnapLines();
+
 
       // Handle Zone Dragging
       if (dragState.mode === 'move-zone') {
-        setGymZones(prev => prev.map(z => {
+        const newZones = gym.zones.map(z => {
           if (z.id !== dragState.itemId) return z;
-          let newX = snap(dragState.initialData.x + deltaX);
-          let newY = snap(dragState.initialData.y + deltaY);
-          // Simplified bounds check - allows placing zones in annexes too technically, 
-          // or we can remove bounds check to allow freedom
-          newX = Math.max(0, newX); 
-          newY = Math.max(0, newY);
-          return { ...z, x: newX, y: newY };
-        }));
+          
+          let rawX = dragState.initialData.x + deltaX;
+          let rawY = dragState.initialData.y + deltaY;
+          const w = dragState.initialData.width;
+          const h = dragState.initialData.height;
+
+          // X Snapping
+          let finalX = rawX;
+          // Try snap left edge
+          const snapLeft = snapToEdges(rawX, xLines);
+          if (snapLeft !== null) {
+             finalX = snapLeft;
+          } else {
+             // Try snap right edge
+             const snapRight = snapToEdges(rawX + w, xLines);
+             if (snapRight !== null) {
+                finalX = snapRight - w;
+             } else {
+                finalX = snapToGrid(rawX);
+             }
+          }
+
+          // Y Snapping
+          let finalY = rawY;
+          // Try snap top edge
+          const snapTop = snapToEdges(rawY, yLines);
+          if (snapTop !== null) {
+             finalY = snapTop;
+          } else {
+             // Try snap bottom edge
+             const snapBottom = snapToEdges(rawY + h, yLines);
+             if (snapBottom !== null) {
+                finalY = snapBottom - h;
+             } else {
+                finalY = snapToGrid(rawY);
+             }
+          }
+
+          // Bounds safety
+          finalX = Math.max(0, finalX);
+          finalY = Math.max(0, finalY);
+
+          return { ...z, x: finalX, y: finalY };
+        });
+        update({ ...gym, zones: newZones }, false);
       } 
       // Handle Zone Resizing
       else if (dragState.mode === 'resize-zone') {
-        setGymZones(prev => prev.map(z => {
+        const newZones = gym.zones.map(z => {
           if (z.id !== dragState.itemId) return z;
+          
           let rawWidth = dragState.initialData.width + deltaX;
           let rawHeight = dragState.initialData.height + deltaY;
+          
+          // Aspect Ratio Locking with Shift
           if (e.shiftKey) {
              const ratio = dragState.initialData.width / dragState.initialData.height;
              if (Math.abs(deltaX) > Math.abs(deltaY)) {
@@ -395,9 +597,42 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
              } else {
                 rawWidth = rawHeight * ratio;
              }
+             return { 
+                ...z, 
+                width: Math.max(40, snapToGrid(rawWidth)), 
+                height: Math.max(40, snapToGrid(rawHeight)) 
+             };
           }
-          return { ...z, width: Math.max(40, snap(rawWidth)), height: Math.max(40, snap(rawHeight)) };
-        }));
+
+          // Edge Snapping for standard resize
+          
+          // Width (Right Edge) Snapping
+          const currentX = dragState.initialData.x; // zone x doesn't change
+          const targetRight = currentX + rawWidth;
+          const snapRight = snapToEdges(targetRight, xLines);
+          
+          let finalWidth = rawWidth;
+          if (snapRight !== null) {
+             finalWidth = snapRight - currentX;
+          } else {
+             finalWidth = snapToGrid(rawWidth);
+          }
+
+          // Height (Bottom Edge) Snapping
+          const currentY = dragState.initialData.y;
+          const targetBottom = currentY + rawHeight;
+          const snapBottom = snapToEdges(targetBottom, yLines);
+          
+          let finalHeight = rawHeight;
+          if (snapBottom !== null) {
+             finalHeight = snapBottom - currentY;
+          } else {
+             finalHeight = snapToGrid(rawHeight);
+          }
+
+          return { ...z, width: Math.max(40, finalWidth), height: Math.max(40, finalHeight) };
+        });
+        update({ ...gym, zones: newZones }, false);
       }
       // Handle Main Room Resizing
       else if (dragState.mode === 'resize-room') {
@@ -405,34 +640,37 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
          let newH = dragState.initialData.height;
          
          if (dragState.handle === 'right' || dragState.handle === 'corner') {
-            newW = snap(dragState.initialData.width + deltaX);
+            newW = snapToGrid(dragState.initialData.width + deltaX);
          }
          if (dragState.handle === 'bottom' || dragState.handle === 'corner') {
-            newH = snap(dragState.initialData.height + deltaY);
+            newH = snapToGrid(dragState.initialData.height + deltaY);
          }
          
-         setGymDimensions({ 
+         const newDims = { 
             width: Math.max(200, Math.min(2000, newW)), 
             height: Math.max(200, Math.min(2000, newH)) 
-         });
+         };
+         update({ ...gym, dimensions: newDims }, false);
       }
       // Handle Annex Moving
       else if (dragState.mode === 'move-annex') {
-        setGymAnnexes(prev => prev.map(a => {
+        const newAnnexes = (gym.annexes || []).map(a => {
            if (a.id !== dragState.itemId) return a;
-           const newX = snap(dragState.initialData.x + deltaX);
-           const newY = snap(dragState.initialData.y + deltaY);
+           const newX = snapToGrid(dragState.initialData.x + deltaX);
+           const newY = snapToGrid(dragState.initialData.y + deltaY);
            return { ...a, x: newX, y: newY };
-        }));
+        });
+        update({ ...gym, annexes: newAnnexes }, false);
       }
       // Handle Annex Resizing
       else if (dragState.mode === 'resize-annex') {
-        setGymAnnexes(prev => prev.map(a => {
+        const newAnnexes = (gym.annexes || []).map(a => {
            if (a.id !== dragState.itemId) return a;
-           const newW = snap(dragState.initialData.width + deltaX);
-           const newH = snap(dragState.initialData.height + deltaY);
+           const newW = snapToGrid(dragState.initialData.width + deltaX);
+           const newH = snapToGrid(dragState.initialData.height + deltaY);
            return { ...a, width: Math.max(50, newW), height: Math.max(50, newH) };
-        }));
+        });
+        update({ ...gym, annexes: newAnnexes }, false);
       }
     };
 
@@ -449,7 +687,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [dragState, setGymZones, setGymDimensions, setGymAnnexes, dimensions, annexes]);
+  }, [dragState, gym, update, dimensions, annexes]);
 
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-200 animate-in slide-in-from-right duration-300">
@@ -466,7 +704,8 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
             <span className="text-[10px] text-lime-400 font-bold uppercase tracking-widest">Editing</span>
             <input 
               value={gym.name}
-              onChange={(e) => updateGymName(e.target.value)}
+              onFocus={() => snapshot()}
+              onChange={(e) => update({ ...gym, name: e.target.value }, false)}
               className="bg-transparent text-lg font-bold text-white focus:outline-none focus:border-b border-slate-600 hover:border-slate-700 transition-colors w-64"
             />
           </div>
@@ -491,6 +730,26 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
         </div>
 
         <div className="flex items-center space-x-3">
+          {/* Undo / Redo Controls */}
+          <div className="flex items-center space-x-1 mr-2 border-r border-slate-800 pr-4">
+            <button 
+              onClick={undo}
+              disabled={!canUndo}
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+              title="Undo (Ctrl+Z)"
+            >
+              <Undo2 className="w-4 h-4" />
+            </button>
+            <button 
+              onClick={redo}
+              disabled={!canRedo}
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+              title="Redo (Ctrl+Shift+Z)"
+            >
+              <Redo2 className="w-4 h-4" />
+            </button>
+          </div>
+
           <button 
             onClick={handleSave}
             disabled={saveState !== 'idle'}
@@ -570,6 +829,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
                  onMainRoomResizeStart={handleMainRoomResizeStart}
                  onAnnexDragStart={handleAnnexDragStart}
                  onAnnexResizeStart={handleAnnexResizeStart}
+                 manualView={dragState?.viewParams}
                />
              </div>
              <div className="absolute bottom-4 left-4 text-xs text-slate-500 bg-slate-950/80 px-2 py-1 rounded border border-slate-800 flex items-center space-x-3 pointer-events-none select-none z-20">
@@ -606,6 +866,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
                   <input 
                     type="text" 
                     value={selectedZone.name}
+                    onFocus={() => snapshot()}
                     onChange={(e) => updateZone('name', e.target.value)}
                     className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none"
                   />
@@ -614,6 +875,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
                   <label className="block text-xs text-slate-500 mb-1.5">Description / Metadata</label>
                   <textarea 
                     value={selectedZone.description || ''}
+                    onFocus={() => snapshot()}
                     onChange={(e) => updateZone('description', e.target.value)}
                     rows={3}
                     placeholder="E.g. Main corridor to weights area..."
@@ -624,6 +886,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
                   <label className="block text-xs text-slate-500 mb-1.5">Type</label>
                   <select 
                     value={selectedZone.type}
+                    onFocus={() => snapshot()}
                     onChange={(e) => updateZone('type', e.target.value)}
                     className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none"
                   >
@@ -638,12 +901,14 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
                     <input 
                       type="color" 
                       value={selectedZone.color}
+                      onFocus={() => snapshot()}
                       onChange={(e) => updateZone('color', e.target.value)}
                       className="h-9 w-9 bg-transparent border-0 cursor-pointer rounded"
                     />
                     <input 
                       type="text" 
                       value={selectedZone.color}
+                      onFocus={() => snapshot()}
                       onChange={(e) => updateZone('color', e.target.value)}
                       className="flex-1 bg-slate-950 border border-slate-700 rounded p-2 text-sm text-mono text-white focus:border-blue-500 focus:outline-none"
                     />
@@ -696,7 +961,8 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
                           <input 
                             type="number" 
                             value={dimensions.width}
-                            onChange={(e) => setGymDimensions({ ...dimensions, width: Math.max(200, Math.min(2000, parseInt(e.target.value) || 400)) })}
+                            onFocus={() => snapshot()}
+                            onChange={(e) => update({ ...gym, dimensions: { ...dimensions, width: Math.max(200, Math.min(2000, parseInt(e.target.value) || 400)) } }, false)}
                             className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none"
                           />
                         </div>
@@ -705,7 +971,8 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
                           <input 
                             type="number" 
                             value={dimensions.height}
-                            onChange={(e) => setGymDimensions({ ...dimensions, height: Math.max(200, Math.min(2000, parseInt(e.target.value) || 400)) })}
+                            onFocus={() => snapshot()}
+                            onChange={(e) => update({ ...gym, dimensions: { ...dimensions, height: Math.max(200, Math.min(2000, parseInt(e.target.value) || 400)) } }, false)}
                             className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none"
                           />
                         </div>
@@ -739,13 +1006,15 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
                          <input 
                            type="color" 
                            value={floorColor}
-                           onChange={(e) => updateFloorColor(e.target.value)}
+                           onFocus={() => snapshot()}
+                           onChange={(e) => update({ ...gym, floorColor: e.target.value }, false)}
                            className="h-9 w-9 bg-transparent border-0 cursor-pointer rounded"
                          />
                          <input 
                            type="text" 
                            value={floorColor}
-                           onChange={(e) => updateFloorColor(e.target.value)}
+                           onFocus={() => snapshot()}
+                           onChange={(e) => update({ ...gym, floorColor: e.target.value }, false)}
                            className="flex-1 bg-slate-950 border border-slate-700 rounded p-2 text-sm text-mono text-white focus:border-blue-500 focus:outline-none"
                          />
                        </div>
@@ -767,7 +1036,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
                             {['top', 'bottom', 'left', 'right'].map((side) => (
                               <button
                                 key={side}
-                                onClick={() => setGymEntrance({ ...entrance, side: side as any })}
+                                onClick={() => update({ ...gym, entrance: { ...entrance, side: side as any } }, true)}
                                 className={`
                                   text-xs py-1.5 rounded capitalize border transition-all
                                   ${entrance.side === side 
@@ -791,7 +1060,8 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
                             min="0"
                             max="100"
                             value={entrance.offset}
-                            onChange={(e) => setGymEntrance({ ...entrance, offset: parseInt(e.target.value) })}
+                            onFocus={() => snapshot()}
+                            onChange={(e) => update({ ...gym, entrance: { ...entrance, offset: parseInt(e.target.value) } }, false)}
                             className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full"
                           />
                         </div>
@@ -835,8 +1105,11 @@ const AdminPage: React.FC<AdminPageProps> = ({ gyms, setGyms, onExit }) => {
     }
   };
 
-  const saveGymChanges = async (gym: Gym) => {
-    await api.saveGym(gym);
+  const saveGymChanges = async (updatedGym: Gym) => {
+    // 1. Update backend
+    await api.saveGym(updatedGym);
+    // 2. Update local app state to match
+    setGyms(prev => prev.map(g => g.id === updatedGym.id ? updatedGym : g));
   };
 
   if (editingGymId) {
@@ -846,56 +1119,11 @@ const AdminPage: React.FC<AdminPageProps> = ({ gyms, setGyms, onExit }) => {
       return null;
     }
 
-    // Helper to update zones for the specific gym being edited
-    const setGymZones = (zonesOrUpdater: GymZone[] | ((prev: GymZone[]) => GymZone[])) => {
-      setGyms(prevGyms => prevGyms.map(g => {
-        if (g.id !== editingGymId) return g;
-        
-        const newZones = typeof zonesOrUpdater === 'function' 
-          ? zonesOrUpdater(g.zones) 
-          : zonesOrUpdater;
-          
-        return { ...g, zones: newZones };
-      }));
-    };
-
-    const setGymDimensions = (dims: GymDimensions) => {
-      setGyms(prev => prev.map(g => g.id === editingGymId ? { ...g, dimensions: dims } : g));
-    };
-
-    const setGymEntrance = (ent: GymEntrance) => {
-      setGyms(prev => prev.map(g => g.id === editingGymId ? { ...g, entrance: ent } : g));
-    };
-    
-    const setGymAnnexes = (annexesOrUpdater: GymAnnex[] | ((prev: GymAnnex[]) => GymAnnex[])) => {
-       setGyms(prevGyms => prevGyms.map(g => {
-         if (g.id !== editingGymId) return g;
-         const newAnnexes = typeof annexesOrUpdater === 'function' 
-            ? annexesOrUpdater(g.annexes || []) 
-            : annexesOrUpdater;
-         return { ...g, annexes: newAnnexes };
-       }));
-    }
-
-    const updateGymName = (name: string) => {
-      setGyms(prev => prev.map(g => g.id === editingGymId ? { ...g, name } : g));
-    }
-
-    const updateFloorColor = (color: string) => {
-      setGyms(prev => prev.map(g => g.id === editingGymId ? { ...g, floorColor: color } : g));
-    }
-
     return (
       <GymLayoutEditor 
-        gym={gym} 
-        setGymZones={setGymZones}
-        setGymDimensions={setGymDimensions}
-        setGymEntrance={setGymEntrance}
-        setGymAnnexes={setGymAnnexes}
-        updateGymName={updateGymName}
-        updateFloorColor={updateFloorColor}
+        initialGym={gym} 
+        onSave={saveGymChanges}
         onBack={() => setEditingGymId(null)}
-        onSaveTrigger={() => saveGymChanges(gym)} 
       />
     );
   }

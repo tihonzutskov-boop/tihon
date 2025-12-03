@@ -9,6 +9,16 @@ export enum EquipmentType {
   FACILITY = 'Facility',
 }
 
+export interface GymMachine {
+  id: string;
+  name: string;
+  x: number; // Relative to the Zone's top-left corner
+  y: number; // Relative to the Zone's top-left corner
+  width: number;
+  height: number;
+  status?: 'active' | 'maintenance';
+}
+
 export interface GymZone {
   id: string;
   name: string;
@@ -20,6 +30,7 @@ export interface GymZone {
   color: string;
   icon: string;
   description?: string;
+  machines?: GymMachine[];
 }
 
 export interface GymEntrance {

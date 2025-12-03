@@ -51,6 +51,7 @@ const App: React.FC = () => {
   const annexes = activeGym?.annexes;
 
   const [selectedZone, setSelectedZone] = useState<GymZone | null>(null);
+  const [focusedZoneId, setFocusedZoneId] = useState<string | null>(null); // New Zoom State
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const [workoutPlan, setWorkoutPlan] = useState<WorkoutPlan>({
     id: 'current-1',
@@ -60,13 +61,32 @@ const App: React.FC = () => {
   });
 
   const handleZoneClick = (zone: GymZone) => {
-    setSelectedZone(zone);
-    setIsSelectorOpen(true);
+    if (focusedZoneId === zone.id) {
+        // Already focused, open selector immediately
+        setSelectedZone(zone);
+        setIsSelectorOpen(true);
+    } else {
+        // Zoom in first, but DO NOT open selector automatically
+        setFocusedZoneId(zone.id);
+        setSelectedZone(zone);
+        setIsSelectorOpen(false);
+    }
+  };
+
+  const handleMapClick = () => {
+    // Zoom out
+    if (focusedZoneId) {
+        setFocusedZoneId(null);
+        setSelectedZone(null);
+        setIsSelectorOpen(false);
+    }
   };
 
   const handleCloseSelector = () => {
     setIsSelectorOpen(false);
     setSelectedZone(null);
+    // Note: We keep focus (zoom) when just closing the sidebar, 
+    // user must click map background to zoom out fully.
   };
 
   const addExercise = (exercise: Exercise) => {
@@ -173,8 +193,10 @@ const App: React.FC = () => {
             entrance={entrance}
             floorColor={floorColor}
             annexes={annexes}
-            onZoneClick={handleZoneClick} 
-            selectedZoneId={selectedZone?.id || null} 
+            onZoneClick={handleZoneClick}
+            onMapClick={handleMapClick}
+            selectedZoneId={selectedZone?.id || null}
+            focusedZoneId={focusedZoneId} // Pass focus state
           />
         </div>
 

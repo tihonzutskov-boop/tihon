@@ -14,6 +14,12 @@ const DEFAULT_ZONES: GymZone[] = [
     height: 100,
     color: '#38bdf8', // Sky blue
     icon: 'Treadmill',
+    machines: [
+      { id: 'tread-1', name: 'Treadmill 1', x: 20, y: 20, width: 30, height: 60 },
+      { id: 'tread-2', name: 'Treadmill 2', x: 60, y: 20, width: 30, height: 60 },
+      { id: 'tread-3', name: 'Treadmill 3', x: 100, y: 20, width: 30, height: 60 },
+      { id: 'tread-4', name: 'Treadmill 4', x: 140, y: 20, width: 30, height: 60 },
+    ]
   },
   {
     id: 'zone-cardio-2',
@@ -25,6 +31,11 @@ const DEFAULT_ZONES: GymZone[] = [
     height: 60,
     color: '#38bdf8',
     icon: 'Waves',
+    machines: [
+       { id: 'row-1', name: 'Rower A', x: 20, y: 15, width: 50, height: 30 },
+       { id: 'row-2', name: 'Rower B', x: 90, y: 15, width: 50, height: 30 },
+       { id: 'row-3', name: 'Rower C', x: 160, y: 15, width: 30, height: 30 },
+    ]
   },
   {
     id: 'zone-weights-1',
@@ -36,6 +47,12 @@ const DEFAULT_ZONES: GymZone[] = [
     height: 200,
     color: '#fbbf24', // Amber
     icon: 'Dumbbell',
+    machines: [
+      { id: 'db-rack', name: 'Main Rack', x: 10, y: 10, width: 230, height: 40 },
+      { id: 'bench-1', name: 'Bench', x: 30, y: 80, width: 40, height: 80 },
+      { id: 'bench-2', name: 'Bench', x: 100, y: 80, width: 40, height: 80 },
+      { id: 'bench-3', name: 'Bench', x: 170, y: 80, width: 40, height: 80 },
+    ]
   },
   {
     id: 'zone-turf',
@@ -58,6 +75,12 @@ const DEFAULT_ZONES: GymZone[] = [
     height: 200,
     color: '#f87171', // Red
     icon: 'Box',
+    machines: [
+      { id: 'rack-1', name: 'Rack 1', x: 20, y: 20, width: 60, height: 60 },
+      { id: 'rack-2', name: 'Rack 2', x: 120, y: 20, width: 60, height: 60 },
+      { id: 'rack-3', name: 'Rack 3', x: 20, y: 120, width: 60, height: 60 },
+      { id: 'rack-4', name: 'Rack 4', x: 120, y: 120, width: 60, height: 60 },
+    ]
   },
   {
     id: 'zone-machines-1',
