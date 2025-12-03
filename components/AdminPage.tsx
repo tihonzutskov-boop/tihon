@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { GymZone, EquipmentType, Gym, GymDimensions, GymEntrance, GymAnnex } from '../types';
 import GymMap from './GymMap';
+import { api } from '../services/api';
 import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Footprints, MapPin, LayoutTemplate, DoorOpen, Palette, BoxSelect, SquareDashed } from 'lucide-react';
 
 interface AdminPageProps {
@@ -73,15 +74,13 @@ const GymDashboard: React.FC<{
                       >
                         <Edit3 className="w-4 h-4" />
                       </button>
-                      {gyms.length > 1 && (
-                        <button 
-                          onClick={() => onDelete(gym.id)}
-                          className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-950/30 rounded-lg transition-colors"
-                          title="Delete Gym"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
+                      <button 
+                        onClick={() => onDelete(gym.id)}
+                        className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-950/30 rounded-lg transition-colors"
+                        title="Delete Gym"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                    </div>
                  </div>
                  
@@ -125,6 +124,7 @@ interface GymLayoutEditorProps {
   updateGymName: (name: string) => void;
   updateFloorColor: (color: string) => void;
   onBack: () => void;
+  onSaveTrigger: () => Promise<void>;
 }
 
 interface DragState {
@@ -149,7 +149,8 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
   setGymAnnexes,
   updateGymName,
   updateFloorColor,
-  onBack 
+  onBack,
+  onSaveTrigger
 }) => {
   const zones = gym.zones;
   const dimensions = gym.dimensions || { width: 780, height: 580 };
@@ -267,15 +268,13 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedZoneId, deleteZone]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaveState('saving');
-    // Simulate API persistence
+    await onSaveTrigger();
+    setSaveState('saved');
     setTimeout(() => {
-      setSaveState('saved');
-      setTimeout(() => {
-        setSaveState('idle');
-      }, 2000);
-    }, 800);
+      setSaveState('idle');
+    }, 2000);
   };
 
   // --- Drag & Resize Logic ---
@@ -812,7 +811,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
 const AdminPage: React.FC<AdminPageProps> = ({ gyms, setGyms, onExit }) => {
   const [editingGymId, setEditingGymId] = useState<string | null>(null);
 
-  const handleCreateGym = () => {
+  const handleCreateGym = async () => {
     const newGym: Gym = {
       id: `gym-${Date.now()}`,
       name: 'New Location',
@@ -822,14 +821,22 @@ const AdminPage: React.FC<AdminPageProps> = ({ gyms, setGyms, onExit }) => {
       floorColor: '#1e293b',
       annexes: []
     };
+    
+    // Save to backend immediately
+    await api.createGym(newGym);
     setGyms(prev => [...prev, newGym]);
   };
 
-  const handleDeleteGym = (id: string) => {
+  const handleDeleteGym = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this gym location? This action cannot be undone.')) {
+      await api.deleteGym(id);
       setGyms(prev => prev.filter(g => g.id !== id));
       if (editingGymId === id) setEditingGymId(null);
     }
+  };
+
+  const saveGymChanges = async (gym: Gym) => {
+    await api.saveGym(gym);
   };
 
   if (editingGymId) {
@@ -887,7 +894,8 @@ const AdminPage: React.FC<AdminPageProps> = ({ gyms, setGyms, onExit }) => {
         setGymAnnexes={setGymAnnexes}
         updateGymName={updateGymName}
         updateFloorColor={updateFloorColor}
-        onBack={() => setEditingGymId(null)} 
+        onBack={() => setEditingGymId(null)}
+        onSaveTrigger={() => saveGymChanges(gym)} 
       />
     );
   }

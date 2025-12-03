@@ -7,7 +7,8 @@ import LandingPage from './components/LandingPage';
 import AdminPage from './components/AdminPage';
 import { GymZone, WorkoutPlan, Exercise, Gym } from './types';
 import { DEFAULT_GYM } from './constants';
-import { ChevronDown, MapPin } from 'lucide-react';
+import { api } from './services/api';
+import { ChevronDown, MapPin, Loader2 } from 'lucide-react';
 
 type ViewState = 'landing' | 'app' | 'admin';
 
@@ -16,16 +17,38 @@ const App: React.FC = () => {
   
   // State for multiple Gyms
   const [gyms, setGyms] = useState<Gym[]>([DEFAULT_GYM]);
+  const [isLoading, setIsLoading] = useState(true);
   
   // Track active gym for the user view
   const [activeGymId, setActiveGymId] = useState<string>('default-gym');
   
+  // Load initial data from Backend
+  useEffect(() => {
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        const fetchedGyms = await api.fetchGyms();
+        setGyms(fetchedGyms);
+        // If the active ID isn't in the fetched list, reset to the first one
+        if (!fetchedGyms.find(g => g.id === activeGymId)) {
+          setActiveGymId(fetchedGyms[0]?.id || 'default-gym');
+        }
+      } catch (e) {
+        console.error("Failed to load gyms", e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadData();
+  }, []); // Run once on mount
+
   // Derived active gym data
   const activeGym = gyms.find(g => g.id === activeGymId) || gyms[0];
-  const zones = activeGym.zones;
-  const dimensions = activeGym.dimensions;
-  const entrance = activeGym.entrance;
-  const floorColor = activeGym.floorColor;
+  const zones = activeGym?.zones || [];
+  const dimensions = activeGym?.dimensions;
+  const entrance = activeGym?.entrance;
+  const floorColor = activeGym?.floorColor;
+  const annexes = activeGym?.annexes;
 
   const [selectedZone, setSelectedZone] = useState<GymZone | null>(null);
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
@@ -68,6 +91,15 @@ const App: React.FC = () => {
     setActiveGymId(gymId);
     setCurrentView('app');
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400">
+        <Loader2 className="w-10 h-10 animate-spin mb-4 text-lime-500" />
+        <p>Loading Gym Layouts...</p>
+      </div>
+    );
+  }
 
   // --- View Routing ---
 
@@ -140,6 +172,7 @@ const App: React.FC = () => {
             dimensions={dimensions}
             entrance={entrance}
             floorColor={floorColor}
+            annexes={annexes}
             onZoneClick={handleZoneClick} 
             selectedZoneId={selectedZone?.id || null} 
           />
