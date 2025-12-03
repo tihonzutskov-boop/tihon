@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { GymZone, EquipmentType, GymDimensions, GymEntrance, GymAnnex } from '../types';
+import { GymZone, EquipmentType, GymDimensions, GymEntrance, GymAnnex, GymMachine } from '../types';
 import { ZoomOut, Settings } from 'lucide-react';
 
 export interface ViewParams {
@@ -24,7 +24,7 @@ interface GymMapProps {
   focusedZoneId?: string | null; // New: To trigger zoom
   
   isEditable?: boolean;
-  editMode?: 'layout' | 'room'; // 'layout' for zones, 'room' for structure
+  editMode?: 'layout' | 'room' | 'machine'; // 'layout' for zones, 'room' for structure, 'machine' for contents
   
   // Zone Interactions
   onZoneDragStart?: (e: React.MouseEvent, zone: GymZone) => void;
@@ -34,6 +34,11 @@ interface GymMapProps {
   onMainRoomResizeStart?: (e: React.MouseEvent, handle: 'right' | 'bottom' | 'corner') => void;
   onAnnexDragStart?: (e: React.MouseEvent, annex: GymAnnex) => void;
   onAnnexResizeStart?: (e: React.MouseEvent, annex: GymAnnex) => void;
+
+  // Machine Interactions
+  onMachineDragStart?: (e: React.MouseEvent, machine: GymMachine, zoneId: string) => void;
+  onMachineResizeStart?: (e: React.MouseEvent, machine: GymMachine, zoneId: string) => void;
+  selectedMachineId?: string | null;
   
   isThumbnail?: boolean;
   manualView?: ViewParams;
@@ -60,6 +65,10 @@ const GymMap: React.FC<GymMapProps> = ({
   onMainRoomResizeStart,
   onAnnexDragStart,
   onAnnexResizeStart,
+
+  onMachineDragStart,
+  onMachineResizeStart,
+  selectedMachineId,
   
   isThumbnail = false,
   manualView
@@ -92,7 +101,7 @@ const GymMap: React.FC<GymMapProps> = ({
     viewBoxHeight = manualView.height;
     offsetX = manualView.offsetX;
     offsetY = manualView.offsetY;
-  } else if (focusedZone && !isEditable) {
+  } else if (focusedZone && (!isEditable || editMode === 'machine')) {
     // Zoomed View
     const ZOOM_PADDING = 40;
     // Prevents excessive zoom on small zones by enforcing a minimum view size (e.g. 500x500 units)
@@ -160,6 +169,8 @@ const GymMap: React.FC<GymMapProps> = ({
   const door = getEntrancePath();
   const isRoomEdit = isEditable && editMode === 'room';
   const isLayoutEdit = isEditable && editMode === 'layout';
+  const isMachineEdit = isEditable && editMode === 'machine';
+  
   const handleStyle = "cursor-ew-resize hover:fill-lime-400 fill-white stroke-slate-900";
   const cornerStyle = "cursor-nwse-resize hover:fill-lime-400 fill-white stroke-slate-900";
   const moveStyle = "cursor-move hover:fill-lime-400 fill-white stroke-slate-900";
@@ -172,9 +183,11 @@ const GymMap: React.FC<GymMapProps> = ({
           {/* Editor Mode Badge */}
           {(isEditable) && (
              <div className={`absolute top-4 left-4 px-3 py-1 rounded text-xs border z-10 pointer-events-none select-none backdrop-blur-sm shadow-lg
-               ${isRoomEdit ? 'bg-lime-950/90 text-lime-400 border-lime-800' : 'bg-slate-950/90 text-slate-400 border-slate-700'}
+               ${isRoomEdit ? 'bg-lime-950/90 text-lime-400 border-lime-800' : 
+                 isMachineEdit ? 'bg-blue-950/90 text-blue-400 border-blue-800' :
+                 'bg-slate-950/90 text-slate-400 border-slate-700'}
              `}>
-               {isRoomEdit ? 'Room Editor Mode' : 'Layout Editor Mode'}
+               {isRoomEdit ? 'Room Editor Mode' : isMachineEdit ? 'Machine Editor Mode' : 'Layout Editor Mode'}
              </div>
           )}
 
@@ -201,7 +214,11 @@ const GymMap: React.FC<GymMapProps> = ({
           }
         }}
         onClick={() => {
-          onMapClick();
+          if (isEditable && editMode === 'layout') {
+             onMapClick();
+          } else if (!isEditable) {
+             onMapClick();
+          }
         }}
       >
         <defs>
@@ -211,6 +228,9 @@ const GymMap: React.FC<GymMapProps> = ({
           <pattern id="dotGrid" width="20" height="20" patternUnits="userSpaceOnUse">
             <circle cx="1" cy="1" r="1" fill="rgba(163, 230, 53, 0.3)" />
           </pattern>
+          <pattern id="smallGrid" width="10" height="10" patternUnits="userSpaceOnUse">
+             <path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="0.5" />
+          </pattern>
           {/* Machine Texture */}
           <pattern id="machineHatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
             <rect width="2" height="4" transform="translate(0,0)" fill="white" fillOpacity="0.1" />
@@ -219,7 +239,7 @@ const GymMap: React.FC<GymMapProps> = ({
         
         {/* Background Grid */}
         {!isThumbnail && isEditable && (
-            <rect width={viewBoxWidth} height={viewBoxHeight} fill="url(#grid)" className="pointer-events-none opacity-30" />
+            <rect width={viewBoxWidth} height={viewBoxHeight} fill={isMachineEdit ? "url(#smallGrid)" : "url(#grid)"} className="pointer-events-none opacity-30" />
         )}
 
         {/* --- MAIN TRANSFORM GROUP --- */}
@@ -292,7 +312,7 @@ const GymMap: React.FC<GymMapProps> = ({
                 const isStructure = zone.type === EquipmentType.CORRIDOR || zone.type === EquipmentType.FACILITY;
                 
                 // Opacity Logic: If zoomed in, fade out other zones
-                const zoneOpacity = focusedZoneId ? (isFocused ? 1 : 0.1) : (selectedZoneId && !isSelected ? 0.4 : 1);
+                const zoneOpacity = focusedZoneId ? (isFocused ? 1 : 0.05) : (selectedZoneId && !isSelected ? 0.4 : 1);
 
                 return (
                   <g
@@ -300,7 +320,8 @@ const GymMap: React.FC<GymMapProps> = ({
                     onClick={(e) => {
                       if (!isThumbnail) {
                         e.stopPropagation();
-                        onZoneClick(zone);
+                        // Only click if we are NOT editing machines (clicks handle elsewhere)
+                        if (!isMachineEdit) onZoneClick(zone);
                       }
                     }}
                     onMouseDown={(e) => {
@@ -308,7 +329,7 @@ const GymMap: React.FC<GymMapProps> = ({
                         onZoneDragStart(e, zone);
                       }
                     }}
-                    className={`transition-all duration-500 ease-in-out ${isThumbnail ? '' : isLayoutEdit ? 'cursor-move' : 'cursor-pointer'}`}
+                    className={`transition-all duration-500 ease-in-out ${isThumbnail ? '' : isLayoutEdit ? 'cursor-move' : isMachineEdit && isFocused ? 'cursor-default' : 'cursor-pointer'}`}
                     style={{
                       opacity: zoneOpacity,
                       filter: isSelected ? 'drop-shadow(0 0 8px rgba(0,0,0,0.6))' : 'none',
@@ -326,44 +347,72 @@ const GymMap: React.FC<GymMapProps> = ({
                     {/* Zone Background */}
                     <rect
                       x={zone.x} y={zone.y} width={zone.width} height={zone.height}
-                      fill={zone.color} fillOpacity={isStructure ? 0.25 : (isFocused ? 0.2 : 0.35)} 
+                      fill={zone.color} fillOpacity={isStructure ? 0.25 : (isFocused || isMachineEdit ? 0.15 : 0.35)} 
                       stroke={zone.color} strokeWidth={isThumbnail ? 4 : (isSelected || isFocused ? 2 : 1)} 
                       rx={isStructure ? 0 : 4} 
                     />
                     
-                    {/* --- Machine Detail Layer (Visible when focused) --- */}
-                    {isFocused && !isStructure && !isEditable && zone.machines && (
+                    {/* --- Machine Detail Layer --- */}
+                    {((isFocused && !isStructure && !isEditable) || (isMachineEdit && isFocused)) && zone.machines && (
                       <g className="animate-in fade-in zoom-in duration-300">
-                        {zone.machines.map(machine => (
-                          <g key={machine.id} transform={`translate(${zone.x + machine.x}, ${zone.y + machine.y})`}>
-                            <rect 
-                              width={machine.width} height={machine.height} 
-                              fill={zone.color} 
-                              fillOpacity={0.8}
-                              stroke="white" strokeWidth="1" strokeOpacity={0.5}
-                              rx="2"
-                            />
-                            {/* Hatch Texture for detail */}
-                            <rect width={machine.width} height={machine.height} fill="url(#machineHatch)" rx="2"/>
-                            
-                            {/* Machine Label (Small) */}
-                            {machine.height > 20 && (
-                              <text 
-                                x={machine.width/2} y={machine.height/2} 
-                                textAnchor="middle" dominantBaseline="middle" 
-                                fontSize={Math.min(10, machine.width/4)} fill="white" fontWeight="bold" 
-                                className="pointer-events-none select-none drop-shadow-sm"
-                              >
-                                {machine.name.substring(0, 3).toUpperCase()}
-                              </text>
-                            )}
-                          </g>
-                        ))}
+                        {zone.machines.map(machine => {
+                          const isMachineSelected = selectedMachineId === machine.id;
+                          return (
+                            <g 
+                               key={machine.id} 
+                               transform={`translate(${zone.x + machine.x}, ${zone.y + machine.y})`}
+                               onMouseDown={(e) => {
+                                 if (isMachineEdit && onMachineDragStart) {
+                                   e.stopPropagation();
+                                   onMachineDragStart(e, machine, zone.id);
+                                 }
+                               }}
+                               className={isMachineEdit ? 'cursor-move' : ''}
+                            >
+                              <rect 
+                                width={machine.width} height={machine.height} 
+                                fill={zone.color} 
+                                fillOpacity={0.8}
+                                stroke={isMachineSelected && isMachineEdit ? "#3b82f6" : "white"} 
+                                strokeWidth={isMachineSelected && isMachineEdit ? 2 : 1} 
+                                strokeOpacity={isMachineSelected ? 1 : 0.5}
+                                rx="2"
+                              />
+                              {/* Hatch Texture for detail */}
+                              <rect width={machine.width} height={machine.height} fill="url(#machineHatch)" rx="2" className="pointer-events-none"/>
+                              
+                              {/* Machine Label (Small) */}
+                              {machine.height > 20 && machine.width > 20 && (
+                                <text 
+                                  x={machine.width/2} y={machine.height/2} 
+                                  textAnchor="middle" dominantBaseline="middle" 
+                                  fontSize={Math.min(10, machine.width/4)} fill="white" fontWeight="bold" 
+                                  className="pointer-events-none select-none drop-shadow-sm"
+                                >
+                                  {machine.name.substring(0, 3).toUpperCase()}
+                                </text>
+                              )}
+
+                              {/* Machine Resize Handle */}
+                              {isMachineEdit && isMachineSelected && (
+                                <rect
+                                  x={machine.width - 6} y={machine.height - 6} width="6" height="6"
+                                  fill="#3b82f6"
+                                  className="cursor-nwse-resize"
+                                  onMouseDown={(e) => {
+                                    e.stopPropagation();
+                                    if(onMachineResizeStart) onMachineResizeStart(e, machine, zone.id);
+                                  }}
+                                />
+                              )}
+                            </g>
+                          )
+                        })}
                       </g>
                     )}
 
                     {/* Generic Equipment Placeholder (Hidden when focused or structure) */}
-                    {!isThumbnail && !isStructure && !isFocused && (
+                    {!isThumbnail && !isStructure && !isFocused && !isMachineEdit && (
                       <rect
                         x={zone.x + 10} y={zone.y + 10} width={Math.max(0, zone.width - 20)} height={Math.max(0, zone.height - 20)}
                         fill="none" stroke={zone.color} strokeWidth="1" strokeDasharray="4 4" rx="2"

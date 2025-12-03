@@ -1,9 +1,9 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { GymZone, EquipmentType, Gym, GymDimensions, GymEntrance, GymAnnex } from '../types';
+import { GymZone, EquipmentType, Gym, GymDimensions, GymEntrance, GymAnnex, GymMachine } from '../types';
 import GymMap from './GymMap';
 import { api } from '../services/api';
-import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Footprints, MapPin, LayoutTemplate, DoorOpen, Palette, BoxSelect, SquareDashed, Undo2, Redo2 } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Footprints, MapPin, LayoutTemplate, DoorOpen, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle } from 'lucide-react';
 
 interface AdminPageProps {
   gyms: Gym[];
@@ -176,8 +176,9 @@ interface GymLayoutEditorProps {
 }
 
 interface DragState {
-  mode: 'move-zone' | 'resize-zone' | 'resize-room' | 'move-annex' | 'resize-annex';
+  mode: 'move-zone' | 'resize-zone' | 'resize-room' | 'move-annex' | 'resize-annex' | 'move-machine' | 'resize-machine';
   itemId: string | 'main-room';
+  zoneId?: string; // For machine dragging
   startX: number;
   startY: number;
   initialData: {
@@ -189,6 +190,29 @@ interface DragState {
   handle?: 'right' | 'bottom' | 'corner'; // specific for room resizing
   viewParams?: { viewBox: string, offsetX: number, offsetY: number, width: number, height: number }; // snapshot of view for locking
 }
+
+// Helper UI Component for Tool Buttons
+const ToolButton = ({ active, onClick, icon: Icon, label, disabled = false, highlight = false }: { active?: boolean, onClick: () => void, icon: any, label: string, disabled?: boolean, highlight?: boolean }) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    className={`
+      relative w-full aspect-square flex flex-col items-center justify-center rounded-xl transition-all duration-200 group border
+      ${active 
+        ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50 border-blue-500 ring-1 ring-blue-400' 
+        : highlight 
+          ? 'bg-blue-900/20 text-blue-400 hover:bg-blue-900/40 border-blue-900/30'
+          : 'bg-slate-800/40 text-slate-400 hover:bg-slate-800 hover:text-white border-transparent hover:border-slate-700'
+      }
+      ${disabled ? 'opacity-50 cursor-not-allowed grayscale' : ''}
+    `}
+  >
+    <Icon className={`w-6 h-6 mb-1.5 ${active ? 'scale-110' : 'group-hover:scale-110'} transition-transform`} />
+    <span className="text-[10px] font-medium tracking-wide">{label}</span>
+    {active && <div className="absolute inset-x-0 -bottom-px h-1 bg-gradient-to-r from-transparent via-white/40 to-transparent opacity-50" />}
+  </button>
+);
+
 
 const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ 
   initialGym,
@@ -204,8 +228,10 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
   const floorColor = gym.floorColor || '#1e293b';
   const annexes = gym.annexes || [];
 
-  const [editMode, setEditMode] = useState<'layout' | 'room'>('layout');
+  const [editMode, setEditMode] = useState<'layout' | 'room' | 'machine'>('layout');
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
+  const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null);
+
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -242,7 +268,11 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
 
   const handleMapClick = () => {
     if (!dragState) {
-      setSelectedZoneId(null);
+      if (editMode === 'machine') {
+         setSelectedMachineId(null);
+      } else {
+         setSelectedZoneId(null);
+      }
     }
   }
 
@@ -264,7 +294,8 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
       height: 100,
       color: '#94a3b8',
       icon: 'Square',
-      description: ''
+      description: '',
+      machines: []
     };
     update({ ...gym, zones: [...gym.zones, newZone] }, true);
     setSelectedZoneId(newZone.id);
@@ -281,11 +312,48 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
       height: 40,
       color: '#64748b',
       icon: 'Footprints',
-      description: 'Main walkway'
+      description: 'Main walkway',
+      machines: []
     };
     update({ ...gym, zones: [...gym.zones, newZone] }, true);
     setSelectedZoneId(newZone.id);
   };
+
+  const addMachine = () => {
+    if (!selectedZone) return;
+    const newMachine: GymMachine = {
+      id: `machine-${Date.now()}`,
+      name: 'Machine',
+      x: 10,
+      y: 10,
+      width: 40,
+      height: 40
+    };
+    
+    const newZones = gym.zones.map(z => {
+      if (z.id === selectedZone.id) {
+        return { ...z, machines: [...(z.machines || []), newMachine] };
+      }
+      return z;
+    });
+
+    update({ ...gym, zones: newZones }, true);
+    setSelectedMachineId(newMachine.id);
+  };
+
+  const deleteMachine = useCallback(() => {
+    if (!selectedZone || !selectedMachineId) return;
+    if (window.confirm('Delete this machine?')) {
+        const newZones = gym.zones.map(z => {
+            if(z.id === selectedZone.id) {
+                return { ...z, machines: (z.machines || []).filter(m => m.id !== selectedMachineId) };
+            }
+            return z;
+        });
+        update({ ...gym, zones: newZones }, true);
+        setSelectedMachineId(null);
+    }
+  }, [selectedZone, selectedMachineId, gym, update]);
   
   const addAnnex = () => {
     const newAnnex: GymAnnex = {
@@ -327,15 +395,20 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
       const activeTag = document.activeElement?.tagName.toLowerCase();
       if (activeTag === 'input' || activeTag === 'textarea') return;
 
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedZoneId) {
-        e.preventDefault();
-        deleteZone();
+      if ((e.key === 'Delete' || e.key === 'Backspace')) {
+        if (editMode === 'machine' && selectedMachineId) {
+             e.preventDefault();
+             deleteMachine();
+        } else if (selectedZoneId && editMode === 'layout') {
+             e.preventDefault();
+             deleteZone();
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedZoneId, deleteZone]);
+  }, [selectedZoneId, selectedMachineId, deleteZone, deleteMachine, editMode]);
 
   const handleSave = async () => {
     setSaveState('saving');
@@ -347,24 +420,44 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
   };
 
   // Helpers to snapshot view state for manual view locking
-  const calculateViewParams = () => {
-    // Duplicate logic from GymMap to lock the view
-    let maxX = dimensions.width;
-    let maxY = dimensions.height;
-    annexes.forEach(a => {
-      maxX = Math.max(maxX, a.x + a.width);
-      maxY = Math.max(maxY, a.y + a.height);
-    });
-    
+  const calculateViewParams = (focusedZoneId: string | null = null) => {
+    let viewBoxWidth, viewBoxHeight, offsetX, offsetY;
     const PADDING = 150;
     const minViewWidth = 800;
     const minViewHeight = 600;
 
-    const viewBoxWidth = Math.max(minViewWidth, maxX + PADDING);
-    const viewBoxHeight = Math.max(minViewHeight, maxY + PADDING);
+    if (focusedZoneId) {
+        // Calculate view for Zoomed Zone (copied logic from GymMap)
+        const zone = zones.find(z => z.id === focusedZoneId);
+        if (zone) {
+            const ZOOM_PADDING = 40;
+            const MIN_VIEW_SIZE = 500;
+            const targetWidth = zone.width + (ZOOM_PADDING * 2);
+            const targetHeight = zone.height + (ZOOM_PADDING * 2);
+            
+            viewBoxWidth = Math.max(targetWidth, MIN_VIEW_SIZE);
+            viewBoxHeight = Math.max(targetHeight, MIN_VIEW_SIZE);
+            offsetX = ((viewBoxWidth - zone.width) / 2) - zone.x;
+            offsetY = ((viewBoxHeight - zone.height) / 2) - zone.y;
+        } else {
+             // fallback
+             viewBoxWidth = 800; viewBoxHeight = 600; offsetX = 0; offsetY = 0;
+        }
+    } else {
+        // Calculate view for Full Map
+        let maxX = dimensions.width;
+        let maxY = dimensions.height;
+        annexes.forEach(a => {
+            maxX = Math.max(maxX, a.x + a.width);
+            maxY = Math.max(maxY, a.y + a.height);
+        });
+        
+        viewBoxWidth = Math.max(minViewWidth, maxX + PADDING);
+        viewBoxHeight = Math.max(minViewHeight, maxY + PADDING);
 
-    const offsetX = (viewBoxWidth - maxX) / 2;
-    const offsetY = (viewBoxHeight - maxY) / 2;
+        offsetX = (viewBoxWidth - maxX) / 2;
+        offsetY = (viewBoxHeight - maxY) / 2;
+    }
 
     return {
       viewBox: `0 0 ${viewBoxWidth} ${viewBoxHeight}`,
@@ -383,7 +476,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
     snapshot(); // Save state before drag
     setSelectedZoneId(zone.id);
     
-    const viewParams = calculateViewParams();
+    const viewParams = calculateViewParams(null);
 
     setDragState({
       mode: 'move-zone',
@@ -401,7 +494,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
     snapshot(); // Save state before resize
     setSelectedZoneId(zone.id);
 
-    const viewParams = calculateViewParams();
+    const viewParams = calculateViewParams(null);
 
     setDragState({
       mode: 'resize-zone',
@@ -418,7 +511,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
     e.preventDefault();
     snapshot(); // Save state before room resize
 
-    const viewParams = calculateViewParams();
+    const viewParams = calculateViewParams(null);
 
     setDragState({
        mode: 'resize-room',
@@ -436,7 +529,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
     e.preventDefault();
     snapshot(); // Save state before annex move
     
-    const viewParams = calculateViewParams();
+    const viewParams = calculateViewParams(null);
 
     setDragState({
       mode: 'move-annex',
@@ -453,7 +546,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
     e.preventDefault();
     snapshot(); // Save state before annex resize
 
-    const viewParams = calculateViewParams();
+    const viewParams = calculateViewParams(null);
 
     setDragState({
       mode: 'resize-annex',
@@ -465,11 +558,51 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
     });
   };
 
+  const handleMachineDragStart = (e: React.MouseEvent, machine: GymMachine, zoneId: string) => {
+    if (editMode !== 'machine') return;
+    e.preventDefault();
+    snapshot();
+    setSelectedMachineId(machine.id);
+
+    // Calculate view params for the ZOOMED state
+    const viewParams = calculateViewParams(zoneId);
+
+    setDragState({
+       mode: 'move-machine',
+       itemId: machine.id,
+       zoneId: zoneId,
+       startX: e.clientX,
+       startY: e.clientY,
+       initialData: { x: machine.x, y: machine.y, width: machine.width, height: machine.height },
+       viewParams
+    });
+  }
+
+  const handleMachineResizeStart = (e: React.MouseEvent, machine: GymMachine, zoneId: string) => {
+    if (editMode !== 'machine') return;
+    e.preventDefault();
+    snapshot();
+    setSelectedMachineId(machine.id);
+
+    // Calculate view params for the ZOOMED state
+    const viewParams = calculateViewParams(zoneId);
+
+    setDragState({
+       mode: 'resize-machine',
+       itemId: machine.id,
+       zoneId: zoneId,
+       startX: e.clientX,
+       startY: e.clientY,
+       initialData: { x: machine.x, y: machine.y, width: machine.width, height: machine.height },
+       viewParams
+    });
+  }
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!dragState || !mapContainerRef.current) return;
       
-      // Use locked view params if available to prevent jitter, otherwise fallback (shouldn't happen with updated logic)
+      // Use locked view params if available to prevent jitter
       let scaleX = 1;
       let scaleY = 1;
       
@@ -477,25 +610,6 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
           const rect = mapContainerRef.current.getBoundingClientRect();
           scaleX = dragState.viewParams.width / rect.width;
           scaleY = dragState.viewParams.height / rect.height;
-      } else {
-          // Fallback logic if for some reason viewParams aren't passed
-          // Calculate total bounds to ensure scaling matches GymMap
-          let maxX = dimensions.width;
-          let maxY = dimensions.height;
-          annexes.forEach(a => {
-             maxX = Math.max(maxX, a.x + a.width);
-             maxY = Math.max(maxY, a.y + a.height);
-          });
-          
-          const PADDING = 150;
-          const minViewWidth = 800;
-          const minViewHeight = 600;
-          const viewBoxWidth = Math.max(minViewWidth, maxX + PADDING);
-          const viewBoxHeight = Math.max(minViewHeight, maxY + PADDING);
-    
-          const rect = mapContainerRef.current.getBoundingClientRect();
-          scaleX = viewBoxWidth / rect.width;
-          scaleY = viewBoxHeight / rect.height;
       }
 
       const deltaX = (e.clientX - dragState.startX) * scaleX;
@@ -543,41 +657,27 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
 
           // X Snapping
           let finalX = rawX;
-          // Try snap left edge
           const snapLeft = snapToEdges(rawX, xLines);
           if (snapLeft !== null) {
              finalX = snapLeft;
           } else {
-             // Try snap right edge
              const snapRight = snapToEdges(rawX + w, xLines);
-             if (snapRight !== null) {
-                finalX = snapRight - w;
-             } else {
-                finalX = snapToGrid(rawX);
-             }
+             if (snapRight !== null) finalX = snapRight - w;
+             else finalX = snapToGrid(rawX);
           }
 
           // Y Snapping
           let finalY = rawY;
-          // Try snap top edge
           const snapTop = snapToEdges(rawY, yLines);
           if (snapTop !== null) {
              finalY = snapTop;
           } else {
-             // Try snap bottom edge
              const snapBottom = snapToEdges(rawY + h, yLines);
-             if (snapBottom !== null) {
-                finalY = snapBottom - h;
-             } else {
-                finalY = snapToGrid(rawY);
-             }
+             if (snapBottom !== null) finalY = snapBottom - h;
+             else finalY = snapToGrid(rawY);
           }
 
-          // Bounds safety
-          finalX = Math.max(0, finalX);
-          finalY = Math.max(0, finalY);
-
-          return { ...z, x: finalX, y: finalY };
+          return { ...z, x: Math.max(0, finalX), y: Math.max(0, finalY) };
         });
         update({ ...gym, zones: newZones }, false);
       } 
@@ -589,46 +689,24 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
           let rawWidth = dragState.initialData.width + deltaX;
           let rawHeight = dragState.initialData.height + deltaY;
           
-          // Aspect Ratio Locking with Shift
           if (e.shiftKey) {
              const ratio = dragState.initialData.width / dragState.initialData.height;
-             if (Math.abs(deltaX) > Math.abs(deltaY)) {
-                rawHeight = rawWidth / ratio;
-             } else {
-                rawWidth = rawHeight * ratio;
-             }
-             return { 
-                ...z, 
-                width: Math.max(40, snapToGrid(rawWidth)), 
-                height: Math.max(40, snapToGrid(rawHeight)) 
-             };
+             if (Math.abs(deltaX) > Math.abs(deltaY)) rawHeight = rawWidth / ratio;
+             else rawWidth = rawHeight * ratio;
+             return { ...z, width: Math.max(40, snapToGrid(rawWidth)), height: Math.max(40, snapToGrid(rawHeight)) };
           }
 
-          // Edge Snapping for standard resize
-          
-          // Width (Right Edge) Snapping
-          const currentX = dragState.initialData.x; // zone x doesn't change
+          // Width Snapping
+          const currentX = dragState.initialData.x;
           const targetRight = currentX + rawWidth;
           const snapRight = snapToEdges(targetRight, xLines);
-          
-          let finalWidth = rawWidth;
-          if (snapRight !== null) {
-             finalWidth = snapRight - currentX;
-          } else {
-             finalWidth = snapToGrid(rawWidth);
-          }
+          const finalWidth = snapRight !== null ? snapRight - currentX : snapToGrid(rawWidth);
 
-          // Height (Bottom Edge) Snapping
+          // Height Snapping
           const currentY = dragState.initialData.y;
           const targetBottom = currentY + rawHeight;
           const snapBottom = snapToEdges(targetBottom, yLines);
-          
-          let finalHeight = rawHeight;
-          if (snapBottom !== null) {
-             finalHeight = snapBottom - currentY;
-          } else {
-             finalHeight = snapToGrid(rawHeight);
-          }
+          const finalHeight = snapBottom !== null ? snapBottom - currentY : snapToGrid(rawHeight);
 
           return { ...z, width: Math.max(40, finalWidth), height: Math.max(40, finalHeight) };
         });
@@ -645,20 +723,13 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
          if (dragState.handle === 'bottom' || dragState.handle === 'corner') {
             newH = snapToGrid(dragState.initialData.height + deltaY);
          }
-         
-         const newDims = { 
-            width: Math.max(200, Math.min(2000, newW)), 
-            height: Math.max(200, Math.min(2000, newH)) 
-         };
-         update({ ...gym, dimensions: newDims }, false);
+         update({ ...gym, dimensions: { width: Math.max(200, Math.min(2000, newW)), height: Math.max(200, Math.min(2000, newH)) } }, false);
       }
       // Handle Annex Moving
       else if (dragState.mode === 'move-annex') {
         const newAnnexes = (gym.annexes || []).map(a => {
            if (a.id !== dragState.itemId) return a;
-           const newX = snapToGrid(dragState.initialData.x + deltaX);
-           const newY = snapToGrid(dragState.initialData.y + deltaY);
-           return { ...a, x: newX, y: newY };
+           return { ...a, x: snapToGrid(dragState.initialData.x + deltaX), y: snapToGrid(dragState.initialData.y + deltaY) };
         });
         update({ ...gym, annexes: newAnnexes }, false);
       }
@@ -666,11 +737,45 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
       else if (dragState.mode === 'resize-annex') {
         const newAnnexes = (gym.annexes || []).map(a => {
            if (a.id !== dragState.itemId) return a;
-           const newW = snapToGrid(dragState.initialData.width + deltaX);
-           const newH = snapToGrid(dragState.initialData.height + deltaY);
-           return { ...a, width: Math.max(50, newW), height: Math.max(50, newH) };
+           return { ...a, width: Math.max(50, snapToGrid(dragState.initialData.width + deltaX)), height: Math.max(50, snapToGrid(dragState.initialData.height + deltaY)) };
         });
         update({ ...gym, annexes: newAnnexes }, false);
+      }
+      // Handle Machine Moving
+      else if (dragState.mode === 'move-machine') {
+         const newZones = gym.zones.map(z => {
+             if (z.id !== dragState.zoneId) return z;
+             
+             const newMachines = (z.machines || []).map(m => {
+                 if (m.id !== dragState.itemId) return m;
+                 // Machines don't need intense edge snapping, just grid
+                 let nx = snapToGrid(dragState.initialData.x + deltaX);
+                 let ny = snapToGrid(dragState.initialData.y + deltaY);
+                 // Keep inside zone
+                 nx = Math.max(0, Math.min(z.width - m.width, nx));
+                 ny = Math.max(0, Math.min(z.height - m.height, ny));
+                 
+                 return { ...m, x: nx, y: ny };
+             });
+             return { ...z, machines: newMachines };
+         });
+         update({ ...gym, zones: newZones }, false);
+      }
+      // Handle Machine Resizing
+      else if (dragState.mode === 'resize-machine') {
+         const newZones = gym.zones.map(z => {
+             if (z.id !== dragState.zoneId) return z;
+             
+             const newMachines = (z.machines || []).map(m => {
+                 if (m.id !== dragState.itemId) return m;
+                 let nw = snapToGrid(dragState.initialData.width + deltaX);
+                 let nh = snapToGrid(dragState.initialData.height + deltaY);
+                 
+                 return { ...m, width: Math.max(10, nw), height: Math.max(10, nh) };
+             });
+             return { ...z, machines: newMachines };
+         });
+         update({ ...gym, zones: newZones }, false);
       }
     };
 
@@ -692,7 +797,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-200 animate-in slide-in-from-right duration-300">
       {/* Editor Header */}
-      <header className="h-16 border-b border-slate-800 bg-slate-900 flex items-center justify-between px-6 flex-shrink-0">
+      <header className="h-16 border-b border-slate-800 bg-slate-900 flex items-center justify-between px-6 flex-shrink-0 z-20">
         <div className="flex items-center space-x-4">
           <button 
             onClick={onBack}
@@ -711,24 +816,6 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
           </div>
         </div>
         
-        {/* Mode Toggle */}
-        <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800">
-           <button 
-             onClick={() => { setEditMode('layout'); setSelectedZoneId(null); }}
-             className={`flex items-center px-3 py-1.5 rounded-md text-xs font-bold uppercase transition-all ${editMode === 'layout' ? 'bg-slate-800 text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}
-           >
-             <BoxSelect className="w-3.5 h-3.5 mr-2" />
-             Zones
-           </button>
-           <button 
-             onClick={() => { setEditMode('room'); setSelectedZoneId(null); }}
-             className={`flex items-center px-3 py-1.5 rounded-md text-xs font-bold uppercase transition-all ${editMode === 'room' ? 'bg-lime-900/40 text-lime-400 border border-lime-900/50 shadow' : 'text-slate-500 hover:text-slate-300'}`}
-           >
-             <SquareDashed className="w-3.5 h-3.5 mr-2" />
-             Room Shape
-           </button>
-        </div>
-
         <div className="flex items-center space-x-3">
           {/* Undo / Redo Controls */}
           <div className="flex items-center space-x-1 mr-2 border-r border-slate-800 pr-4">
@@ -769,47 +856,98 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
             )}
             {saveState === 'saving' ? 'Saving...' : saveState === 'saved' ? 'Saved' : 'Save Layout'}
           </button>
-          
-          {editMode === 'layout' && (
-            <>
-              <button 
-                onClick={addCorridor}
-                className="flex items-center px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors"
-                title="Add Corridor / Walkway"
-              >
-                <Footprints className="w-4 h-4 mr-2" />
-                Add Corridor
-              </button>
-
-              <button 
-                onClick={addNewZone}
-                className="flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors shadow-lg shadow-blue-900/20"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Add Zone
-              </button>
-            </>
-          )}
-          
-          {editMode === 'room' && (
-             <button 
-               onClick={addAnnex}
-               className="flex items-center px-4 py-2 bg-lime-600 hover:bg-lime-500 text-slate-900 rounded-lg text-sm font-bold transition-colors shadow-lg shadow-lime-900/20"
-             >
-               <Plus className="w-4 h-4 mr-2" />
-               Add Extension
-             </button>
-          )}
         </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
+        
+        {/* LEFT TOOLBAR / MENU */}
+        <aside className="w-24 bg-slate-900 border-r border-slate-800 flex flex-col py-6 z-10 flex-shrink-0 shadow-xl overflow-y-auto">
+            {/* Section: Mode */}
+            {editMode !== 'machine' && (
+                <div className="px-3 mb-6">
+                    <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 pl-1">Editor Mode</h3>
+                    <div className="space-y-2">
+                        <ToolButton 
+                            active={editMode === 'layout'}
+                            onClick={() => { setEditMode('layout'); setSelectedZoneId(null); }}
+                            icon={Grid}
+                            label="Layout"
+                        />
+                        <ToolButton 
+                            active={editMode === 'room'}
+                            onClick={() => { setEditMode('room'); setSelectedZoneId(null); }}
+                            icon={Scaling}
+                            label="Structure"
+                        />
+                    </div>
+                </div>
+            )}
+            
+            {editMode !== 'machine' && <div className="mx-4 h-px bg-slate-800 mb-6" />}
+
+            {/* Section: Tools */}
+            <div className="px-3 flex-1">
+                <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 pl-1">Toolkit</h3>
+                <div className="space-y-2">
+                    {editMode === 'layout' ? (
+                        <>
+                           <ToolButton 
+                              onClick={addNewZone} 
+                              icon={PlusSquare} 
+                              label="Add Zone" 
+                           />
+                           <ToolButton 
+                              onClick={addCorridor} 
+                              icon={Footprints} 
+                              label="Walkway" 
+                           />
+                           {selectedZone && (
+                               <ToolButton 
+                                  highlight
+                                  onClick={() => setEditMode('machine')} 
+                                  icon={Cpu} 
+                                  label="Edit Equipment" 
+                               />
+                           )}
+                        </>
+                    ) : editMode === 'room' ? (
+                        <>
+                           <ToolButton 
+                              onClick={addAnnex} 
+                              icon={Plus} 
+                              label="Add Annex" 
+                           />
+                        </>
+                    ) : (
+                         /* Machine Edit Mode Tools */
+                        <>
+                           <ToolButton 
+                              onClick={() => setEditMode('layout')}
+                              icon={ArrowLeftCircle} 
+                              label="Back" 
+                           />
+                           <div className="h-px bg-slate-800 my-2" />
+                           <ToolButton 
+                              onClick={addMachine} 
+                              icon={Cpu} 
+                              label="Add Machine" 
+                              highlight
+                           />
+                        </>
+                    )}
+                </div>
+            </div>
+        </aside>
+
         {/* Main Map Area */}
-        <div className="flex-1 p-8 bg-slate-950 flex flex-col">
+        <div className="flex-1 p-8 bg-slate-950 flex flex-col min-w-0">
           <div 
             ref={mapContainerRef}
-            className={`flex-1 relative border rounded-xl overflow-hidden flex items-center justify-center transition-colors duration-500
-              ${editMode === 'room' ? 'bg-lime-950/5 border-lime-900/30' : 'bg-slate-900/50 border-slate-800'}
+            className={`flex-1 relative border rounded-xl overflow-hidden flex items-center justify-center transition-colors duration-500 shadow-inner
+              ${editMode === 'room' ? 'bg-lime-950/5 border-lime-900/30' : 
+                editMode === 'machine' ? 'bg-blue-950/5 border-blue-900/30' :
+                'bg-slate-900/50 border-slate-800'}
             `}
           >
              <div className="absolute inset-0 p-4">
@@ -822,6 +960,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
                  onZoneClick={handleZoneClick} 
                  onMapClick={handleMapClick}
                  selectedZoneId={selectedZoneId}
+                 focusedZoneId={editMode === 'machine' ? selectedZoneId : null} // Auto-zoom to selected zone in machine mode
                  isEditable={true}
                  editMode={editMode}
                  onZoneDragStart={handleZoneDragStart}
@@ -829,21 +968,28 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
                  onMainRoomResizeStart={handleMainRoomResizeStart}
                  onAnnexDragStart={handleAnnexDragStart}
                  onAnnexResizeStart={handleAnnexResizeStart}
+                 onMachineDragStart={handleMachineDragStart}
+                 onMachineResizeStart={handleMachineResizeStart}
+                 selectedMachineId={selectedMachineId}
                  manualView={dragState?.viewParams}
                />
              </div>
-             <div className="absolute bottom-4 left-4 text-xs text-slate-500 bg-slate-950/80 px-2 py-1 rounded border border-slate-800 flex items-center space-x-3 pointer-events-none select-none z-20">
+             
+             {/* Bottom Helper Bar */}
+             <div className="absolute bottom-4 left-4 text-xs text-slate-500 bg-slate-950/80 px-3 py-1.5 rounded-full border border-slate-800 flex items-center space-x-4 pointer-events-none select-none z-20 backdrop-blur-sm">
                {editMode === 'layout' ? (
                  <>
-                   <span className="flex items-center"><Move className="w-3 h-3 mr-1" /> Drag to move zone</span>
+                   <span className="flex items-center"><Move className="w-3 h-3 mr-1.5" /> Drag to move</span>
                    <span className="w-1 h-1 bg-slate-700 rounded-full"></span>
-                   <span className="flex items-center"><Maximize2 className="w-3 h-3 mr-1" /> Drag corner to resize</span>
+                   <span className="flex items-center"><Maximize2 className="w-3 h-3 mr-1.5" /> Drag corner to resize</span>
+                 </>
+               ) : editMode === 'room' ? (
+                 <>
+                   <span className="flex items-center text-lime-400"><SquareDashed className="w-3 h-3 mr-1.5" /> Drag edges to resize room</span>
                  </>
                ) : (
                  <>
-                   <span className="flex items-center text-lime-400"><SquareDashed className="w-3 h-3 mr-1" /> Drag edges to resize room</span>
-                   <span className="w-1 h-1 bg-slate-700 rounded-full"></span>
-                   <span className="flex items-center text-lime-400"><Plus className="w-3 h-3 mr-1" /> Add Extension to create shapes</span>
+                    <span className="flex items-center text-blue-400"><Cpu className="w-3 h-3 mr-1.5" /> Drag machines to arrange</span>
                  </>
                )}
              </div>
@@ -851,11 +997,11 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
         </div>
 
         {/* Right Sidebar: Properties */}
-        <div className="w-80 bg-slate-900 border-l border-slate-800 flex flex-col overflow-y-auto">
+        <div className="w-80 bg-slate-900 border-l border-slate-800 flex flex-col overflow-y-auto flex-shrink-0 z-10 shadow-xl">
           {/* CONTENT SWITCHING BASED ON MODE AND SELECTION */}
           
           {editMode === 'layout' && selectedZone && (
-            <div className="p-6 space-y-6">
+            <div className="p-6 space-y-6 animate-in slide-in-from-right-10 fade-in duration-300">
               <div className="flex justify-between items-start">
                 <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Zone Properties</h2>
               </div>
@@ -872,29 +1018,28 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-500 mb-1.5">Description / Metadata</label>
+                  <label className="block text-xs text-slate-500 mb-1.5">Description</label>
                   <textarea 
                     value={selectedZone.description || ''}
                     onFocus={() => snapshot()}
                     onChange={(e) => updateZone('description', e.target.value)}
                     rows={3}
-                    placeholder="E.g. Main corridor to weights area..."
                     className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none resize-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-500 mb-1.5">Type</label>
-                  <select 
-                    value={selectedZone.type}
-                    onFocus={() => snapshot()}
-                    onChange={(e) => updateZone('type', e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none"
-                  >
-                    {Object.values(EquipmentType).map(t => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
+                    <button 
+                        onClick={() => setEditMode('machine')}
+                        className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-blue-400 hover:text-blue-300 border border-slate-700 hover:border-blue-500/50 rounded flex items-center justify-center transition-all text-xs font-bold uppercase tracking-wide"
+                    >
+                        <Cpu className="w-4 h-4 mr-2" />
+                        Manage Equipment
+                    </button>
+                    <p className="text-[10px] text-center mt-2 text-slate-500">
+                        {selectedZone.machines?.length || 0} machines inside
+                    </p>
                 </div>
+                <div className="h-px bg-slate-800 my-2" />
                 <div>
                   <label className="block text-xs text-slate-500 mb-1.5">Color Code</label>
                   <div className="flex items-center space-x-2">
@@ -933,14 +1078,58 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
              <div className="p-6 flex flex-col items-center justify-center h-full text-center text-slate-500">
                 <MousePointer2 className="w-12 h-12 mb-4 opacity-20" />
                 <p className="text-sm">Select a zone on the map to edit its properties.</p>
-                <button onClick={() => setEditMode('room')} className="mt-4 text-xs text-lime-500 hover:underline">
-                  Switch to Room Editor
-                </button>
              </div>
+          )}
+
+          {editMode === 'machine' && selectedZone && (
+              <div className="p-6 space-y-6 animate-in slide-in-from-right-10 fade-in duration-300">
+                 <div className="flex items-center justify-between">
+                     <h2 className="text-sm font-bold text-blue-400 uppercase tracking-wider flex items-center">
+                        <Cpu className="w-4 h-4 mr-2" />
+                        Equipment Editor
+                     </h2>
+                 </div>
+                 <div className="bg-slate-950/50 p-3 rounded border border-slate-800">
+                    <p className="text-xs text-slate-400 font-bold mb-1">{selectedZone.name}</p>
+                    <p className="text-[10px] text-slate-500">Drag items to position. Use toolbar to add.</p>
+                 </div>
+                 
+                 {selectedMachineId ? (
+                    <div className="space-y-4">
+                        <div className="text-xs font-bold text-white border-b border-slate-800 pb-2">Selected Machine</div>
+                        <div>
+                             <label className="block text-xs text-slate-500 mb-1">Label</label>
+                             <input 
+                                value={(selectedZone.machines || []).find(m => m.id === selectedMachineId)?.name || ''}
+                                onFocus={() => snapshot()}
+                                onChange={(e) => {
+                                    const newZones = gym.zones.map(z => {
+                                        if (z.id !== selectedZone.id) return z;
+                                        return { ...z, machines: (z.machines || []).map(m => m.id === selectedMachineId ? { ...m, name: e.target.value } : m) };
+                                    });
+                                    update({ ...gym, zones: newZones }, false);
+                                }}
+                                className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none"
+                             />
+                        </div>
+                        <button 
+                            onClick={deleteMachine}
+                            className="w-full flex items-center justify-center px-4 py-2 bg-red-950/20 hover:bg-red-950/40 text-red-400 border border-red-900/30 rounded text-xs transition-colors"
+                        >
+                            <Trash2 className="w-3 h-3 mr-2" />
+                            Remove Machine
+                        </button>
+                    </div>
+                 ) : (
+                    <div className="text-center py-8 text-slate-600 text-xs">
+                        Select a machine to edit details.
+                    </div>
+                 )}
+              </div>
           )}
           
           {editMode === 'room' && (
-             <div className="p-6 space-y-6">
+             <div className="p-6 space-y-6 animate-in slide-in-from-right-10 fade-in duration-300">
                 <div className="flex justify-between items-start">
                    <h2 className="text-sm font-bold text-lime-400 uppercase tracking-wider flex items-center">
                      <LayoutTemplate className="w-4 h-4 mr-2" />
@@ -948,10 +1137,6 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
                    </h2>
                 </div>
                 
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  Adjust the room shape, extensions, and structural appearance.
-                </p>
-
                 <div className="space-y-4">
                   <div className="bg-slate-950/50 p-3 rounded border border-slate-800">
                      <h3 className="text-xs font-bold text-white mb-2">Main Hall Dimensions</h3>
@@ -983,17 +1168,15 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
                      <div className="space-y-2">
                         <h3 className="text-xs font-bold text-white">Extensions (Annexes)</h3>
                         {annexes.map((annex, i) => (
-                          <div key={annex.id} className="bg-slate-800 p-2 rounded flex justify-between items-center text-xs">
+                          <div key={annex.id} className="bg-slate-800 p-2 rounded flex justify-between items-center text-xs border border-slate-700">
                              <span className="text-slate-300">Ext {i+1} ({annex.width}x{annex.height})</span>
-                             <button onClick={() => deleteAnnex(annex.id)} className="text-slate-500 hover:text-red-400">
+                             <button onClick={() => deleteAnnex(annex.id)} className="text-slate-500 hover:text-red-400 p-1">
                                 <Trash2 className="w-3.5 h-3.5" />
                              </button>
                           </div>
                         ))}
                      </div>
                   )}
-
-                  <hr className="border-slate-800" />
                   
                   <div>
                      <h3 className="text-xs font-bold text-white mb-3 flex items-center">
