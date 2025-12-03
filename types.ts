@@ -33,6 +33,14 @@ export interface GymDimensions {
   height: number;
 }
 
+export interface GymAnnex {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface Gym {
   id: string;
   name: string;
@@ -40,6 +48,7 @@ export interface Gym {
   dimensions?: GymDimensions;
   entrance?: GymEntrance;
   floorColor?: string;
+  annexes?: GymAnnex[];
 }
 
 export interface Exercise {
