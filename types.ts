@@ -88,3 +88,22 @@ export interface AiSuggestion {
   targetMuscle: string;
   notes: string;
 }
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: 'user' | 'admin';
+  avatarUrl?: string;
+  joinedDate: string;
+  stats?: {
+    workoutsCompleted: number;
+    totalMinutes: number;
+    streakDays: number;
+  };
+}
+
+export interface AuthResponse {
+  user: User;
+  token?: string; // In a real app, JWT
+}

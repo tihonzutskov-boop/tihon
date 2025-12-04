@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { GymZone, EquipmentType, Gym, GymDimensions, GymEntrance, GymAnnex, GymMachine } from '../types';
 import GymMap from './GymMap';
 import { api } from '../services/api';
-import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Footprints, MapPin, LayoutTemplate, DoorOpen, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Footprints, MapPin, LayoutTemplate, DoorOpen, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle, Copy, ClipboardPaste, Dumbbell } from 'lucide-react';
 
 interface AdminPageProps {
   gyms: Gym[];
@@ -192,26 +192,53 @@ interface DragState {
 }
 
 // Helper UI Component for Tool Buttons
-const ToolButton = ({ active, onClick, icon: Icon, label, disabled = false, highlight = false }: { active?: boolean, onClick: () => void, icon: any, label: string, disabled?: boolean, highlight?: boolean }) => (
-  <button
-    onClick={onClick}
-    disabled={disabled}
-    className={`
-      relative w-full aspect-square flex flex-col items-center justify-center rounded-xl transition-all duration-200 group border
-      ${active 
-        ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50 border-blue-500 ring-1 ring-blue-400' 
-        : highlight 
-          ? 'bg-blue-900/20 text-blue-400 hover:bg-blue-900/40 border-blue-900/30'
-          : 'bg-slate-800/40 text-slate-400 hover:bg-slate-800 hover:text-white border-transparent hover:border-slate-700'
-      }
-      ${disabled ? 'opacity-50 cursor-not-allowed grayscale' : ''}
-    `}
-  >
-    <Icon className={`w-6 h-6 mb-1.5 ${active ? 'scale-110' : 'group-hover:scale-110'} transition-transform`} />
-    <span className="text-[10px] font-medium tracking-wide">{label}</span>
-    {active && <div className="absolute inset-x-0 -bottom-px h-1 bg-gradient-to-r from-transparent via-white/40 to-transparent opacity-50" />}
-  </button>
-);
+const ToolButton = ({ 
+  active, 
+  onClick, 
+  icon: Icon, 
+  label, 
+  description,
+  disabled = false, 
+  variant = 'default' // default, action, highlight
+}: { 
+  active?: boolean, 
+  onClick: () => void, 
+  icon: any, 
+  label: string, 
+  description?: string,
+  disabled?: boolean, 
+  variant?: 'default' | 'action' | 'highlight' 
+}) => {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`
+        w-full flex items-center p-3 rounded-xl transition-all duration-200 border text-left group mb-2
+        ${active 
+          ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-900/20' 
+          : variant === 'highlight'
+            ? 'bg-lime-500/10 border-lime-500/20 text-lime-400 hover:bg-lime-500/20'
+            : variant === 'action'
+              ? 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700 hover:border-slate-600'
+              : 'bg-transparent border-transparent text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
+        }
+        ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
+      `}
+    >
+      <div className={`
+        p-2 rounded-lg mr-3 flex-shrink-0 transition-colors
+        ${active ? 'bg-blue-500 text-white' : variant === 'highlight' ? 'bg-lime-500/20' : 'bg-slate-900 group-hover:bg-slate-800'}
+      `}>
+        <Icon className="w-5 h-5" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className={`text-xs font-bold uppercase tracking-wider ${active ? 'text-white' : 'text-slate-300 group-hover:text-white'}`}>{label}</div>
+        {description && <div className={`text-[10px] truncate ${active ? 'text-blue-200' : 'text-slate-500'}`}>{description}</div>}
+      </div>
+    </button>
+  );
+};
 
 
 const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ 
@@ -234,14 +261,68 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
 
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  
+  // Clipboard State for Copy/Paste
+  const [clipboard, setClipboard] = useState<{ type: 'zone' | 'machine', data: any } | null>(null);
+
   const mapContainerRef = useRef<HTMLDivElement>(null);
 
   const selectedZone = zones.find(z => z.id === selectedZoneId) || null;
 
-  // Keyboard Shortcuts for Undo/Redo
+  const addMachine = useCallback(() => {
+    if (!selectedZone) return;
+    const newMachine: GymMachine = {
+      id: `machine-${Date.now()}`,
+      name: 'Machine',
+      x: 10,
+      y: 10,
+      width: 40,
+      height: 40
+    };
+    
+    const newZones = gym.zones.map(z => {
+      if (z.id === selectedZone.id) {
+        return { ...z, machines: [...(z.machines || []), newMachine] };
+      }
+      return z;
+    });
+
+    update({ ...gym, zones: newZones }, true);
+    setSelectedMachineId(newMachine.id);
+  }, [gym, selectedZone, update]);
+
+  const deleteMachine = useCallback(() => {
+    if (!selectedZone || !selectedMachineId) return;
+    if (window.confirm('Delete this machine?')) {
+        const newZones = gym.zones.map(z => {
+            if(z.id === selectedZone.id) {
+                return { ...z, machines: (z.machines || []).filter(m => m.id !== selectedMachineId) };
+            }
+            return z;
+        });
+        update({ ...gym, zones: newZones }, true);
+        setSelectedMachineId(null);
+    }
+  }, [selectedZone, selectedMachineId, gym, update]);
+
+  // Robust delete function
+  const deleteZone = useCallback(() => {
+    if (!selectedZoneId) return;
+    
+    if (window.confirm('Are you sure you want to delete this zone?')) {
+      update({ ...gym, zones: gym.zones.filter(z => z.id !== selectedZoneId) }, true);
+      setSelectedZoneId(null);
+    }
+  }, [selectedZoneId, gym, update]);
+
+  // Keyboard Shortcuts for Undo/Redo/Copy/Paste
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Check for Ctrl/Cmd key
+      // Prevent handling if user is typing in an input field
+      const activeTag = document.activeElement?.tagName.toLowerCase();
+      if (activeTag === 'input' || activeTag === 'textarea') return;
+
+      // Undo/Redo
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) {
@@ -255,10 +336,68 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
         e.preventDefault();
         redo();
       }
+
+      // Copy (Ctrl+C)
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c') {
+         e.preventDefault();
+         if (editMode === 'layout' && selectedZone) {
+             setClipboard({ type: 'zone', data: selectedZone });
+         } else if (editMode === 'machine' && selectedMachineId && selectedZone) {
+             const m = selectedZone.machines?.find(m => m.id === selectedMachineId);
+             if (m) setClipboard({ type: 'machine', data: m });
+         }
+      }
+
+      // Paste (Ctrl+V)
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'v') {
+         e.preventDefault();
+         if (!clipboard) return;
+         
+         if (clipboard.type === 'zone' && editMode === 'layout') {
+             const newZone = {
+                 ...clipboard.data,
+                 id: `zone-copy-${Date.now()}`,
+                 name: `${clipboard.data.name} (Copy)`,
+                 x: clipboard.data.x + 20, // Offset so user sees it
+                 y: clipboard.data.y + 20
+             };
+             // Ensure it stays roughly in bounds (optional, but good practice)
+             update({ ...gym, zones: [...gym.zones, newZone] }, true);
+             setSelectedZoneId(newZone.id);
+         } else if (clipboard.type === 'machine' && editMode === 'machine' && selectedZone) {
+             const newMachine = {
+                 ...clipboard.data,
+                 id: `machine-copy-${Date.now()}`,
+                 name: `${clipboard.data.name} (Copy)`,
+                 x: clipboard.data.x + 10,
+                 y: clipboard.data.y + 10
+             };
+             
+             const newZones = gym.zones.map(z => {
+                 if (z.id === selectedZone.id) {
+                     return { ...z, machines: [...(z.machines || []), newMachine] };
+                 }
+                 return z;
+             });
+             update({ ...gym, zones: newZones }, true);
+             setSelectedMachineId(newMachine.id);
+         }
+      }
+
+      // Delete
+      if ((e.key === 'Delete' || e.key === 'Backspace')) {
+        if (editMode === 'machine' && selectedMachineId) {
+             e.preventDefault();
+             deleteMachine();
+        } else if (selectedZoneId && editMode === 'layout') {
+             e.preventDefault();
+             deleteZone();
+        }
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo]);
+  }, [undo, redo, clipboard, editMode, selectedZoneId, selectedMachineId, gym, update, selectedZone, deleteZone, deleteMachine]);
 
   const handleZoneClick = (zone: GymZone) => {
     if (!dragState && editMode === 'layout') {
@@ -318,42 +457,6 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
     update({ ...gym, zones: [...gym.zones, newZone] }, true);
     setSelectedZoneId(newZone.id);
   };
-
-  const addMachine = () => {
-    if (!selectedZone) return;
-    const newMachine: GymMachine = {
-      id: `machine-${Date.now()}`,
-      name: 'Machine',
-      x: 10,
-      y: 10,
-      width: 40,
-      height: 40
-    };
-    
-    const newZones = gym.zones.map(z => {
-      if (z.id === selectedZone.id) {
-        return { ...z, machines: [...(z.machines || []), newMachine] };
-      }
-      return z;
-    });
-
-    update({ ...gym, zones: newZones }, true);
-    setSelectedMachineId(newMachine.id);
-  };
-
-  const deleteMachine = useCallback(() => {
-    if (!selectedZone || !selectedMachineId) return;
-    if (window.confirm('Delete this machine?')) {
-        const newZones = gym.zones.map(z => {
-            if(z.id === selectedZone.id) {
-                return { ...z, machines: (z.machines || []).filter(m => m.id !== selectedMachineId) };
-            }
-            return z;
-        });
-        update({ ...gym, zones: newZones }, true);
-        setSelectedMachineId(null);
-    }
-  }, [selectedZone, selectedMachineId, gym, update]);
   
   const addAnnex = () => {
     const newAnnex: GymAnnex = {
@@ -372,43 +475,11 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
      }
   };
 
-  // Robust delete function
-  const deleteZone = useCallback(() => {
-    if (!selectedZoneId) return;
-    
-    if (window.confirm('Are you sure you want to delete this zone?')) {
-      update({ ...gym, zones: gym.zones.filter(z => z.id !== selectedZoneId) }, true);
-      setSelectedZoneId(null);
-    }
-  }, [selectedZoneId, gym, update]);
-
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     deleteZone();
   };
-
-  // Keyboard support for deletion
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Prevent deleting if user is typing in an input field
-      const activeTag = document.activeElement?.tagName.toLowerCase();
-      if (activeTag === 'input' || activeTag === 'textarea') return;
-
-      if ((e.key === 'Delete' || e.key === 'Backspace')) {
-        if (editMode === 'machine' && selectedMachineId) {
-             e.preventDefault();
-             deleteMachine();
-        } else if (selectedZoneId && editMode === 'layout') {
-             e.preventDefault();
-             deleteZone();
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedZoneId, selectedMachineId, deleteZone, deleteMachine, editMode]);
 
   const handleSave = async () => {
     setSaveState('saving');
@@ -862,33 +933,31 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
       <div className="flex flex-1 overflow-hidden">
         
         {/* LEFT TOOLBAR / MENU */}
-        <aside className="w-24 bg-slate-900 border-r border-slate-800 flex flex-col py-6 z-10 flex-shrink-0 shadow-xl overflow-y-auto">
-            {/* Section: Mode */}
-            {editMode !== 'machine' && (
-                <div className="px-3 mb-6">
-                    <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 pl-1">Editor Mode</h3>
-                    <div className="space-y-2">
-                        <ToolButton 
-                            active={editMode === 'layout'}
-                            onClick={() => { setEditMode('layout'); setSelectedZoneId(null); }}
-                            icon={Grid}
-                            label="Layout"
-                        />
-                        <ToolButton 
-                            active={editMode === 'room'}
-                            onClick={() => { setEditMode('room'); setSelectedZoneId(null); }}
-                            icon={Scaling}
-                            label="Structure"
-                        />
-                    </div>
+        <aside className="w-72 bg-slate-900 border-r border-slate-800 flex flex-col z-10 flex-shrink-0 shadow-xl overflow-y-auto">
+            <div className="p-4 border-b border-slate-800/50">
+                <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Editor Modes</h3>
+                <div className="space-y-2">
+                     <ToolButton 
+                         active={editMode === 'layout'}
+                         onClick={() => { setEditMode('layout'); setSelectedZoneId(null); }}
+                         icon={Grid}
+                         label="Zones & Layout"
+                         description="Move and edit zones"
+                     />
+                     <ToolButton 
+                         active={editMode === 'room'}
+                         onClick={() => { setEditMode('room'); setSelectedZoneId(null); }}
+                         icon={Scaling}
+                         label="Floor Plan"
+                         description="Adjust room shape"
+                     />
                 </div>
-            )}
+            </div>
             
-            {editMode !== 'machine' && <div className="mx-4 h-px bg-slate-800 mb-6" />}
-
-            {/* Section: Tools */}
-            <div className="px-3 flex-1">
-                <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 pl-1">Toolkit</h3>
+            <div className="p-4 flex-1">
+                <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">
+                   {editMode === 'machine' ? 'Equipment Tools' : 'Creation Tools'}
+                </h3>
                 <div className="space-y-2">
                     {editMode === 'layout' ? (
                         <>
@@ -896,19 +965,29 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
                               onClick={addNewZone} 
                               icon={PlusSquare} 
                               label="Add Zone" 
+                              description="Create a new workout area"
+                              variant="action"
                            />
                            <ToolButton 
                               onClick={addCorridor} 
                               icon={Footprints} 
-                              label="Walkway" 
+                              label="Add Walkway" 
+                              description="Mark non-workout paths"
+                              variant="action"
                            />
-                           {selectedZone && (
+                           <div className="h-4" />
+                           {selectedZone ? (
                                <ToolButton 
-                                  highlight
                                   onClick={() => setEditMode('machine')} 
-                                  icon={Cpu} 
-                                  label="Edit Equipment" 
+                                  icon={Dumbbell} 
+                                  label="Edit Machines" 
+                                  description={`Manage equipment in ${selectedZone.name}`}
+                                  variant="highlight"
                                />
+                           ) : (
+                               <div className="p-3 rounded-xl border border-dashed border-slate-800 text-center">
+                                   <p className="text-[10px] text-slate-500">Select a zone on the map to edit its machines.</p>
+                               </div>
                            )}
                         </>
                     ) : editMode === 'room' ? (
@@ -916,23 +995,36 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
                            <ToolButton 
                               onClick={addAnnex} 
                               icon={Plus} 
-                              label="Add Annex" 
+                              label="Add Extension" 
+                              description="Add an annex room (L-shape)"
+                              variant="action"
                            />
+                           <div className="mt-4 p-3 bg-slate-800/50 rounded-lg border border-slate-800 text-xs text-slate-400">
+                              <p className="mb-2 font-bold text-slate-300">Quick Tips:</p>
+                              <ul className="list-disc pl-4 space-y-1 text-[10px]">
+                                  <li>Drag the blue handles to resize the main room.</li>
+                                  <li>Drag annex rooms to position them.</li>
+                              </ul>
+                           </div>
                         </>
                     ) : (
                          /* Machine Edit Mode Tools */
                         <>
                            <ToolButton 
-                              onClick={() => setEditMode('layout')}
-                              icon={ArrowLeftCircle} 
-                              label="Back" 
-                           />
-                           <div className="h-px bg-slate-800 my-2" />
-                           <ToolButton 
                               onClick={addMachine} 
                               icon={Cpu} 
                               label="Add Machine" 
-                              highlight
+                              description="Place new equipment item"
+                              variant="highlight"
+                           />
+                           
+                           <div className="h-px bg-slate-800 my-4" />
+                           
+                           <ToolButton 
+                              onClick={() => setEditMode('layout')}
+                              icon={ArrowLeftCircle} 
+                              label="Return to Zones" 
+                              description="Exit machine editor"
                            />
                         </>
                     )}
@@ -1032,7 +1124,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
                         onClick={() => setEditMode('machine')}
                         className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-blue-400 hover:text-blue-300 border border-slate-700 hover:border-blue-500/50 rounded flex items-center justify-center transition-all text-xs font-bold uppercase tracking-wide"
                     >
-                        <Cpu className="w-4 h-4 mr-2" />
+                        <Dumbbell className="w-4 h-4 mr-2" />
                         Manage Equipment
                     </button>
                     <p className="text-[10px] text-center mt-2 text-slate-500">
@@ -1085,7 +1177,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({
               <div className="p-6 space-y-6 animate-in slide-in-from-right-10 fade-in duration-300">
                  <div className="flex items-center justify-between">
                      <h2 className="text-sm font-bold text-blue-400 uppercase tracking-wider flex items-center">
-                        <Cpu className="w-4 h-4 mr-2" />
+                        <Dumbbell className="w-4 h-4 mr-2" />
                         Equipment Editor
                      </h2>
                  </div>

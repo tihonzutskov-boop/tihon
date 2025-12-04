@@ -15,7 +15,78 @@ const pool = new Pool({
 app.use(cors());
 app.use(express.json());
 
-// --- Routes ---
+// --- Auth Routes ---
+
+// Login (Passwordless)
+app.post('/api/login', async (req, res) => {
+  const { email } = req.body;
+  const client = await pool.connect();
+  
+  try {
+    const result = await client.query('SELECT * FROM users WHERE email = $1', [email]);
+    
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+
+    const user = result.rows[0];
+    
+    // Note: Password check removed for demo/guest access
+    
+    const { password_hash, ...userProfile } = user;
+    
+    // Add mock stats
+    userProfile.stats = {
+       workoutsCompleted: 12,
+       totalMinutes: 480,
+       streakDays: 3
+    };
+
+    res.json({ user: userProfile });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  } finally {
+    client.release();
+  }
+});
+
+// Signup (Passwordless)
+app.post('/api/signup', async (req, res) => {
+  const { name, email } = req.body;
+  const client = await pool.connect();
+
+  try {
+    // Check if user exists
+    const check = await client.query('SELECT * FROM users WHERE email = $1', [email]);
+    if (check.rows.length > 0) {
+      return res.status(400).json({ error: 'User already exists' });
+    }
+
+    // Insert new user
+    // Store dummy password string since column likely expects it
+    const dummyPassword = 'nopassword';
+    
+    const result = await client.query(
+      'INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING *',
+      [name, email, dummyPassword, 'user']
+    );
+
+    const newUser = result.rows[0];
+    const { password_hash, ...userProfile } = newUser;
+    
+    userProfile.stats = { workoutsCompleted: 0, totalMinutes: 0, streakDays: 0 };
+
+    res.json({ user: userProfile });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  } finally {
+    client.release();
+  }
+});
+
+// --- Gym Routes ---
 
 // GET All Gyms (with nested zones/annexes)
 app.get('/api/gyms', async (req, res) => {
@@ -60,8 +131,8 @@ app.post('/api/gyms', async (req, res) => {
     if (zones && zones.length > 0) {
       for (const z of zones) {
         await client.query(
-          'INSERT INTO zones (id, gym_id, name, type, x, y, width, height, color, icon, description) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)',
-          [z.id, id, z.name, z.type, z.x, z.y, z.width, z.height, z.color, z.icon, z.description]
+          'INSERT INTO zones (id, gym_id, name, type, x, y, width, height, color, icon, description, machines) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)',
+          [z.id, id, z.name, z.type, z.x, z.y, z.width, z.height, z.color, z.icon, z.description, JSON.stringify(z.machines || [])]
         );
       }
     }
@@ -107,8 +178,8 @@ app.put('/api/gyms/:id', async (req, res) => {
     if (zones && zones.length > 0) {
       for (const z of zones) {
         await client.query(
-          'INSERT INTO zones (id, gym_id, name, type, x, y, width, height, color, icon, description) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)',
-          [z.id, id, z.name, z.type, z.x, z.y, z.width, z.height, z.color, z.icon, z.description]
+          'INSERT INTO zones (id, gym_id, name, type, x, y, width, height, color, icon, description, machines) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)',
+          [z.id, id, z.name, z.type, z.x, z.y, z.width, z.height, z.color, z.icon, z.description, JSON.stringify(z.machines || [])]
         );
       }
     }

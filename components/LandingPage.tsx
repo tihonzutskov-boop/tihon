@@ -1,5 +1,6 @@
+
 import React from 'react';
-import { Map, BrainCircuit, Activity, ArrowRight, Lock, Building2, MapPin } from 'lucide-react';
+import { Map, BrainCircuit, Activity, ArrowRight, Lock, MapPin, User, ShieldCheck } from 'lucide-react';
 import { Gym } from '../types';
 import GymMap from './GymMap';
 
@@ -7,9 +8,10 @@ interface LandingPageProps {
   gyms: Gym[];
   onSelectGym: (gymId: string) => void;
   onAdminEnter: () => void;
+  onLoginClick: () => void;
 }
 
-const LandingPage: React.FC<LandingPageProps> = ({ gyms, onSelectGym, onAdminEnter }) => {
+const LandingPage: React.FC<LandingPageProps> = ({ gyms, onSelectGym, onAdminEnter, onLoginClick }) => {
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center relative overflow-hidden text-slate-200">
        {/* Background Grid Effect */}
@@ -23,11 +25,11 @@ const LandingPage: React.FC<LandingPageProps> = ({ gyms, onSelectGym, onAdminEnt
        {/* Navigation Bar */}
        <nav className="absolute top-0 w-full p-6 flex justify-end z-50">
           <button 
-             onClick={onAdminEnter}
-             className="text-slate-500 hover:text-white text-sm font-semibold flex items-center transition-colors px-4 py-2 rounded-lg hover:bg-slate-900 border border-transparent hover:border-slate-800"
+             onClick={onLoginClick}
+             className="text-white hover:text-lime-400 text-sm font-bold flex items-center transition-colors px-4 py-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-lime-500 shadow-lg"
            >
-             <Lock className="w-4 h-4 mr-2" />
-             Admin Access
+             <User className="w-4 h-4 mr-2" />
+             Log In / Sign Up
            </button>
        </nav>
        
@@ -46,7 +48,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ gyms, onSelectGym, onAdminEnt
          </div>
          
          <h1 className="text-5xl md:text-7xl lg:text-8xl font-black tracking-tight text-white mb-6 leading-tight">
-           Gym<span className="text-lime-500">Cartographer</span>
+           GY<span className="text-lime-500">DE</span>
          </h1>
          
          <p className="text-xl text-slate-400 mb-12 max-w-2xl mx-auto leading-relaxed">
@@ -65,7 +67,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ gyms, onSelectGym, onAdminEnt
                 >
                   <div className="h-32 w-full bg-slate-950/50 border-b border-slate-800 relative">
                      <div className="absolute inset-0 p-4 opacity-70 group-hover:opacity-100 transition-opacity">
-                        <GymMap zones={gym.zones} isThumbnail={true} />
+                        <GymMap zones={gym.zones} dimensions={gym.dimensions} entrance={gym.entrance} floorColor={gym.floorColor} annexes={gym.annexes} isThumbnail={true} />
                      </div>
                   </div>
                   <div className="p-6 flex items-center justify-between">
@@ -112,8 +114,15 @@ const LandingPage: React.FC<LandingPageProps> = ({ gyms, onSelectGym, onAdminEnt
        </div>
        
        {/* Footer */}
-       <div className="absolute bottom-6 w-full px-6 flex justify-center items-center text-xs text-slate-600 font-medium tracking-widest uppercase">
-         <span>Powered by Google Gemini</span>
+       <div className="absolute bottom-6 w-full px-6 flex flex-col items-center justify-center space-y-2 z-20">
+         <span className="text-xs text-slate-600 font-medium tracking-widest uppercase">Powered by Google Gemini</span>
+         <button 
+            onClick={onAdminEnter}
+            className="flex items-center text-[10px] text-slate-700 hover:text-lime-500 transition-colors uppercase tracking-widest font-bold"
+         >
+            <ShieldCheck className="w-3 h-3 mr-1" />
+            Admin Access
+         </button>
        </div>
     </div>
   );
