@@ -1,7 +1,12 @@
 
 import React from 'react';
 import { GymZone, EquipmentType, GymDimensions, GymEntrance, GymAnnex, GymMachine } from '../types';
-import { ZoomOut, Settings } from 'lucide-react';
+import { ZoomOut, Settings, Dumbbell, Activity, Zap, Target, Cpu, Layers, Box, Wind, RotateCcw, ArrowUpRight, MoveDown, Circle, Waves, Timer } from 'lucide-react';
+
+// Map icon names to components for dynamic rendering
+const ICON_MAP: Record<string, any> = {
+  Dumbbell, Activity, Zap, Target, Cpu, Layers, Box, Wind, RotateCcw, ArrowUpRight, MoveDown, Circle, Waves, Timer
+};
 
 export interface ViewParams {
   viewBox: string;
@@ -20,24 +25,21 @@ interface GymMapProps {
   
   onZoneClick?: (zone: GymZone) => void;
   onMapClick?: () => void;
-  onMachineClick?: (machine: GymMachine) => void; // New prop for machine interaction
+  onMachineClick?: (machine: GymMachine) => void; 
 
   selectedZoneId?: string | null;
-  focusedZoneId?: string | null; // New: To trigger zoom
+  focusedZoneId?: string | null; 
   
   isEditable?: boolean;
-  editMode?: 'layout' | 'room' | 'machine'; // 'layout' for zones, 'room' for structure, 'machine' for contents
+  editMode?: 'layout' | 'room' | 'machine'; 
   
-  // Zone Interactions
   onZoneDragStart?: (e: React.MouseEvent, zone: GymZone) => void;
   onZoneResizeStart?: (e: React.MouseEvent, zone: GymZone) => void;
 
-  // Room Interactions
   onMainRoomResizeStart?: (e: React.MouseEvent, handle: 'right' | 'bottom' | 'corner') => void;
   onAnnexDragStart?: (e: React.MouseEvent, annex: GymAnnex) => void;
   onAnnexResizeStart?: (e: React.MouseEvent, annex: GymAnnex) => void;
 
-  // Machine Interactions
   onMachineDragStart?: (e: React.MouseEvent, machine: GymMachine, zoneId: string) => void;
   onMachineResizeStart?: (e: React.MouseEvent, machine: GymMachine, zoneId: string) => void;
   selectedMachineId?: string | null;
@@ -78,7 +80,6 @@ const GymMap: React.FC<GymMapProps> = ({
   manualView
 }) => {
   
-  // Determine view parameters
   let viewBoxWidth: number;
   let viewBoxHeight: number;
   let offsetX: number;
@@ -86,68 +87,46 @@ const GymMap: React.FC<GymMapProps> = ({
 
   const focusedZone = zones.find(z => z.id === focusedZoneId);
 
-  // Helper to calculate total bounding box (Main Room + Annexes)
   const getTotalBounds = () => {
     let maxX = dimensions.width;
     let maxY = dimensions.height;
-    
     annexes.forEach(a => {
       maxX = Math.max(maxX, a.x + a.width);
       maxY = Math.max(maxY, a.y + a.height);
     });
-    
     return { width: maxX, height: maxY };
   };
 
   if (manualView) {
-    // Locked view (Admin Dragging)
     viewBoxWidth = manualView.width;
     viewBoxHeight = manualView.height;
     offsetX = manualView.offsetX;
     offsetY = manualView.offsetY;
   } else if (focusedZone && (!isEditable || editMode === 'machine')) {
-    // Zoomed View
     const ZOOM_PADDING = 40;
-    // Prevents excessive zoom on small zones by enforcing a minimum view size (e.g. 500x500 units)
-    // This ensures the zone is visible but doesn't explode to fill the entire screen if it's tiny.
     const MIN_VIEW_SIZE = 500; 
-
     const targetWidth = focusedZone.width + (ZOOM_PADDING * 2);
     const targetHeight = focusedZone.height + (ZOOM_PADDING * 2);
-    
     viewBoxWidth = Math.max(targetWidth, MIN_VIEW_SIZE);
     viewBoxHeight = Math.max(targetHeight, MIN_VIEW_SIZE);
-    
-    // We want to center the zone within this calculated viewBox.
-    // The translate transform is (offsetX, offsetY).
-    // Center logic: zone.x + offsetX = (viewBoxWidth - zone.width) / 2
-    
     offsetX = ((viewBoxWidth - focusedZone.width) / 2) - focusedZone.x;
     offsetY = ((viewBoxHeight - focusedZone.height) / 2) - focusedZone.y;
-
   } else {
-    // Default View (Full Map)
     const totalBounds = getTotalBounds();
     const PADDING = 150;
     const minViewWidth = 800;
     const minViewHeight = 600;
-
     viewBoxWidth = Math.max(minViewWidth, totalBounds.width + PADDING);
     viewBoxHeight = Math.max(minViewHeight, totalBounds.height + PADDING);
-
     offsetX = (viewBoxWidth - totalBounds.width) / 2;
     offsetY = (viewBoxHeight - totalBounds.height) / 2;
   }
 
-  // Calculate Entrance Coordinates (Relative to Main Room)
   const getEntrancePath = () => {
     const { side, offset, width } = entrance;
     const { width: gymW, height: gymH } = dimensions;
-    
     const pos = offset / 100;
-
     let x1, y1, x2, y2, labelX, labelY, labelRotation;
-
     switch (side) {
       case 'top':
         x1 = (gymW * pos) - (width / 2); y1 = 0; x2 = x1 + width; y2 = 0;
@@ -166,7 +145,6 @@ const GymMap: React.FC<GymMapProps> = ({
         labelX = x1 + 15; labelY = y1 + width / 2; labelRotation = 90;
         break;
     }
-
     return { x1: x1 ?? 0, y1: y1 ?? 0, x2: x2 ?? 0, y2: y2 ?? 0, labelX: labelX ?? 0, labelY: labelY ?? 0, labelRotation: labelRotation ?? 0 };
   };
 
@@ -181,10 +159,8 @@ const GymMap: React.FC<GymMapProps> = ({
 
   return (
     <div className={`w-full h-full relative overflow-hidden ${isThumbnail ? 'bg-slate-900/50' : 'bg-slate-900 rounded-xl shadow-2xl border border-slate-700'}`}>
-      {/* HUD Overlays */}
       {!isThumbnail && (
         <>
-          {/* Editor Mode Badge */}
           {(isEditable) && (
              <div className={`absolute top-4 left-4 px-3 py-1 rounded text-xs border z-10 pointer-events-none select-none backdrop-blur-sm shadow-lg
                ${isRoomEdit ? 'bg-lime-950/90 text-lime-400 border-lime-800' : 
@@ -194,8 +170,6 @@ const GymMap: React.FC<GymMapProps> = ({
                {isRoomEdit ? 'Room Editor Mode' : isMachineEdit ? 'Machine Editor Mode' : 'Layout Editor Mode'}
              </div>
           )}
-
-          {/* Zoom Out Button */}
           {focusedZoneId && !isEditable && (
              <button 
                onClick={(e) => { e.stopPropagation(); onMapClick(); }}
@@ -212,17 +186,9 @@ const GymMap: React.FC<GymMapProps> = ({
         viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
         className={`w-full h-full select-none transition-all duration-700 ease-in-out ${isEditable ? 'cursor-default' : isThumbnail ? 'cursor-default' : 'cursor-crosshair'}`}
         preserveAspectRatio="xMidYMid meet"
-        onMouseDown={(e) => {
-          if (e.target === e.currentTarget || (e.target as Element).tagName === 'rect') {
-             // Handled by parent container click if needed
-          }
-        }}
         onClick={() => {
-          if (isEditable && editMode === 'layout') {
-             onMapClick();
-          } else if (!isEditable) {
-             onMapClick();
-          }
+          if (isEditable && editMode === 'layout') onMapClick();
+          else if (!isEditable) onMapClick();
         }}
       >
         <defs>
@@ -235,51 +201,20 @@ const GymMap: React.FC<GymMapProps> = ({
           <pattern id="smallGrid" width="10" height="10" patternUnits="userSpaceOnUse">
              <path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="0.5" />
           </pattern>
-          {/* Machine Texture */}
           <pattern id="machineHatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
             <rect width="2" height="4" transform="translate(0,0)" fill="white" fillOpacity="0.1" />
           </pattern>
         </defs>
         
-        {/* Background Grid */}
         {!isThumbnail && isEditable && (
             <rect width={viewBoxWidth} height={viewBoxHeight} fill={isMachineEdit ? "url(#smallGrid)" : "url(#grid)"} className="pointer-events-none opacity-30" />
         )}
 
-        {/* --- MAIN TRANSFORM GROUP --- */}
-        <g 
-           transform={`translate(${offsetX}, ${offsetY})`}
-           className="transition-transform duration-700 ease-in-out" // Smooth zoom
-        >
-            
-            {/* --- Floor Structure Layer --- */}
-            
-            {/* Main Room Floor */}
-            <rect 
-              x="0" 
-              y="0" 
-              width={dimensions.width} 
-              height={dimensions.height} 
-              fill={floorColor}
-              stroke={isRoomEdit ? '#84cc16' : '#334155'} 
-              strokeWidth={isThumbnail ? 0 : 4} 
-              rx="4"
-              className="transition-all duration-300 ease-in-out"
-            />
-
-            {/* Annexes */}
+        <g transform={`translate(${offsetX}, ${offsetY})`} className="transition-transform duration-700 ease-in-out">
+            <rect x="0" y="0" width={dimensions.width} height={dimensions.height} fill={floorColor} stroke={isRoomEdit ? '#84cc16' : '#334155'} strokeWidth={isThumbnail ? 0 : 4} rx="4" className="transition-all duration-300 ease-in-out" />
             {annexes.map((annex) => (
               <g key={annex.id}>
-                <rect
-                  x={annex.x}
-                  y={annex.y}
-                  width={annex.width}
-                  height={annex.height}
-                  fill={floorColor}
-                  stroke={isRoomEdit ? '#84cc16' : '#334155'}
-                  strokeWidth={isThumbnail ? 0 : 4}
-                  rx="4"
-                />
+                <rect x={annex.x} y={annex.y} width={annex.width} height={annex.height} fill={floorColor} stroke={isRoomEdit ? '#84cc16' : '#334155'} strokeWidth={isThumbnail ? 0 : 4} rx="4" />
                 <rect x={annex.x} y={annex.y} width={annex.width} height={annex.height} fill="url(#grid)" className="pointer-events-none opacity-50"/>
                 {isRoomEdit && !isThumbnail && (
                   <>
@@ -289,10 +224,7 @@ const GymMap: React.FC<GymMapProps> = ({
                 )}
               </g>
             ))}
-            
             <rect x="0" y="0" width={dimensions.width} height={dimensions.height} fill="url(#grid)" className="pointer-events-none opacity-50"/>
-            
-            {/* Room Edit Controls */}
             {isRoomEdit && !isThumbnail && (
                <>
                  <rect x="0" y="0" width={dimensions.width} height={dimensions.height} fill="url(#dotGrid)" className="pointer-events-none opacity-100"/>
@@ -301,21 +233,16 @@ const GymMap: React.FC<GymMapProps> = ({
                  <rect x={dimensions.width - 8} y={dimensions.height - 8} width="16" height="16" rx="2" className={cornerStyle} onMouseDown={(e) => { e.stopPropagation(); onMainRoomResizeStart && onMainRoomResizeStart(e, 'corner'); }} />
                </>
             )}
-
-            {/* Entrance */}
             <path d={`M ${door.x1} ${door.y1} L ${door.x2} ${door.y2}`} stroke="#0f172a" strokeWidth="8" strokeLinecap="round" />
             {!isThumbnail && (
               <text x={door.labelX} y={door.labelY} textAnchor="middle" dominantBaseline="middle" transform={`rotate(${door.labelRotation}, ${door.labelX}, ${door.labelY})`} fill="#64748b" fontSize="12" fontFamily="sans-serif" fontWeight="bold" className="select-none pointer-events-none">ENTRANCE</text>
             )}
 
-            {/* --- Equipment Zones Layer --- */}
             <g style={{ opacity: isRoomEdit ? 0.3 : 1, pointerEvents: isRoomEdit ? 'none' : 'auto', transition: 'opacity 0.3s' }}>
               {zones.map((zone) => {
                 const isSelected = selectedZoneId === zone.id;
                 const isFocused = focusedZoneId === zone.id;
                 const isStructure = zone.type === EquipmentType.CORRIDOR || zone.type === EquipmentType.FACILITY;
-                
-                // Opacity Logic: If zoomed in, fade out other zones
                 const zoneOpacity = focusedZoneId ? (isFocused ? 1 : 0.05) : (selectedZoneId && !isSelected ? 0.4 : 1);
 
                 return (
@@ -324,22 +251,15 @@ const GymMap: React.FC<GymMapProps> = ({
                     onClick={(e) => {
                       if (!isThumbnail) {
                         e.stopPropagation();
-                        // Only click if we are NOT editing machines (clicks handle elsewhere)
                         if (!isMachineEdit) onZoneClick(zone);
                       }
                     }}
                     onMouseDown={(e) => {
-                      if (!isThumbnail && isLayoutEdit && onZoneDragStart) {
-                        onZoneDragStart(e, zone);
-                      }
+                      if (!isThumbnail && isLayoutEdit && onZoneDragStart) onZoneDragStart(e, zone);
                     }}
                     className={`transition-all duration-500 ease-in-out ${isThumbnail ? '' : isLayoutEdit ? 'cursor-move' : isMachineEdit && isFocused ? 'cursor-default' : 'cursor-pointer'}`}
-                    style={{
-                      opacity: zoneOpacity,
-                      filter: isSelected ? 'drop-shadow(0 0 8px rgba(0,0,0,0.6))' : 'none',
-                    }}
+                    style={{ opacity: zoneOpacity, filter: isSelected ? 'drop-shadow(0 0 8px rgba(0,0,0,0.6))' : 'none' }}
                   >
-                    {/* Edit Selection Border */}
                     {isSelected && isLayoutEdit && !isThumbnail && (
                       <rect
                         x={zone.x - 4} y={zone.y - 4} width={zone.width + 8} height={zone.height + 8}
@@ -347,8 +267,6 @@ const GymMap: React.FC<GymMapProps> = ({
                         className="animate-pulse pointer-events-none opacity-80"
                       />
                     )}
-
-                    {/* Zone Background */}
                     <rect
                       x={zone.x} y={zone.y} width={zone.width} height={zone.height}
                       fill={zone.color} fillOpacity={isStructure ? 0.25 : (isFocused || isMachineEdit ? 0.15 : 0.35)} 
@@ -356,11 +274,12 @@ const GymMap: React.FC<GymMapProps> = ({
                       rx={isStructure ? 0 : 4} 
                     />
                     
-                    {/* --- Machine Detail Layer --- */}
                     {((isFocused && !isStructure && !isEditable) || (isMachineEdit && isFocused)) && zone.machines && (
                       <g className="animate-in fade-in zoom-in duration-300">
                         {zone.machines.map(machine => {
                           const isMachineSelected = selectedMachineId === machine.id;
+                          const MachineIcon = machine.icon ? ICON_MAP[machine.icon] : null;
+
                           return (
                             <g 
                                key={machine.id} 
@@ -372,7 +291,6 @@ const GymMap: React.FC<GymMapProps> = ({
                                  }
                                }}
                                onClick={(e) => {
-                                 // Handle Machine Click for Video viewing (User Mode)
                                  if (!isEditable && onMachineClick) {
                                      e.stopPropagation();
                                      onMachineClick(machine);
@@ -382,29 +300,32 @@ const GymMap: React.FC<GymMapProps> = ({
                             >
                               <rect 
                                 width={machine.width} height={machine.height} 
-                                fill={zone.color} 
-                                fillOpacity={0.8}
+                                fill={zone.color} fillOpacity={0.8}
                                 stroke={isMachineSelected && isMachineEdit ? "#3b82f6" : "white"} 
                                 strokeWidth={isMachineSelected && isMachineEdit ? 2 : 1} 
                                 strokeOpacity={isMachineSelected ? 1 : 0.5}
                                 rx="2"
                               />
-                              {/* Hatch Texture for detail */}
                               <rect width={machine.width} height={machine.height} fill="url(#machineHatch)" rx="2" className="pointer-events-none"/>
                               
-                              {/* Machine Label (Small) */}
-                              {machine.height > 20 && machine.width > 20 && (
-                                <text 
-                                  x={machine.width/2} y={machine.height/2} 
-                                  textAnchor="middle" dominantBaseline="middle" 
-                                  fontSize={Math.min(10, machine.width/4)} fill="white" fontWeight="bold" 
-                                  className="pointer-events-none select-none drop-shadow-sm"
-                                >
-                                  {machine.name.substring(0, 3).toUpperCase()}
-                                </text>
-                              )}
+                              <g transform={`translate(${machine.width / 2}, ${machine.height / 2})`} className="pointer-events-none">
+                                {MachineIcon ? (
+                                  <g transform={`scale(${Math.min(machine.width, machine.height) / 48}) translate(-12, -12)`}>
+                                    <MachineIcon size={24} color="white" />
+                                  </g>
+                                ) : (
+                                  machine.height > 20 && machine.width > 20 && (
+                                    <text 
+                                      textAnchor="middle" dominantBaseline="middle" 
+                                      fontSize={Math.min(10, machine.width/4)} fill="white" fontWeight="bold" 
+                                      className="drop-shadow-sm select-none"
+                                    >
+                                      {machine.name.substring(0, 3).toUpperCase()}
+                                    </text>
+                                  )
+                                )}
+                              </g>
 
-                              {/* Machine Resize Handle */}
                               {isMachineEdit && isMachineSelected && (
                                 <rect
                                   x={machine.width - 6} y={machine.height - 6} width="6" height="6"
@@ -422,7 +343,6 @@ const GymMap: React.FC<GymMapProps> = ({
                       </g>
                     )}
 
-                    {/* Generic Equipment Placeholder (Hidden when focused or structure) */}
                     {!isThumbnail && !isStructure && !isFocused && !isMachineEdit && (
                       <rect
                         x={zone.x + 10} y={zone.y + 10} width={Math.max(0, zone.width - 20)} height={Math.max(0, zone.height - 20)}
@@ -431,7 +351,6 @@ const GymMap: React.FC<GymMapProps> = ({
                       />
                     )}
 
-                    {/* Zone Label */}
                     {!isThumbnail && (!isFocused || isStructure) && (
                       <text
                         x={zone.x + zone.width / 2} y={zone.y + zone.height / 2}
@@ -443,7 +362,6 @@ const GymMap: React.FC<GymMapProps> = ({
                       </text>
                     )}
                     
-                    {/* Resize Handle */}
                     {isSelected && isLayoutEdit && !isThumbnail && (
                       <rect
                         x={zone.x + zone.width - 12} y={zone.y + zone.height - 12} width="12" height="12"

@@ -8,10 +8,11 @@ import AdminPage from './components/AdminPage';
 import UserDashboard from './components/UserDashboard';
 import AuthModal from './components/AuthModal';
 import MachineDetailModal from './components/MachineDetailModal';
+import EquipmentLibrary from './components/EquipmentLibrary';
 import { GymZone, WorkoutPlan, Exercise, Gym, GymMachine, User } from './types';
 import { DEFAULT_GYM } from './constants';
 import { api } from './services/api';
-import { ChevronDown, MapPin, Loader2, Calendar, ClipboardList, ArrowLeft } from 'lucide-react';
+import { ChevronDown, MapPin, Loader2, Calendar, ClipboardList, ArrowLeft, BookOpen } from 'lucide-react';
 
 type ViewState = 'landing' | 'app' | 'admin' | 'dashboard';
 
@@ -62,6 +63,7 @@ const App: React.FC = () => {
   const [focusedZoneId, setFocusedZoneId] = useState<string | null>(null); // New Zoom State
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const [isPlanOpen, setIsPlanOpen] = useState(false); // Toggle for Plan Sidebar
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false); // New: Library Sidebar
   const [viewingMachine, setViewingMachine] = useState<GymMachine | null>(null); // Machine Modal State
   const [workoutPlan, setWorkoutPlan] = useState<WorkoutPlan>({
     id: 'current-1',
@@ -75,6 +77,7 @@ const App: React.FC = () => {
         // Already focused, open selector immediately
         setSelectedZone(zone);
         setIsSelectorOpen(true);
+        setIsLibraryOpen(false); // Close library if opening selector
     } else {
         // Zoom in first, but DO NOT open selector automatically
         setFocusedZoneId(zone.id);
@@ -96,11 +99,18 @@ const App: React.FC = () => {
     setViewingMachine(machine);
   };
 
+  const handleLibrarySelect = (machine: GymMachine, zoneId: string) => {
+    const targetZone = zones.find(z => z.id === zoneId);
+    if (targetZone) {
+      setFocusedZoneId(zoneId);
+      setSelectedZone(targetZone);
+      setViewingMachine(machine); // Open details immediately when selected from library
+    }
+  };
+
   const handleCloseSelector = () => {
     setIsSelectorOpen(false);
     setSelectedZone(null);
-    // Note: We keep focus (zoom) when just closing the sidebar, 
-    // user must click map background to zoom out fully.
   };
 
   const addExercise = (exercise: Exercise) => {
@@ -108,8 +118,6 @@ const App: React.FC = () => {
       ...prev,
       exercises: [...prev.exercises, exercise]
     }));
-    // Optionally open the plan to show the user it was added
-    // setIsPlanOpen(true); 
   };
 
   const removeExercise = (id: string) => {
@@ -209,7 +217,7 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 flex flex-col overflow-hidden animate-in fade-in duration-700">
       {/* Navbar */}
-      <header className="h-16 border-b border-slate-800 bg-slate-900 flex items-center px-6 justify-between flex-shrink-0 z-20 shadow-sm relative">
+      <header className="h-16 border-b border-slate-800 bg-slate-900 flex items-center px-6 justify-between flex-shrink-0 z-40 shadow-sm relative">
         <div className="flex items-center space-x-6">
           <div className="flex items-center space-x-3 cursor-pointer group" onClick={() => setCurrentView(user ? 'dashboard' : 'landing')}>
             <div className="w-8 h-8 bg-gradient-to-br from-lime-400 to-lime-600 rounded flex items-center justify-center text-slate-900 font-bold text-xl shadow-lg shadow-lime-900/20 group-hover:scale-105 transition-transform">
@@ -239,11 +247,11 @@ const App: React.FC = () => {
           )}
         </div>
 
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-2 sm:space-x-4">
            {user && (
              <button 
                 onClick={() => setCurrentView('dashboard')}
-                className="hidden md:flex items-center text-xs font-bold text-slate-400 hover:text-white mr-4"
+                className="hidden md:flex items-center text-xs font-bold text-slate-400 hover:text-white mr-2"
              >
                 <ArrowLeft className="w-3 h-3 mr-1" />
                 Dashboard
@@ -251,7 +259,26 @@ const App: React.FC = () => {
            )}
 
            <button 
-             onClick={() => setIsPlanOpen(!isPlanOpen)}
+             onClick={() => {
+                setIsLibraryOpen(!isLibraryOpen);
+                setIsPlanOpen(false);
+             }}
+             className={`
+               flex items-center space-x-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all border
+               ${isLibraryOpen 
+                  ? 'bg-slate-800 text-blue-400 border-blue-500/50 shadow-[0_0_15px_-5px_rgba(59,130,246,0.3)]' 
+                  : 'bg-transparent text-slate-400 border-transparent hover:bg-slate-800 hover:text-slate-200'}
+             `}
+           >
+             <BookOpen className="w-5 h-5" />
+             <span className="hidden xs:block">Library</span>
+           </button>
+
+           <button 
+             onClick={() => {
+                setIsPlanOpen(!isPlanOpen);
+                setIsLibraryOpen(false);
+             }}
              className={`
                flex items-center space-x-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all border
                ${isPlanOpen 
@@ -268,7 +295,7 @@ const App: React.FC = () => {
                  </span>
                )}
              </div>
-             <span>My Plan</span>
+             <span className="hidden xs:block">My Plan</span>
              {workoutPlan.exercises.length > 0 && (
                <span className="bg-slate-700 text-white text-[10px] px-1.5 py-0.5 rounded-full ml-1">
                  {workoutPlan.exercises.length}
@@ -296,12 +323,26 @@ const App: React.FC = () => {
           />
         </div>
 
+        {/* New: Right Drawer (Overlayed on map) for Equipment Library */}
+        <div 
+          className={`
+            absolute top-0 bottom-0 left-0 w-80 md:w-96 z-30 transform transition-transform duration-300 ease-in-out shadow-2xl
+            ${isLibraryOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'}
+          `}
+        >
+          <EquipmentLibrary 
+            zones={zones}
+            onClose={() => setIsLibraryOpen(false)}
+            onSelectMachine={handleLibrarySelect}
+          />
+        </div>
+
         {/* Center: Map Area */}
         <div className="flex-1 relative flex items-center justify-center bg-slate-950 overflow-hidden">
           {/* Backdrop overlay for mobile when sidebar is open */}
           <div 
              className={`absolute inset-0 bg-slate-950/50 backdrop-blur-sm z-20 transition-opacity duration-300 pointer-events-none md:hidden
-               ${isPlanOpen || isSelectorOpen ? 'opacity-100' : 'opacity-0'}
+               ${isPlanOpen || isSelectorOpen || isLibraryOpen ? 'opacity-100' : 'opacity-0'}
              `} 
           />
           
