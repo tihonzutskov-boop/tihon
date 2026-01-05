@@ -1,26 +1,25 @@
 
 import React, { useState, useEffect } from 'react';
-import { WorkoutPlan } from '../types';
+import { WorkoutPlan, Exercise } from '../types';
 import { generateProgramAnalysis } from '../services/geminiService';
-import { Trash2, Dumbbell, BrainCircuit, X, Calendar } from 'lucide-react';
+import { Trash2, Dumbbell, BrainCircuit, X, Calendar, MapPin } from 'lucide-react';
 
 interface ProgramListProps {
   workout: WorkoutPlan;
   onRemoveExercise: (id: string) => void;
   onClear: () => void;
   onClose?: () => void;
+  onExerciseClick?: (exercise: Exercise) => void;
 }
 
-const ProgramList: React.FC<ProgramListProps> = ({ workout, onRemoveExercise, onClear, onClose }) => {
+const ProgramList: React.FC<ProgramListProps> = ({ workout, onRemoveExercise, onClear, onClose, onExerciseClick }) => {
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
 
-  // Auto-analyze when workout changes significantly (e.g., > 2 exercises)
   useEffect(() => {
     const analyze = async () => {
       if (workout.exercises.length > 2) {
         setAnalyzing(true);
-        // Debounce simple effect
         const result = await generateProgramAnalysis(workout.exercises);
         setAnalysis(result);
         setAnalyzing(false);
@@ -29,10 +28,9 @@ const ProgramList: React.FC<ProgramListProps> = ({ workout, onRemoveExercise, on
       }
     };
     
-    // Simple debounce via timeout
     const timeoutId = setTimeout(analyze, 1500);
     return () => clearTimeout(timeoutId);
-  }, [workout.exercises.length]); // Only re-run on count change to avoid spam
+  }, [workout.exercises.length]);
 
   return (
     <div className="bg-slate-900 border-r border-slate-800 flex flex-col h-full shadow-2xl w-full">
@@ -72,13 +70,17 @@ const ProgramList: React.FC<ProgramListProps> = ({ workout, onRemoveExercise, on
           </div>
         ) : (
           workout.exercises.map((ex, index) => (
-            <div key={ex.id} className="bg-slate-800/50 hover:bg-slate-800 rounded-lg p-3 border border-slate-700/50 hover:border-slate-600 flex justify-between group transition-all">
+            <div 
+              key={ex.id} 
+              onClick={() => onExerciseClick?.(ex)}
+              className="bg-slate-800/50 hover:bg-slate-800 rounded-lg p-3 border border-slate-700/50 hover:border-lime-500/50 flex justify-between group transition-all cursor-pointer"
+            >
               <div className="flex items-start space-x-3">
-                <div className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-900 text-slate-500 text-xs font-mono mt-0.5 border border-slate-800">
+                <div className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-900 text-slate-500 text-xs font-mono mt-0.5 border border-slate-800 group-hover:text-lime-400 group-hover:border-lime-900 transition-colors">
                   {index + 1}
                 </div>
                 <div>
-                  <h4 className="font-medium text-slate-200 text-sm">{ex.name}</h4>
+                  <h4 className="font-medium text-slate-200 text-sm group-hover:text-white">{ex.name}</h4>
                   <div className="flex items-center space-x-2 text-xs text-slate-500 mt-1">
                     <span className="text-lime-400/80 font-mono">{ex.sets} x {ex.reps}</span>
                     <span className="text-slate-700">•</span>
@@ -86,19 +88,23 @@ const ProgramList: React.FC<ProgramListProps> = ({ workout, onRemoveExercise, on
                   </div>
                 </div>
               </div>
-              <button 
-                onClick={() => onRemoveExercise(ex.id)}
-                className="text-slate-600 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                title="Remove"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              <div className="flex flex-col items-center space-y-2">
+                <button 
+                  onClick={(e) => { e.stopPropagation(); onRemoveExercise(ex.id); }}
+                  className="text-slate-600 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Remove"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+                <div className="text-lime-500/30 group-hover:text-lime-500 transition-colors">
+                  <MapPin className="w-3.5 h-3.5" />
+                </div>
+              </div>
             </div>
           ))
         )}
       </div>
 
-      {/* AI Analysis Footer */}
       <div className="p-4 bg-slate-900 border-t border-slate-800 sticky bottom-0 z-10">
         {analyzing ? (
           <div className="flex items-center text-xs text-indigo-400 animate-pulse mb-3 bg-indigo-950/20 p-2 rounded">

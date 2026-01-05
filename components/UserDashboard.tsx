@@ -1,14 +1,14 @@
 
 import React from 'react';
-import { User, Gym } from '../types';
-import { Trophy, Flame, Clock, Calendar, LogOut, ArrowRight, Activity, MapPin, Dumbbell } from 'lucide-react';
+import { User, Gym, WorkoutPlan } from '../types';
+import { Trophy, Flame, Clock, Calendar, LogOut, ArrowRight, Activity, MapPin, Dumbbell, ClipboardList, Target } from 'lucide-react';
 import GymMap from './GymMap';
 
 interface UserDashboardProps {
   user: User;
   gyms: Gym[];
   onLogout: () => void;
-  onEnterGym: (gymId: string) => void;
+  onEnterGym: (gymId: string, plan?: WorkoutPlan) => void;
 }
 
 const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, onLogout, onEnterGym }) => {
@@ -23,7 +23,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, onLogout, onE
               <div className="w-8 h-8 bg-gradient-to-br from-lime-400 to-lime-600 rounded flex items-center justify-center text-slate-900 font-bold text-lg shadow-lg">
                 G
               </div>
-              <span className="font-bold text-lg text-white">Dashboard</span>
+              <span className="font-bold text-lg text-white tracking-tight">GY<span className="text-lime-500">DE</span> Dashboard</span>
             </div>
             
             <div className="flex items-center space-x-4">
@@ -87,11 +87,63 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, onLogout, onE
           />
         </div>
 
+        {/* My Training Plans Section */}
+        {user.savedPlans && user.savedPlans.length > 0 && (
+          <div className="mb-12">
+            <h2 className="text-xl font-bold text-white mb-6 flex items-center">
+              <ClipboardList className="w-5 h-5 mr-2 text-blue-400" />
+              My Training Plans
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {user.savedPlans.map(plan => (
+                <div 
+                  key={plan.id}
+                  className="bg-slate-900 border border-slate-800 rounded-2xl p-6 hover:border-blue-500/50 transition-all group flex flex-col h-full"
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="w-10 h-10 bg-blue-950/50 rounded-lg flex items-center justify-center text-blue-400 border border-blue-900/30">
+                      <Target className="w-5 h-5" />
+                    </div>
+                    {plan.lastPerformed && (
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">
+                        Performed {plan.lastPerformed}
+                      </span>
+                    )}
+                  </div>
+                  
+                  <h3 className="text-lg font-bold text-white mb-2">{plan.name}</h3>
+                  
+                  <div className="flex flex-wrap gap-2 mb-6">
+                    <div className="flex items-center text-[10px] font-bold text-slate-400 bg-slate-800 px-2 py-1 rounded">
+                      <Dumbbell className="w-3 h-3 mr-1" />
+                      {plan.exercises.length} EXERCISES
+                    </div>
+                    <div className="flex items-center text-[10px] font-bold text-slate-400 bg-slate-800 px-2 py-1 rounded">
+                      <Clock className="w-3 h-3 mr-1" />
+                      {plan.totalDurationMinutes} MINS
+                    </div>
+                  </div>
+
+                  <div className="mt-auto">
+                    <button 
+                      onClick={() => onEnterGym(gyms[0].id, plan)}
+                      className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-bold flex items-center justify-center transition-all shadow-lg shadow-blue-900/20"
+                    >
+                      Start Session
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Gyms Section */}
         <div className="mb-8 flex items-center justify-between">
            <h2 className="text-xl font-bold text-white flex items-center">
              <MapPin className="w-5 h-5 mr-2 text-lime-400" />
-             Available Gyms
+             Available Locations
            </h2>
         </div>
 
@@ -118,13 +170,12 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, onLogout, onE
           ))}
         </div>
 
-        {/* Recent Activity Mockup */}
+        {/* Recent Activity */}
         <h2 className="text-xl font-bold text-white mb-6 flex items-center">
-           <Activity className="w-5 h-5 mr-2 text-blue-400" />
+           <Activity className="w-5 h-5 mr-2 text-emerald-400" />
            Recent Activity
         </h2>
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-           {/* Mock Data */}
            {[1, 2, 3].map((i) => (
              <div key={i} className="p-4 border-b border-slate-800 last:border-0 flex items-center justify-between hover:bg-slate-800/50 transition-colors">
                 <div className="flex items-center space-x-4">

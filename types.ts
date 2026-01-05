@@ -12,7 +12,6 @@ export enum EquipmentType {
 export interface GymMachine {
   id: string;
   name: string;
-  icon?: string; // Icon name from lucide-react or custom set
   x: number; // Relative to the Zone's top-left corner
   y: number; // Relative to the Zone's top-left corner
   width: number;
@@ -80,6 +79,7 @@ export interface WorkoutPlan {
   name: string;
   exercises: Exercise[];
   totalDurationMinutes: number;
+  lastPerformed?: string;
 }
 
 export interface AiSuggestion {
@@ -102,6 +102,7 @@ export interface User {
     totalMinutes: number;
     streakDays: number;
   };
+  savedPlans?: WorkoutPlan[];
 }
 
 export interface AuthResponse {

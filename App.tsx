@@ -60,11 +60,12 @@ const App: React.FC = () => {
   const annexes = activeGym?.annexes;
 
   const [selectedZone, setSelectedZone] = useState<GymZone | null>(null);
-  const [focusedZoneId, setFocusedZoneId] = useState<string | null>(null); // New Zoom State
+  const [focusedZoneId, setFocusedZoneId] = useState<string | null>(null);
+  const [highlightedZoneId, setHighlightedZoneId] = useState<string | null>(null);
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
-  const [isPlanOpen, setIsPlanOpen] = useState(false); // Toggle for Plan Sidebar
-  const [isLibraryOpen, setIsLibraryOpen] = useState(false); // New: Library Sidebar
-  const [viewingMachine, setViewingMachine] = useState<GymMachine | null>(null); // Machine Modal State
+  const [isPlanOpen, setIsPlanOpen] = useState(false);
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+  const [viewingMachine, setViewingMachine] = useState<GymMachine | null>(null);
   const [workoutPlan, setWorkoutPlan] = useState<WorkoutPlan>({
     id: 'current-1',
     name: 'New Session',
@@ -73,13 +74,12 @@ const App: React.FC = () => {
   });
 
   const handleZoneClick = (zone: GymZone) => {
+    setHighlightedZoneId(null); // Clear highlight on manual click
     if (focusedZoneId === zone.id) {
-        // Already focused, open selector immediately
         setSelectedZone(zone);
         setIsSelectorOpen(true);
-        setIsLibraryOpen(false); // Close library if opening selector
+        setIsLibraryOpen(false);
     } else {
-        // Zoom in first, but DO NOT open selector automatically
         setFocusedZoneId(zone.id);
         setSelectedZone(zone);
         setIsSelectorOpen(false);
@@ -87,11 +87,21 @@ const App: React.FC = () => {
   };
 
   const handleMapClick = () => {
-    // Zoom out
-    if (focusedZoneId) {
+    if (focusedZoneId || highlightedZoneId) {
         setFocusedZoneId(null);
+        setHighlightedZoneId(null);
         setSelectedZone(null);
         setIsSelectorOpen(false);
+    }
+  };
+
+  const handleExerciseInPlanClick = (exercise: Exercise) => {
+    // Light up and focus the zone on the map
+    setFocusedZoneId(exercise.equipmentId);
+    setHighlightedZoneId(exercise.equipmentId);
+    // If it's on mobile, we might want to close the sidebar to show the map
+    if (window.innerWidth < 768) {
+      setIsPlanOpen(false);
     }
   };
 
@@ -104,7 +114,7 @@ const App: React.FC = () => {
     if (targetZone) {
       setFocusedZoneId(zoneId);
       setSelectedZone(targetZone);
-      setViewingMachine(machine); // Open details immediately when selected from library
+      setViewingMachine(machine);
     }
   };
 
@@ -131,12 +141,15 @@ const App: React.FC = () => {
     setWorkoutPlan(prev => ({ ...prev, exercises: [] }));
   };
 
-  const handleGymSelect = (gymId: string) => {
+  const handleGymSelect = (gymId: string, plan?: WorkoutPlan) => {
     setActiveGymId(gymId);
+    if (plan) {
+      setWorkoutPlan(plan);
+      setIsPlanOpen(true);
+    }
     setCurrentView('app');
   };
 
-  // Auth Handlers
   const handleLoginClick = () => {
     setAuthMode('login');
     setShowAuthModal(true);
@@ -170,16 +183,14 @@ const App: React.FC = () => {
     );
   }
 
-  // --- View Routing ---
-
   if (currentView === 'landing') {
     return (
       <>
         <LandingPage 
           gyms={gyms}
           onSelectGym={handleGymSelect}
-          onAdminEnter={() => setCurrentView('admin')} // Direct access without password
-          onLoginClick={handleLoginClick} // Normal login flow
+          onAdminEnter={() => setCurrentView('admin')}
+          onLoginClick={handleLoginClick}
         />
         {showAuthModal && (
           <AuthModal 
@@ -213,10 +224,8 @@ const App: React.FC = () => {
     );
   }
 
-  // --- Main App View ---
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 flex flex-col overflow-hidden animate-in fade-in duration-700">
-      {/* Navbar */}
       <header className="h-16 border-b border-slate-800 bg-slate-900 flex items-center px-6 justify-between flex-shrink-0 z-40 shadow-sm relative">
         <div className="flex items-center space-x-6">
           <div className="flex items-center space-x-3 cursor-pointer group" onClick={() => setCurrentView(user ? 'dashboard' : 'landing')}>
@@ -226,7 +235,6 @@ const App: React.FC = () => {
             <h1 className="text-xl font-bold tracking-tight text-white hidden sm:block">GY<span className="text-lime-500">DE</span></h1>
           </div>
           
-          {/* Gym Selector (if multiple gyms exist) */}
           {gyms.length > 1 && (
             <div className="relative group hidden md:block">
               <div className="flex items-center space-x-2 text-sm text-slate-300 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg transition-colors cursor-pointer border border-slate-700">
@@ -305,10 +313,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Content Area */}
       <main className="flex-1 flex overflow-hidden relative">
-        
-        {/* Left Drawer: Program List */}
         <div 
           className={`
             absolute top-0 bottom-0 left-0 w-80 md:w-96 z-30 transform transition-transform duration-300 ease-in-out shadow-2xl
@@ -320,10 +325,10 @@ const App: React.FC = () => {
             onRemoveExercise={removeExercise}
             onClear={clearProgram}
             onClose={() => setIsPlanOpen(false)}
+            onExerciseClick={handleExerciseInPlanClick}
           />
         </div>
 
-        {/* New: Right Drawer (Overlayed on map) for Equipment Library */}
         <div 
           className={`
             absolute top-0 bottom-0 left-0 w-80 md:w-96 z-30 transform transition-transform duration-300 ease-in-out shadow-2xl
@@ -337,9 +342,7 @@ const App: React.FC = () => {
           />
         </div>
 
-        {/* Center: Map Area */}
         <div className="flex-1 relative flex items-center justify-center bg-slate-950 overflow-hidden">
-          {/* Backdrop overlay for mobile when sidebar is open */}
           <div 
              className={`absolute inset-0 bg-slate-950/50 backdrop-blur-sm z-20 transition-opacity duration-300 pointer-events-none md:hidden
                ${isPlanOpen || isSelectorOpen || isLibraryOpen ? 'opacity-100' : 'opacity-0'}
@@ -357,12 +360,12 @@ const App: React.FC = () => {
               onMapClick={handleMapClick}
               onMachineClick={handleMachineClick}
               selectedZoneId={selectedZone?.id || null}
-              focusedZoneId={focusedZoneId} // Pass focus state
+              focusedZoneId={focusedZoneId}
+              highlightedZoneId={highlightedZoneId}
             />
           </div>
         </div>
 
-        {/* Right Drawer: Exercise Selector */}
         <div 
           className={`
             absolute top-0 bottom-0 right-0 w-full md:w-[450px] z-30 transform transition-transform duration-300 ease-in-out shadow-2xl
@@ -376,7 +379,6 @@ const App: React.FC = () => {
           />
         </div>
         
-        {/* Machine Video Modal */}
         {viewingMachine && (
            <MachineDetailModal 
              machine={viewingMachine}
