@@ -2,15 +2,17 @@
 import React, { useState } from 'react';
 import { X, Mail, User, Loader2, ArrowRight } from 'lucide-react';
 import { api } from '../services/api';
-import { User as UserType } from '../types';
+import { User as UserType, Language } from '../types';
 
 interface AuthModalProps {
   onClose: () => void;
   onSuccess: (user: UserType) => void;
   initialMode?: 'login' | 'signup';
+  // Added missing lang prop to fix TypeScript error in App.tsx
+  lang: Language;
 }
 
-const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, initialMode = 'login' }) => {
+const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, initialMode = 'login', lang }) => {
   const [mode, setMode] = useState<'login' | 'signup'>(initialMode);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

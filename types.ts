@@ -1,4 +1,3 @@
-
 export enum EquipmentType {
   CARDIO = 'Cardio',
   FREE_WEIGHTS = 'Free Weights',
@@ -9,16 +8,19 @@ export enum EquipmentType {
   FACILITY = 'Facility',
 }
 
+export type Language = 'et' | 'en' | 'ru';
+
 export interface GymMachine {
   id: string;
   name: string;
-  x: number; // Relative to the Zone's top-left corner
-  y: number; // Relative to the Zone's top-left corner
+  x: number;
+  y: number;
   width: number;
   height: number;
   status?: 'active' | 'maintenance';
-  videoUrl?: string; // YouTube or MP4 link
-  longDescription?: string; // Detailed instructions
+  longDescription?: string;
+  videoUrl?: string;
+  icon?: string;
 }
 
 export interface GymZone {
@@ -37,13 +39,26 @@ export interface GymZone {
 
 export interface GymEntrance {
   side: 'top' | 'bottom' | 'left' | 'right';
-  offset: number; // 0 to 100 percentage
+  offset: number;
+  width: number;
+}
+
+export interface SketchPoint {
+  x: number;
+  y: number;
+}
+
+export interface SketchStroke {
+  id: string;
+  points: SketchPoint[];
+  color: string;
   width: number;
 }
 
 export interface GymDimensions {
   width: number;
   height: number;
+  sketchStrokes?: SketchStroke[];
 }
 
 export interface GymAnnex {
@@ -69,17 +84,36 @@ export interface Exercise {
   name: string;
   targetMuscle: string;
   sets: number;
-  reps: string; // string to allow range like "8-12"
+  reps: string;
   notes?: string;
   equipmentId: string;
+  machineId?: string; // Links to a specific machine in the zone
+  videoUrl?: string; // Specific video for this exercise
+}
+
+export interface LibraryExercise {
+  id: string;
+  name: string;
+  targetMuscle: string;      // Target muscle group(s)
+  equipmentRequired: string; // e.g., Dumbbell, barbell, leg press machine
+  category: string;          // compound/isolation, strength, cardio, mobility, etc.
+  instructions: string;      // Clear instructions on how to perform the exercise
+  equipmentId?: string;      // Optional mapped zone/location ID on the gym map
+  videoUrl?: string;         // Optional video URL
+  imageUrl?: string;         // Optional image URL
+}
+
+export interface WorkoutDay {
+  id: string;
+  name: string;
+  exercises: Exercise[];
 }
 
 export interface WorkoutPlan {
   id: string;
   name: string;
-  exercises: Exercise[];
+  days: WorkoutDay[];
   totalDurationMinutes: number;
-  lastPerformed?: string;
 }
 
 export interface AiSuggestion {
@@ -88,6 +122,14 @@ export interface AiSuggestion {
   reps: string;
   targetMuscle: string;
   notes: string;
+  equipmentId?: string;
+  machineId?: string;
+  videoUrl?: string;
+}
+
+export interface AiDaySuggestion {
+  dayName: string;
+  exercises: AiSuggestion[];
 }
 
 export interface User {
@@ -102,10 +144,9 @@ export interface User {
     totalMinutes: number;
     streakDays: number;
   };
-  savedPlans?: WorkoutPlan[];
 }
 
 export interface AuthResponse {
   user: User;
-  token?: string; // In a real app, JWT
+  token?: string;
 }

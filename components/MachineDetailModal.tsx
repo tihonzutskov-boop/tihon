@@ -1,14 +1,18 @@
 
 import React from 'react';
-import { GymMachine } from '../types';
+import { GymMachine, Language } from '../types';
+import { translations, getGymTranslation } from '../translations';
 import { X, Play, Info } from 'lucide-react';
 
 interface MachineDetailModalProps {
   machine: GymMachine;
   onClose: () => void;
+  // Added missing lang prop to fix TypeScript error in App.tsx
+  lang: Language;
 }
 
-const MachineDetailModal: React.FC<MachineDetailModalProps> = ({ machine, onClose }) => {
+const MachineDetailModal: React.FC<MachineDetailModalProps> = ({ machine, onClose, lang }) => {
+  const t = translations[lang];
   
   // Helper to ensure URL is embed-friendly if it's a standard YouTube watch link
   const getEmbedUrl = (url: string) => {
@@ -66,10 +70,10 @@ const MachineDetailModal: React.FC<MachineDetailModalProps> = ({ machine, onClos
            {/* Header */}
            <div className="p-6 border-b border-slate-800 flex justify-between items-start bg-slate-900">
              <div>
-               <h2 className="text-2xl font-bold text-white mb-1">{machine.name}</h2>
+               <h2 className="text-2xl font-bold text-white mb-1">{getGymTranslation(machine.name, lang)}</h2>
                <div className="flex items-center text-xs text-lime-400 font-semibold uppercase tracking-wider">
                   <Info className="w-3 h-3 mr-1.5" />
-                  Machine Guide
+                  {t.machineGuide}
                </div>
              </div>
              <button 
@@ -82,15 +86,15 @@ const MachineDetailModal: React.FC<MachineDetailModalProps> = ({ machine, onClos
 
            {/* Description */}
            <div className="p-6 overflow-y-auto flex-1 bg-slate-800/50">
-             <h3 className="text-sm font-bold text-white mb-3">Instructions</h3>
+             <h3 className="text-sm font-bold text-white mb-3">{t.instructions}</h3>
              <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-line">
-               {machine.longDescription || "No detailed instructions provided for this machine."}
+               {getGymTranslation(machine.longDescription, lang) || t.noInstructions}
              </p>
 
              <div className="mt-8 p-4 bg-slate-800 rounded-lg border border-slate-700">
-               <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">Pro Tip</h4>
+               <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">{t.proTip}</h4>
                <p className="text-xs text-slate-400 italic">
-                 Scan your environment before starting. Adjust the seat height and weight stack to match your strength level.
+                 {t.proTipDefault}
                </p>
              </div>
            </div>
@@ -100,7 +104,7 @@ const MachineDetailModal: React.FC<MachineDetailModalProps> = ({ machine, onClos
                 onClick={onClose}
                 className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-semibold transition-colors border border-slate-700"
               >
-                Close Guide
+                {t.closeGuide}
               </button>
            </div>
         </div>

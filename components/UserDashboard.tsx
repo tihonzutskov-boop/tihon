@@ -1,17 +1,21 @@
 
 import React from 'react';
-import { User, Gym, WorkoutPlan } from '../types';
-import { Trophy, Flame, Clock, Calendar, LogOut, ArrowRight, Activity, MapPin, Dumbbell, ClipboardList, Target } from 'lucide-react';
+import { User, Gym, Language } from '../types';
+import { translations, getGymTranslation } from '../translations';
+import { Trophy, Flame, Clock, Calendar, LogOut, ArrowRight, Activity, MapPin, Dumbbell } from 'lucide-react';
 import GymMap from './GymMap';
 
 interface UserDashboardProps {
   user: User;
   gyms: Gym[];
   onLogout: () => void;
-  onEnterGym: (gymId: string, plan?: WorkoutPlan) => void;
+  onEnterGym: (gymId: string) => void;
+  lang: Language;
 }
 
-const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, onLogout, onEnterGym }) => {
+const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, onLogout, onEnterGym, lang }) => {
+  const t = translations[lang];
+  
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 animate-in fade-in duration-500">
       
@@ -23,7 +27,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, onLogout, onE
               <div className="w-8 h-8 bg-gradient-to-br from-lime-400 to-lime-600 rounded flex items-center justify-center text-slate-900 font-bold text-lg shadow-lg">
                 G
               </div>
-              <span className="font-bold text-lg text-white tracking-tight">GY<span className="text-lime-500">DE</span> Dashboard</span>
+              <span className="font-bold text-lg text-white">{t.dashboard}</span>
             </div>
             
             <div className="flex items-center space-x-4">
@@ -41,7 +45,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, onLogout, onE
                <button 
                  onClick={onLogout}
                  className="p-2 text-slate-500 hover:text-red-400 transition-colors"
-                 title="Log Out"
+                 title={t.logout}
                >
                  <LogOut className="w-5 h-5" />
                </button>
@@ -54,8 +58,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, onLogout, onE
         
         {/* Welcome Section */}
         <div className="mb-10">
-          <h1 className="text-3xl font-bold text-white mb-2">Hello, {user.name.split(' ')[0]} 👋</h1>
-          <p className="text-slate-400">Ready to crush your workout today?</p>
+          <h1 className="text-3xl font-bold text-white mb-2">{t.welcomeBack}, {user.name.split(' ')[0]} 👋</h1>
+          <p className="text-slate-400">{t.readyToCrush}</p>
         </div>
 
         {/* Stats Grid */}
@@ -63,7 +67,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, onLogout, onE
           <StatCard 
             icon={Trophy} 
             value={user.stats?.workoutsCompleted || 0} 
-            label="Workouts Completed" 
+            label={t.workoutsCompleted} 
             color="text-yellow-400"
             bg="bg-yellow-950/30"
             borderColor="border-yellow-900/50"
@@ -71,7 +75,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, onLogout, onE
           <StatCard 
             icon={Flame} 
             value={user.stats?.streakDays || 0} 
-            label="Day Streak" 
+            label={t.dayStreak} 
             color="text-orange-400" 
             bg="bg-orange-950/30"
             borderColor="border-orange-900/50"
@@ -79,7 +83,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, onLogout, onE
           <StatCard 
             icon={Clock} 
             value={Math.round((user.stats?.totalMinutes || 0) / 60)} 
-            label="Total Hours" 
+            label={t.totalDuration} 
             color="text-blue-400" 
             bg="bg-blue-950/30"
             borderColor="border-blue-900/50"
@@ -87,63 +91,11 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, onLogout, onE
           />
         </div>
 
-        {/* My Training Plans Section */}
-        {user.savedPlans && user.savedPlans.length > 0 && (
-          <div className="mb-12">
-            <h2 className="text-xl font-bold text-white mb-6 flex items-center">
-              <ClipboardList className="w-5 h-5 mr-2 text-blue-400" />
-              My Training Plans
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {user.savedPlans.map(plan => (
-                <div 
-                  key={plan.id}
-                  className="bg-slate-900 border border-slate-800 rounded-2xl p-6 hover:border-blue-500/50 transition-all group flex flex-col h-full"
-                >
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="w-10 h-10 bg-blue-950/50 rounded-lg flex items-center justify-center text-blue-400 border border-blue-900/30">
-                      <Target className="w-5 h-5" />
-                    </div>
-                    {plan.lastPerformed && (
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">
-                        Performed {plan.lastPerformed}
-                      </span>
-                    )}
-                  </div>
-                  
-                  <h3 className="text-lg font-bold text-white mb-2">{plan.name}</h3>
-                  
-                  <div className="flex flex-wrap gap-2 mb-6">
-                    <div className="flex items-center text-[10px] font-bold text-slate-400 bg-slate-800 px-2 py-1 rounded">
-                      <Dumbbell className="w-3 h-3 mr-1" />
-                      {plan.exercises.length} EXERCISES
-                    </div>
-                    <div className="flex items-center text-[10px] font-bold text-slate-400 bg-slate-800 px-2 py-1 rounded">
-                      <Clock className="w-3 h-3 mr-1" />
-                      {plan.totalDurationMinutes} MINS
-                    </div>
-                  </div>
-
-                  <div className="mt-auto">
-                    <button 
-                      onClick={() => onEnterGym(gyms[0].id, plan)}
-                      className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-bold flex items-center justify-center transition-all shadow-lg shadow-blue-900/20"
-                    >
-                      Start Session
-                      <ArrowRight className="w-4 h-4 ml-2" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Gyms Section */}
         <div className="mb-8 flex items-center justify-between">
            <h2 className="text-xl font-bold text-white flex items-center">
              <MapPin className="w-5 h-5 mr-2 text-lime-400" />
-             Available Locations
+             {t.availableGyms}
            </h2>
         </div>
 
@@ -156,24 +108,24 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, onLogout, onE
             >
               <div className="h-40 bg-slate-950 relative w-full border-b border-slate-800 overflow-hidden">
                 <div className="absolute inset-0 p-4 opacity-60 group-hover:opacity-100 transition-opacity duration-500">
-                   <GymMap zones={gym.zones} dimensions={gym.dimensions} entrance={gym.entrance} floorColor={gym.floorColor} annexes={gym.annexes} isThumbnail={true} />
+                   <GymMap zones={gym.zones} dimensions={gym.dimensions} entrance={gym.entrance} floorColor={gym.floorColor} annexes={gym.annexes} isThumbnail={true} lang={lang} />
                 </div>
               </div>
               <div className="p-6">
-                 <h3 className="text-lg font-bold text-white group-hover:text-lime-400 transition-colors mb-1">{gym.name}</h3>
-                 <p className="text-sm text-slate-500 mb-4">{gym.zones.length} Zones • {gym.annexes ? gym.annexes.length : 0} Extensions</p>
-                 <div className="flex items-center text-sm font-semibold text-lime-500 group-hover:translate-x-1 transition-transform">
-                   Enter Gym <ArrowRight className="w-4 h-4 ml-1.5" />
+                 <h3 className="text-lg font-bold text-white group-hover:text-lime-400 transition-colors mb-1">{getGymTranslation(gym.name, lang)}</h3>
+                 <p className="text-sm text-slate-500 mb-4">{gym.zones.length} {t.zones} • {gym.annexes ? gym.annexes.length : 0} {t.extensions}</p>
+                 <div className="flex items-center text-sm font-semibold text-lime-500 group-hover:translate-x-1 transition-transform uppercase tracking-wider">
+                   {t.enterGym} <ArrowRight className="w-4 h-4 ml-1.5" />
                  </div>
               </div>
             </button>
           ))}
         </div>
 
-        {/* Recent Activity */}
+        {/* Recent Activity Mockup */}
         <h2 className="text-xl font-bold text-white mb-6 flex items-center">
-           <Activity className="w-5 h-5 mr-2 text-emerald-400" />
-           Recent Activity
+           <Activity className="w-5 h-5 mr-2 text-blue-400" />
+           {t.recentActivityTitle}
         </h2>
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
            {[1, 2, 3].map((i) => (
@@ -185,14 +137,14 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, onLogout, onE
                    <div>
                      <h4 className="font-bold text-slate-200">Full Body Hypertrophy</h4>
                      <div className="flex items-center text-xs text-slate-500 space-x-2">
-                        <span className="flex items-center"><Calendar className="w-3 h-3 mr-1" /> {i} days ago</span>
+                        <span className="flex items-center"><Calendar className="w-3 h-3 mr-1" /> {i} {t.daysAgo}</span>
                         <span>•</span>
-                        <span>45 mins</span>
+                        <span>45 {t.mins}</span>
                      </div>
                    </div>
                 </div>
                 <div className="text-right">
-                   <span className="text-sm font-mono text-lime-400">Completed</span>
+                   <span className="text-sm font-mono text-lime-400">{t.completed}</span>
                 </div>
              </div>
            ))}

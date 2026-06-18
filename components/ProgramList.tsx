@@ -1,26 +1,57 @@
-
 import React, { useState, useEffect } from 'react';
-import { WorkoutPlan, Exercise } from '../types';
+import { WorkoutPlan, Language, Exercise, WorkoutDay } from '../types';
 import { generateProgramAnalysis } from '../services/geminiService';
-import { Trash2, Dumbbell, BrainCircuit, X, Calendar, MapPin } from 'lucide-react';
+import { translations } from '../translations';
+import { Trash2, Dumbbell, BrainCircuit, X, Calendar, Plus, Edit2, Check, Sparkles, ChevronRight, MapPin, Play } from 'lucide-react';
 
 interface ProgramListProps {
   workout: WorkoutPlan;
+  activeDayIndex: number;
+  setActiveDayIndex: (index: number) => void;
   onRemoveExercise: (id: string) => void;
+  onAddExercise: (exercise: Exercise) => void;
+  onUpdateExercise: (exercise: Exercise) => void;
   onClear: () => void;
+  onStartWizard?: () => void;
+  onLocateExercise: (exercise: Exercise) => void;
+  onWatchVideo: (exercise: Exercise) => void;
   onClose?: () => void;
-  onExerciseClick?: (exercise: Exercise) => void;
+  lang: Language;
 }
 
-const ProgramList: React.FC<ProgramListProps> = ({ workout, onRemoveExercise, onClear, onClose, onExerciseClick }) => {
+const ProgramList: React.FC<ProgramListProps> = ({ 
+  workout, 
+  activeDayIndex,
+  setActiveDayIndex,
+  onRemoveExercise, 
+  onAddExercise, 
+  onUpdateExercise,
+  onClear, 
+  onStartWizard,
+  onLocateExercise,
+  onWatchVideo,
+  onClose, 
+  lang 
+}) => {
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const t = translations[lang];
+
+  const currentDay = workout.days[activeDayIndex] || workout.days[0];
+
+  // Manual Add/Edit Form State
+  const [formName, setFormName] = useState('');
+  const [formSets, setFormSets] = useState(3);
+  const [formReps, setFormReps] = useState('10');
+  const [formMuscle, setFormMuscle] = useState('');
 
   useEffect(() => {
     const analyze = async () => {
-      if (workout.exercises.length > 2) {
+      if (currentDay && currentDay.exercises.length > 2) {
         setAnalyzing(true);
-        const result = await generateProgramAnalysis(workout.exercises);
+        const result = await generateProgramAnalysis(currentDay.exercises, lang);
         setAnalysis(result);
         setAnalyzing(false);
       } else {
@@ -30,19 +61,72 @@ const ProgramList: React.FC<ProgramListProps> = ({ workout, onRemoveExercise, on
     
     const timeoutId = setTimeout(analyze, 1500);
     return () => clearTimeout(timeoutId);
-  }, [workout.exercises.length]);
+  }, [currentDay?.exercises.length, lang, activeDayIndex]);
+
+  const handleManualAdd = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formName) return;
+
+    onAddExercise({
+      id: `manual-${Date.now()}`,
+      name: formName,
+      sets: formSets,
+      reps: formReps,
+      targetMuscle: formMuscle || 'General',
+      equipmentId: 'manual',
+    });
+
+    resetForm();
+    setIsAdding(false);
+  };
+
+  const startEditing = (ex: Exercise) => {
+    setEditingId(ex.id);
+    setFormName(ex.name);
+    setFormSets(ex.sets);
+    setFormReps(ex.reps);
+    setFormMuscle(ex.targetMuscle);
+    setIsAdding(false);
+  };
+
+  const handleUpdate = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingId || !formName) return;
+
+    onUpdateExercise({
+      id: editingId,
+      name: formName,
+      sets: formSets,
+      reps: formReps,
+      targetMuscle: formMuscle,
+      equipmentId: currentDay.exercises.find(ex => ex.id === editingId)?.equipmentId || 'manual',
+      notes: currentDay.exercises.find(ex => ex.id === editingId)?.notes
+    });
+
+    resetForm();
+    setEditingId(null);
+  };
+
+  const resetForm = () => {
+    setFormName('');
+    setFormSets(3);
+    setFormReps('10');
+    setFormMuscle('');
+  };
+
+  const totalExercises = workout.days.reduce((acc, d) => acc + d.exercises.length, 0);
 
   return (
     <div className="bg-slate-900 border-r border-slate-800 flex flex-col h-full shadow-2xl w-full">
       <div className="p-6 border-b border-slate-800 bg-slate-900/95 backdrop-blur supports-[backdrop-filter]:bg-slate-900/60 sticky top-0 z-10">
-        <div className="flex justify-between items-center mb-1">
+        <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold text-white flex items-center">
             <Calendar className="w-5 h-5 mr-2 text-lime-400" />
-            Training Plan
+            {t.trainingPlan}
           </h2>
           <div className="flex items-center space-x-2">
             <span className="text-xs bg-slate-800 text-slate-400 px-2 py-1 rounded-full border border-slate-700">
-              {workout.exercises.length} Items
+              {totalExercises} {t.items}
             </span>
             {onClose && (
               <button 
@@ -54,53 +138,230 @@ const ProgramList: React.FC<ProgramListProps> = ({ workout, onRemoveExercise, on
             )}
           </div>
         </div>
-        <p className="text-xs text-slate-500">Your future workout session.</p>
+
+        <button 
+          onClick={onStartWizard}
+          className="w-full group bg-gradient-to-r from-lime-500/20 to-blue-500/20 border border-lime-500/30 hover:border-lime-500/60 p-3 rounded-xl transition-all flex items-center justify-center space-x-3 mb-4"
+        >
+          <Sparkles className="w-4 h-4 text-lime-400 group-hover:animate-pulse" />
+          <span className="text-xs font-black uppercase tracking-widest text-lime-400 group-hover:text-white transition-colors">{t.generateWithAi}</span>
+        </button>
+
+        {/* Day Tabs */}
+        {workout.days.length > 1 && (
+          <div className="flex overflow-x-auto scrollbar-hide space-x-2 pb-2">
+            {workout.days.map((day, idx) => (
+              <button
+                key={day.id}
+                onClick={() => setActiveDayIndex(idx)}
+                className={`
+                  flex-shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border
+                  ${activeDayIndex === idx 
+                    ? 'bg-lime-500 border-lime-500 text-slate-950' 
+                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'}
+                `}
+              >
+                {t.day} {idx + 1}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {workout.exercises.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-4">
+        {currentDay && (
+          <div className="mb-4">
+             <div className="flex items-center text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 px-1">
+               <ChevronRight className="w-3 h-3 mr-1 text-lime-500" />
+               {currentDay.name}
+             </div>
+          </div>
+        )}
+
+        {!isAdding && !editingId ? (
+          <button 
+            onClick={() => { resetForm(); setIsAdding(true); }}
+            className="w-full py-2 border border-dashed border-slate-700 rounded-lg text-slate-500 hover:text-lime-400 hover:border-lime-500/50 transition-all text-xs font-bold flex items-center justify-center bg-slate-950/30"
+          >
+            <Plus className="w-3 h-3 mr-2" />
+            {t.addExerciseManually}
+          </button>
+        ) : isAdding ? (
+          <form onSubmit={handleManualAdd} className="bg-slate-800 border border-lime-500/30 rounded-lg p-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="space-y-1">
+              <label className="text-[10px] uppercase font-bold text-slate-500">{t.exerciseName}</label>
+              <input 
+                autoFocus
+                type="text" 
+                value={formName} 
+                onChange={(e) => setFormName(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm text-white outline-none focus:border-lime-500 transition-colors"
+                placeholder="Squats..."
+                required
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label className="text-[10px] uppercase font-bold text-slate-500">{t.sets}</label>
+                <input 
+                  type="number" 
+                  value={formSets} 
+                  onChange={(e) => setFormSets(parseInt(e.target.value) || 0)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm text-white outline-none focus:border-lime-500"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] uppercase font-bold text-slate-500">{t.reps}</label>
+                <input 
+                  type="text" 
+                  value={formReps} 
+                  onChange={(e) => setFormReps(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm text-white outline-none focus:border-lime-500"
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] uppercase font-bold text-slate-500">{t.muscleGroup}</label>
+              <input 
+                type="text" 
+                value={formMuscle} 
+                onChange={(e) => setFormMuscle(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm text-white outline-none focus:border-lime-500"
+                placeholder="Quads..."
+              />
+            </div>
+            <div className="flex space-x-2 pt-2">
+              <button 
+                type="button"
+                onClick={() => { setIsAdding(false); resetForm(); }}
+                className="flex-1 py-2 text-[10px] font-bold text-slate-400 hover:text-white transition-colors uppercase tracking-wider"
+              >
+                {t.cancel}
+              </button>
+              <button 
+                type="submit"
+                className="flex-1 py-2 bg-lime-500 text-slate-900 rounded text-[10px] font-bold uppercase tracking-wider hover:bg-lime-400 transition-colors"
+              >
+                {t.add}
+              </button>
+            </div>
+          </form>
+        ) : null}
+
+        {(!currentDay || currentDay.exercises.length === 0) && !isAdding ? (
+          <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-4 pt-10">
             <div className="w-16 h-16 border-2 border-dashed border-slate-800 rounded-full flex items-center justify-center">
               <Dumbbell className="w-8 h-8 opacity-20" />
             </div>
             <div className="text-center px-6">
-              <p className="text-sm font-medium text-slate-400">Your plan is empty</p>
-              <p className="text-xs text-slate-600 mt-1">Select equipment on the map to add exercises.</p>
+              <p className="text-sm font-medium text-slate-400">{t.planEmpty}</p>
+              <p className="text-xs text-slate-600 mt-1">{t.selectEquipment}</p>
             </div>
           </div>
         ) : (
-          workout.exercises.map((ex, index) => (
-            <div 
-              key={ex.id} 
-              onClick={() => onExerciseClick?.(ex)}
-              className="bg-slate-800/50 hover:bg-slate-800 rounded-lg p-3 border border-slate-700/50 hover:border-lime-500/50 flex justify-between group transition-all cursor-pointer"
-            >
-              <div className="flex items-start space-x-3">
-                <div className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-900 text-slate-500 text-xs font-mono mt-0.5 border border-slate-800 group-hover:text-lime-400 group-hover:border-lime-900 transition-colors">
-                  {index + 1}
+          currentDay.exercises.map((ex, index) => (
+            editingId === ex.id ? (
+              <form key={ex.id} onSubmit={handleUpdate} className="bg-slate-800 border border-blue-500/30 rounded-lg p-3 space-y-3 animate-in zoom-in-95 duration-200">
+                <div className="space-y-1">
+                  <input 
+                    autoFocus
+                    type="text" 
+                    value={formName} 
+                    onChange={(e) => setFormName(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
+                    required
+                  />
                 </div>
-                <div>
-                  <h4 className="font-medium text-slate-200 text-sm group-hover:text-white">{ex.name}</h4>
-                  <div className="flex items-center space-x-2 text-xs text-slate-500 mt-1">
-                    <span className="text-lime-400/80 font-mono">{ex.sets} x {ex.reps}</span>
-                    <span className="text-slate-700">•</span>
-                    <span className="text-purple-400/80">{ex.targetMuscle}</span>
+                <div className="grid grid-cols-2 gap-2 text-[10px]">
+                  <input 
+                    type="number" 
+                    value={formSets} 
+                    onChange={(e) => setFormSets(parseInt(e.target.value) || 0)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-white outline-none"
+                    placeholder="Sets"
+                  />
+                  <input 
+                    type="text" 
+                    value={formReps} 
+                    onChange={(e) => setFormReps(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-white outline-none"
+                    placeholder="Reps"
+                  />
+                </div>
+                <div className="flex space-x-2 pt-1">
+                   <button 
+                    type="button"
+                    onClick={() => { setEditingId(null); resetForm(); }}
+                    className="flex-1 py-1.5 text-[10px] font-bold text-slate-400 hover:text-white"
+                  >
+                    {t.cancel}
+                  </button>
+                  <button 
+                    type="submit"
+                    className="flex-1 py-1.5 bg-blue-600 text-white rounded text-[10px] font-bold hover:bg-blue-500 transition-colors flex items-center justify-center"
+                  >
+                    <Check className="w-3 h-3 mr-1" />
+                    {t.update}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div key={ex.id} className="bg-slate-800/50 hover:bg-slate-800 rounded-lg p-3 border border-slate-700/50 hover:border-slate-600 transition-all">
+                <div className="flex justify-between group">
+                  <div className="flex items-start space-x-3">
+                    <div className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-900 text-slate-500 text-xs font-mono mt-0.5 border border-slate-800">
+                      {index + 1}
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-slate-200 text-sm">{ex.name}</h4>
+                      <div className="flex items-center space-x-2 text-xs text-slate-500 mt-1">
+                        <span className="text-lime-400/80 font-mono">{ex.sets} x {ex.reps}</span>
+                        <span className="text-slate-700">•</span>
+                        <span className="text-purple-400/80">{ex.targetMuscle}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button 
+                      onClick={() => startEditing(ex)}
+                      className="text-slate-600 hover:text-blue-400 p-1"
+                      title={t.edit}
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button 
+                      onClick={() => onRemoveExercise(ex.id)}
+                      className="text-slate-600 hover:text-red-400 p-1"
+                      title="Remove"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
-              </div>
-              <div className="flex flex-col items-center space-y-2">
-                <button 
-                  onClick={(e) => { e.stopPropagation(); onRemoveExercise(ex.id); }}
-                  className="text-slate-600 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                  title="Remove"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-                <div className="text-lime-500/30 group-hover:text-lime-500 transition-colors">
-                  <MapPin className="w-3.5 h-3.5" />
+
+                {/* Direct Action Buttons for Ease of Use */}
+                <div className="mt-3 flex space-x-2">
+                   {ex.equipmentId !== 'manual' && (
+                     <button 
+                       onClick={() => onLocateExercise(ex)}
+                       className="flex-1 py-1.5 bg-slate-900 hover:bg-slate-700 text-[10px] font-bold text-slate-400 hover:text-lime-400 rounded border border-slate-800 flex items-center justify-center transition-colors"
+                     >
+                       <MapPin className="w-3 h-3 mr-1.5" />
+                       {t.locate}
+                     </button>
+                   )}
+                   {ex.videoUrl && (
+                     <button 
+                       onClick={() => onWatchVideo(ex)}
+                       className="flex-1 py-1.5 bg-slate-900 hover:bg-slate-700 text-[10px] font-bold text-slate-400 hover:text-blue-400 rounded border border-slate-800 flex items-center justify-center transition-colors"
+                     >
+                       <Play className="w-3 h-3 mr-1.5" />
+                       {t.watchVideo}
+                     </button>
+                   )}
                 </div>
               </div>
-            </div>
+            )
           ))
         )}
       </div>
@@ -109,28 +370,28 @@ const ProgramList: React.FC<ProgramListProps> = ({ workout, onRemoveExercise, on
         {analyzing ? (
           <div className="flex items-center text-xs text-indigo-400 animate-pulse mb-3 bg-indigo-950/20 p-2 rounded">
             <BrainCircuit className="w-4 h-4 mr-2" />
-            Analyzing program balance...
+            {t.analyzing}
           </div>
         ) : analysis ? (
            <div className="bg-indigo-950/30 border border-indigo-500/20 rounded p-3 mb-3">
              <div className="flex items-center text-xs text-indigo-300 font-semibold mb-1">
                <BrainCircuit className="w-3 h-3 mr-1.5" />
-               AI Coach Insight
+               {t.aiInsight}
              </div>
              <p className="text-xs text-indigo-200 leading-relaxed opacity-80">{analysis}</p>
            </div>
         ) : null}
 
-        {workout.exercises.length > 0 && (
+        {totalExercises > 0 && (
           <div className="flex space-x-2">
              <button 
                onClick={onClear}
                className="flex-1 py-2.5 text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
              >
-               Clear
+               {t.clear}
              </button>
-             <button className="flex-[2] py-2.5 bg-gradient-to-r from-lime-500 to-lime-600 hover:from-lime-400 hover:to-lime-500 text-slate-900 font-bold rounded-lg text-sm transition-all shadow-lg shadow-lime-900/20 flex items-center justify-center">
-               Save Plan
+             <button className="flex-[2] py-2.5 bg-gradient-to-r from-lime-500 to-lime-600 hover:from-lime-400 hover:to-lime-500 text-slate-950 font-black rounded-lg text-sm transition-all shadow-lg shadow-lime-900/20 flex items-center justify-center">
+               {t.savePlan}
              </button>
           </div>
         )}

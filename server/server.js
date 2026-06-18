@@ -12,6 +12,60 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://postgres:password@localhost:5432/gym_cartographer'
 });
 
+// Self-initializing exercises table checking
+const initDb = async () => {
+  try {
+    const client = pool ? await pool.connect() : null;
+    if (!client) return;
+    
+    // Create the updated structure of 'exercises' table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS exercises (
+        id VARCHAR(100) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        target_muscle VARCHAR(255) NOT NULL,
+        equipment_required VARCHAR(255),
+        category VARCHAR(150),
+        instructions TEXT,
+        equipment_id VARCHAR(100),
+        video_url VARCHAR(255),
+        image_url VARCHAR(255)
+      )
+    `);
+
+    // Check mapping details of existing database cols for backward compatibility and migration
+    const res = await client.query(`
+      SELECT column_name FROM information_schema.columns 
+      WHERE table_name = 'exercises'
+    `);
+    const cols = res.rows.map(r => r.column_name.toLowerCase());
+
+    // Progressively alter existing tables when they lack the required columns
+    if (!cols.includes('equipment_required')) {
+      await client.query(`ALTER TABLE exercises ADD COLUMN equipment_required VARCHAR(255)`);
+    }
+    if (!cols.includes('category')) {
+      await client.query(`ALTER TABLE exercises ADD COLUMN category VARCHAR(150)`);
+    }
+    if (!cols.includes('instructions')) {
+      await client.query(`ALTER TABLE exercises ADD COLUMN instructions TEXT`);
+      // Migrate old notes/sets/reps descriptions to instructions if instructions is currently null
+      if (cols.includes('notes')) {
+        await client.query(`UPDATE exercises SET instructions = notes WHERE instructions IS NULL`);
+      }
+    }
+    if (!cols.includes('image_url')) {
+      await client.query(`ALTER TABLE exercises ADD COLUMN image_url VARCHAR(255)`);
+    }
+
+    client.release();
+    console.log("Database schema active: 'exercises' checked/initialized with updated columns.");
+  } catch (err) {
+    console.warn("Database initialization postponed (Postgres connection unavailable yet):", err.message);
+  }
+};
+initDb();
+
 app.use(cors());
 app.use(express.json());
 
@@ -215,6 +269,106 @@ app.delete('/api/gyms/:id', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// --- Exercise Library Routes ---
+
+// GET All Exercises
+app.get('/api/exercises', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query('SELECT * FROM exercises ORDER BY name ASC');
+    // Map database snake_case back to camelCase for the API response
+    const exercises = result.rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      targetMuscle: row.target_muscle,
+      equipmentRequired: row.equipment_required || '',
+      category: row.category || '',
+      instructions: row.instructions || '',
+      equipmentId: row.equipment_id || '',
+      videoUrl: row.video_url || '',
+      imageUrl: row.image_url || ''
+    }));
+    res.json(exercises);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error fetching exercises' });
+  } finally {
+    client.release();
+  }
+});
+
+// POST Create Exercise
+app.post('/api/exercises', async (req, res) => {
+  const { id, name, targetMuscle, equipmentRequired, category, instructions, equipmentId, videoUrl, imageUrl } = req.body;
+  const client = await pool.connect();
+  try {
+    await client.query(
+      'INSERT INTO exercises (id, name, target_muscle, equipment_required, category, instructions, equipment_id, video_url, image_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+      [
+        id, 
+        name, 
+        targetMuscle || '', 
+        equipmentRequired || '', 
+        category || '', 
+        instructions || '', 
+        equipmentId || '', 
+        videoUrl || '',
+        imageUrl || ''
+      ]
+    );
+    res.json({ success: true, id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error creating exercise' });
+  } finally {
+    client.release();
+  }
+});
+
+// PUT Update Exercise
+app.put('/api/exercises/:id', async (req, res) => {
+  const { id } = req.params;
+  const { name, targetMuscle, equipmentRequired, category, instructions, equipmentId, videoUrl, imageUrl } = req.body;
+  const client = await pool.connect();
+  try {
+    await client.query(
+      'UPDATE exercises SET name=$1, target_muscle=$2, equipment_required=$3, category=$4, instructions=$5, equipment_id=$6, video_url=$7, image_url=$8 WHERE id=$9',
+      [
+        name, 
+        targetMuscle || '', 
+        equipmentRequired || '', 
+        category || '', 
+        instructions || '', 
+        equipmentId || '', 
+        videoUrl || '', 
+        imageUrl || '',
+        id
+      ]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error updating exercise' });
+  } finally {
+    client.release();
+  }
+});
+
+// DELETE Exercise
+app.delete('/api/exercises/:id', async (req, res) => {
+  const { id } = req.params;
+  const client = await pool.connect();
+  try {
+    await client.query('DELETE FROM exercises WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error deleting exercise' });
+  } finally {
+    client.release();
   }
 });
 
