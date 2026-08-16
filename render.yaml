@@ -1,0 +1,22 @@
+databases:
+  - name: gyde-db
+    plan: free
+    databaseName: gym_cartographer
+    user: gyde
+
+services:
+  - type: web
+    name: gyde
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: gyde-db
+          property: connectionString
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: NODE_ENV
+        value: production

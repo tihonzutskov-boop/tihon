@@ -2,7 +2,9 @@
 import { Gym, User, LibraryExercise, EquipmentItem, GymZone, GymMachine, EquipmentType } from '../types';
 import { DEFAULT_GYM } from '../constants';
 
-const API_BASE = 'http://localhost:3001/api';
+// Relative path: works same-origin in production (Express serves the built
+// frontend) and via the Vite dev server proxy in local development.
+export const API_BASE = '/api';
 
 // Canonical standard equipment items that are reusable across any gym
 export const DEFAULT_EQUIPMENT: EquipmentItem[] = [
@@ -409,7 +411,7 @@ export const api = {
 
   async deleteExercise(id: string): Promise<void> {
     try {
-      await fetch(`${API_BASE}/exercises/${id}`, {
+      const response = await fetch(`${API_BASE}/exercises/${id}`, {
         method: 'DELETE',
       });
       if (!response.ok) throw new Error("API delete error");
