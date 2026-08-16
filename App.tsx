@@ -521,10 +521,19 @@ const App: React.FC = () => {
         )}
 
         {isWizardOpen && (
-          <PlanWizard 
+          <PlanWizard
             zones={zones}
             onFinish={handleWizardFinish}
             onCancel={() => setIsWizardOpen(false)}
+            lang={lang}
+          />
+        )}
+
+        {showAuthModal && (
+          <AuthModal
+            initialMode={authMode}
+            onClose={() => setShowAuthModal(false)}
+            onSuccess={handleAuthSuccess}
             lang={lang}
           />
         )}
