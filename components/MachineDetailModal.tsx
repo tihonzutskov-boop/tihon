@@ -9,27 +9,17 @@ interface MachineDetailModalProps {
   machine: GymMachine;
   onClose: () => void;
   lang: Language;
+  equipmentList?: EquipmentItem[];
 }
 
-const MachineDetailModal: React.FC<MachineDetailModalProps> = ({ machine, onClose, lang }) => {
+const MachineDetailModal: React.FC<MachineDetailModalProps> = ({ machine, onClose, lang, equipmentList }) => {
   const t = translations[lang] || translations.et;
-  
+
   // Find linked equipment item if available for photo and setup text
-  let storedEquipment: EquipmentItem[] = DEFAULT_EQUIPMENT;
-  try {
-    const raw = localStorage.getItem('gyde_equipment_library');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        storedEquipment = parsed;
-      }
-    }
-  } catch (e) {
-    // fallback
-  }
+  const storedEquipment: EquipmentItem[] = equipmentList && equipmentList.length > 0 ? equipmentList : DEFAULT_EQUIPMENT;
 
   const linkedEquipment = storedEquipment.find(eq => eq.id === machine.equipmentId || eq.name.toLowerCase() === machine.name.toLowerCase());
-  
+
   const displayImage = machine.imageUrl || linkedEquipment?.imageUrl;
   const displayDescription = getGymTranslation(machine.longDescription, lang) || linkedEquipment?.description || machine.description || t.noInstructions;
 
