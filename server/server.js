@@ -374,8 +374,13 @@ app.put('/api/equipment/:id', requireAdmin, async (req, res) => {
   let client;
   try {
     client = await pool.connect();
+    // Upsert: the item being "updated" may be one of the client-side default
+    // items that was never actually inserted into the database yet.
     await client.query(
-      'UPDATE equipment SET name=$1, category=$2, description=$3, icon=$4, image_url=$5, default_footprint=$6, is_floor_space=$7 WHERE id=$8',
+      `INSERT INTO equipment (id, name, category, description, icon, image_url, default_footprint, is_floor_space)
+       VALUES ($8, $1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (id) DO UPDATE SET
+         name=$1, category=$2, description=$3, icon=$4, image_url=$5, default_footprint=$6, is_floor_space=$7`,
       [name, category || '', description || '', icon || '', imageUrl || '', JSON.stringify(defaultFootprint || null), !!isFloorSpace, id]
     );
     res.json({ success: true });
@@ -468,8 +473,13 @@ app.put('/api/exercises/:id', requireAdmin, async (req, res) => {
   let client;
   try {
     client = await pool.connect();
+    // Upsert: the item being "updated" may be one of the client-side default
+    // exercises that was never actually inserted into the database yet.
     await client.query(
-      'UPDATE exercises SET name=$1, target_muscle=$2, equipment_required=$3, category=$4, instructions=$5, equipment_id=$6, video_url=$7, image_url=$8 WHERE id=$9',
+      `INSERT INTO exercises (id, name, target_muscle, equipment_required, category, instructions, equipment_id, video_url, image_url)
+       VALUES ($9, $1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (id) DO UPDATE SET
+         name=$1, target_muscle=$2, equipment_required=$3, category=$4, instructions=$5, equipment_id=$6, video_url=$7, image_url=$8`,
       [
         name,
         targetMuscle || '',
