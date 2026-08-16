@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS equipment (
   category VARCHAR(150),
   description TEXT,
   icon VARCHAR(100),
-  image_url VARCHAR(255),
+  image_url TEXT,
   default_footprint JSONB,
   is_floor_space BOOLEAN DEFAULT false
 );
@@ -67,8 +67,14 @@ CREATE TABLE IF NOT EXISTS exercises (
   instructions TEXT,
   equipment_id VARCHAR(100),
   video_url VARCHAR(255),
-  image_url VARCHAR(255)
+  image_url TEXT
 );
+
+-- Uploaded photos are stored as base64 data URIs (no file-hosting backend),
+-- which are far longer than VARCHAR(255) — widen for tables already deployed
+-- before this change.
+ALTER TABLE equipment ALTER COLUMN image_url TYPE TEXT;
+ALTER TABLE exercises ALTER COLUMN image_url TYPE TEXT;
 
 CREATE TABLE IF NOT EXISTS workout_logs (
   id SERIAL PRIMARY KEY,
