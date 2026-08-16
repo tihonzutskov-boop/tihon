@@ -10,6 +10,7 @@ const ai = new GoogleGenAI({
 });
 
 const langMap = { et: 'Estonian', en: 'English', ru: 'Russian' };
+const resolveLang = (lang) => langMap[lang] || langMap.en;
 
 const exerciseItemSchema = {
   type: Type.OBJECT,
@@ -71,7 +72,7 @@ export const generateFullProgramFromPreferences = async (preferences, zones, lan
       2. Match exercises to specific machine IDs provided above. If an exercise is best for a zone (like Turf) but no machine exists, leave machineId blank.
       3. Provide a valid YouTube embed URL or YouTube Shorts embed URL for EVERY exercise in the videoUrl field (e.g. https://www.youtube.com/embed/ultWZbUMPL8).
       4. For each day, match the number of exercises to the session duration.
-      5. All text fields (dayName, name, targetMuscle, notes) MUST be in ${langMap[lang]}.
+      5. All text fields (dayName, name, targetMuscle, notes) MUST be in ${resolveLang(lang)}.
     `;
 
     const response = await ai.models.generateContent({
@@ -80,7 +81,7 @@ export const generateFullProgramFromPreferences = async (preferences, zones, lan
       config: {
         responseMimeType: 'application/json',
         responseSchema: multiDaySchema,
-        systemInstruction: `You are an expert fitness coach. Respond entirely in ${langMap[lang]}.`,
+        systemInstruction: `You are an expert fitness coach. Respond entirely in ${resolveLang(lang)}.`,
       },
     });
 
@@ -97,7 +98,7 @@ export const generateFullProgramFromPreferences = async (preferences, zones, lan
 
 export const generateExercisesForEquipment = async (equipmentName, goal = 'general fitness', lang = 'en') => {
   try {
-    const prompt = `Suggest 3 effective exercises using the following equipment: ${equipmentName}. Provide a YouTube Shorts embed URL for each. The user's goal is: ${goal}. Provide all response fields in the ${langMap[lang]} language.`;
+    const prompt = `Suggest 3 effective exercises using the following equipment: ${equipmentName}. Provide a YouTube Shorts embed URL for each. The user's goal is: ${goal}. Provide all response fields in the ${resolveLang(lang)} language.`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -114,7 +115,7 @@ export const generateExercisesForEquipment = async (equipmentName, goal = 'gener
           },
           required: ['exercises']
         },
-        systemInstruction: `You are an expert fitness coach. Respond entirely in ${langMap[lang]}.`,
+        systemInstruction: `You are an expert fitness coach. Respond entirely in ${resolveLang(lang)}.`,
       },
     });
 
@@ -132,7 +133,7 @@ export const generateExercisesForEquipment = async (equipmentName, goal = 'gener
 export const generateProgramAnalysis = async (exercises, lang = 'en') => {
   try {
     const exerciseList = exercises.map(e => `${e.name} (${e.targetMuscle})`).join(', ');
-    const prompt = `Analyze this workout program: ${exerciseList}. Give a short 2-sentence summary of what it's good for and what might be missing. Provide the analysis in ${langMap[lang]}.`;
+    const prompt = `Analyze this workout program: ${exerciseList}. Give a short 2-sentence summary of what it's good for and what might be missing. Provide the analysis in ${resolveLang(lang)}.`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',

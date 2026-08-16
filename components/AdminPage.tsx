@@ -1034,6 +1034,14 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
       if (!dragState || !mapContainerRef.current) return;
       let scaleX = 1, scaleY = 1;
       if (dragState.viewParams) { const rect = mapContainerRef.current.getBoundingClientRect(); scaleX = dragState.viewParams.width / rect.width; scaleY = dragState.viewParams.height / rect.height; }
+      // GymMap renders its content inside an internal scale(zoomScale) transform
+      // (persisted to sessionStorage under this exact key) that this handler
+      // has no other visibility into — without dividing by it, every drag moves
+      // the element zoomScale times faster/slower than the actual cursor.
+      const savedZoom = parseFloat(sessionStorage.getItem('gym_map_zoom_scale_admin') || '1');
+      const zoomScale = Number.isFinite(savedZoom) && savedZoom > 0 ? savedZoom : 1;
+      scaleX /= zoomScale;
+      scaleY /= zoomScale;
       const deltaX = (e.clientX - dragState.startX) * scaleX, deltaY = (e.clientY - dragState.startY) * scaleY;
       const snapToGrid = (val: number) => Math.round(val / 10) * 10;
       const SNAP_THRESHOLD = 15;

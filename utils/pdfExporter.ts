@@ -146,7 +146,16 @@ export function exportWorkoutToPdf(workout: WorkoutPlan, lang: Language) {
       const notesWidth = contentWidth - 10;
       const splitNotes = notes ? doc.splitTextToSize(notes, notesWidth) : [];
       const notesHeight = splitNotes.length * 4.5;
-      const blockHeight = 16 + (notes ? notesHeight + 4 : 0);
+
+      // The exercise name has no length limit (free-text, admin-editable), so
+      // it must wrap like notes do instead of overflowing the card/page edge.
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      const nameLineHeight = 4.5;
+      const nameLines: string[] = doc.splitTextToSize(`${exIdx + 1}. ${exName}`, contentWidth - 10);
+      const extraNameHeight = Math.max(0, nameLines.length - 1) * nameLineHeight;
+
+      const blockHeight = 16 + extraNameHeight + (notes ? notesHeight + 4 : 0);
 
       checkPageBreak(blockHeight + 4);
 
@@ -158,11 +167,15 @@ export function exportWorkoutToPdf(workout: WorkoutPlan, lang: Language) {
       doc.setFillColor(203, 213, 225); // Slate 300
       doc.rect(marginX, currentY, 1.5, blockHeight, 'F');
 
-      // Exercise numbering & Name
+      // Exercise numbering & Name (wraps across lines when it's long)
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(10);
       doc.setTextColor(15, 23, 42); // Slate 900
-      doc.text(`${exIdx + 1}. ${exName}`, marginX + 5, currentY + 6);
+      let nameY = currentY + 6;
+      nameLines.forEach((line: string) => {
+        doc.text(line, marginX + 5, nameY);
+        nameY += nameLineHeight;
+      });
 
       // Sets, Reps and Muscle Group details
       doc.setFont('helvetica', 'normal');
@@ -173,15 +186,15 @@ export function exportWorkoutToPdf(workout: WorkoutPlan, lang: Language) {
       const repsLabel = lang === 'et' ? "kordust" : isRu ? transliterate("повторений") : "reps";
       const muscleLabel = lang === 'et' ? "lihasrühm" : isRu ? transliterate("целевая мышца") : "target muscle";
       const detailText = `${ex.sets} ${setsLabel} x ${ex.reps} ${repsLabel}  |  ${muscleLabel}: ${targetMuscle}`;
-      doc.text(detailText, marginX + 5, currentY + 11);
+      doc.text(detailText, marginX + 5, currentY + 11 + extraNameHeight);
 
       // Instructions / Notes (if present)
       if (notes) {
         doc.setFont('helvetica', 'italic');
         doc.setFontSize(8);
         doc.setTextColor(100, 116, 139); // Slate 500
-        
-        let notesY = currentY + 16;
+
+        let notesY = currentY + 16 + extraNameHeight;
         splitNotes.forEach((line: string) => {
           doc.text(line, marginX + 5, notesY);
           notesY += 4.5;

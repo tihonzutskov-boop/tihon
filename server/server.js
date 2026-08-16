@@ -16,7 +16,7 @@ import {
   setSessionCookie,
   clearSessionCookie,
   requireAuth,
-  requireAdmin,
+  createRequireAdmin,
   isAdminEmail,
 } from './auth.js';
 
@@ -28,6 +28,7 @@ const PORT = process.env.PORT || 3001;
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://postgres:password@localhost:5432/gym_cartographer'
 });
+const requireAdmin = createRequireAdmin(pool);
 
 // Apply the schema (all statements are idempotent, safe to re-run on every boot)
 const initDb = async () => {
@@ -89,7 +90,10 @@ app.post('/api/auth/google', async (req, res) => {
     client = await pool.connect();
     const existing = await client.query('SELECT * FROM users WHERE email = $1', [email]);
 
-    const role = isAdminEmail(email) ? 'admin' : (existing.rows[0]?.role || 'user');
+    // ADMIN_EMAILS is the sole source of truth for admin access, re-derived
+    // on every login — this makes removing an email from it actually revoke
+    // access on that person's next sign-in, not just stop granting new ones.
+    const role = isAdminEmail(email) ? 'admin' : 'user';
     let user;
 
     if (existing.rows.length > 0) {
@@ -252,9 +256,13 @@ app.post('/api/gyms', requireAdmin, async (req, res) => {
     await client.query('COMMIT');
     res.json({ success: true, id });
   } catch (err) {
-    await client?.query('ROLLBACK');
+    try {
+      await client?.query('ROLLBACK');
+    } catch (rollbackErr) {
+      console.error('Rollback failed:', rollbackErr);
+    }
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Database error creating gym' });
   } finally {
     client?.release();
   }
@@ -280,9 +288,12 @@ app.put('/api/gyms/:id', requireAdmin, async (req, res) => {
       [id, name, JSON.stringify(dimensions), JSON.stringify(entrance), floorColor]
     );
 
-    // 2. Replace Zones (Delete all and re-insert)
-    await client.query('DELETE FROM zones WHERE gym_id = $1', [id]);
-    if (zones && zones.length > 0) {
+    // 2. Replace Zones (Delete all and re-insert) — only touch zones if the
+    // payload actually included the field, so a request that omits it (a
+    // partial update) can't wipe existing data. Send zones: [] to
+    // intentionally clear them.
+    if (Array.isArray(zones)) {
+      await client.query('DELETE FROM zones WHERE gym_id = $1', [id]);
       for (const z of zones) {
         await client.query(
           'INSERT INTO zones (id, gym_id, name, type, x, y, width, height, color, icon, description, machines) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)',
@@ -291,9 +302,9 @@ app.put('/api/gyms/:id', requireAdmin, async (req, res) => {
       }
     }
 
-    // 3. Replace Annexes
-    await client.query('DELETE FROM annexes WHERE gym_id = $1', [id]);
-    if (annexes && annexes.length > 0) {
+    // 3. Replace Annexes (same omit-vs-empty-array distinction as zones)
+    if (Array.isArray(annexes)) {
+      await client.query('DELETE FROM annexes WHERE gym_id = $1', [id]);
       for (const a of annexes) {
          await client.query(
           'INSERT INTO annexes (id, gym_id, x, y, width, height) VALUES ($1, $2, $3, $4, $5, $6)',
@@ -305,9 +316,13 @@ app.put('/api/gyms/:id', requireAdmin, async (req, res) => {
     await client.query('COMMIT');
     res.json({ success: true });
   } catch (err) {
-    await client?.query('ROLLBACK');
+    try {
+      await client?.query('ROLLBACK');
+    } catch (rollbackErr) {
+      console.error('Rollback failed:', rollbackErr);
+    }
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Database error updating gym' });
   } finally {
     client?.release();
   }
@@ -524,7 +539,7 @@ app.delete('/api/exercises/:id', requireAdmin, async (req, res) => {
 // --- Gemini AI Routes ---
 // The Gemini API key lives only on the server; the frontend never sees it.
 
-app.post('/api/gemini/full-program', async (req, res) => {
+app.post('/api/gemini/full-program', requireAuth, async (req, res) => {
   const { preferences, zones, lang } = req.body;
   try {
     const days = await generateFullProgramFromPreferences(preferences, zones, lang);
@@ -535,7 +550,7 @@ app.post('/api/gemini/full-program', async (req, res) => {
   }
 });
 
-app.post('/api/gemini/exercises-for-equipment', async (req, res) => {
+app.post('/api/gemini/exercises-for-equipment', requireAuth, async (req, res) => {
   const { equipmentName, goal, lang } = req.body;
   try {
     const exercises = await generateExercisesForEquipment(equipmentName, goal, lang);
@@ -546,7 +561,7 @@ app.post('/api/gemini/exercises-for-equipment', async (req, res) => {
   }
 });
 
-app.post('/api/gemini/program-analysis', async (req, res) => {
+app.post('/api/gemini/program-analysis', requireAuth, async (req, res) => {
   const { exercises, lang } = req.body;
   try {
     const analysis = await generateProgramAnalysis(exercises, lang);
@@ -557,7 +572,7 @@ app.post('/api/gemini/program-analysis', async (req, res) => {
   }
 });
 
-app.post('/api/gemini/parse-floor-plan', async (req, res) => {
+app.post('/api/gemini/parse-floor-plan', requireAuth, async (req, res) => {
   const { base64Data, fileType } = req.body;
   try {
     const plan = await parseFloorPlan(base64Data, fileType);

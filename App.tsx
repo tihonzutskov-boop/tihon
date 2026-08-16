@@ -10,7 +10,7 @@ import MachineDetailModal from './components/MachineDetailModal';
 import EquipmentLibrary from './components/EquipmentLibrary';
 import ExerciseLibrary from './components/ExerciseLibrary';
 import PlanWizard from './components/PlanWizard';
-import { GymZone, WorkoutPlan, Exercise, Gym, GymMachine, User, Language, WorkoutDay, EquipmentItem } from './types';
+import { GymZone, WorkoutPlan, Exercise, Gym, GymMachine, User, Language, WorkoutDay, EquipmentItem, LibraryExercise } from './types';
 import { DEFAULT_GYM } from './constants';
 import { api, DEFAULT_EQUIPMENT } from './services/api';
 import { translations, getGymTranslation } from './translations';
@@ -25,6 +25,7 @@ const App: React.FC = () => {
 
   const [gyms, setGyms] = useState<Gym[]>([DEFAULT_GYM]);
   const [equipmentList, setEquipmentList] = useState<EquipmentItem[]>(DEFAULT_EQUIPMENT);
+  const [libraryExercises, setLibraryExercises] = useState<LibraryExercise[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
   const [user, setUser] = useState<User | null>(null);
@@ -43,6 +44,8 @@ const App: React.FC = () => {
         }
         const fetchedEquipment = await api.fetchEquipment();
         setEquipmentList(fetchedEquipment);
+        const fetchedExercises = await api.fetchExercises();
+        setLibraryExercises(fetchedExercises);
       } catch (e) {
         console.error("Failed to load gyms", e);
       } finally {
@@ -418,6 +421,7 @@ const App: React.FC = () => {
             zones={zones}
             equipmentList={equipmentList}
             onEquipmentChange={setEquipmentList}
+            exercises={libraryExercises}
             onClose={() => setIsLibraryOpen(false)}
             onSelectMachine={handleLibrarySelect}
             lang={lang}
@@ -456,11 +460,13 @@ const App: React.FC = () => {
             ${isSelectorOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'}
           `}
         >
-          <ExerciseSelector 
-            zone={selectedZone} 
-            onAddExercise={addExercise} 
+          <ExerciseSelector
+            zone={selectedZone}
+            onAddExercise={addExercise}
             onClose={handleCloseSelector}
             onWatchVideo={(url) => setViewingMachine({ id: 'video-preview', name: 'Exercise Form Guide', x: 0, y: 0, width: 0, height: 0, videoUrl: url })}
+            equipmentList={equipmentList}
+            exercises={libraryExercises}
             lang={lang}
           />
         </div>

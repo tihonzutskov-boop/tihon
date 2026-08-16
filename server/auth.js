@@ -10,11 +10,20 @@ const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-only-insecure-secret';
 
 export const verifyGoogleToken = async (idToken) => {
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    // Without an audience, google-auth-library skips the "was this token
+    // issued for my app" check entirely and accepts any valid Google token.
+    throw new Error('GOOGLE_CLIENT_ID is not configured on the server');
+  }
   const ticket = await googleClient.verifyIdToken({
     idToken,
     audience: process.env.GOOGLE_CLIENT_ID,
   });
-  return ticket.getPayload();
+  const payload = ticket.getPayload();
+  if (!payload?.email_verified) {
+    throw new Error('Google account email is not verified');
+  }
+  return payload;
 };
 
 export const signSession = (user) => {
@@ -51,12 +60,22 @@ export const requireAuth = (req, res, next) => {
   }
 };
 
-export const requireAdmin = (req, res, next) => {
-  requireAuth(req, res, () => {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Admin access required' });
+// The admin role in the JWT is a snapshot from login time. Checking it alone
+// would mean revoking ADMIN_EMAILS never actually takes effect for anyone
+// holding an already-issued session, so this re-reads the current role from
+// the database on every admin-gated request instead of trusting the token.
+export const createRequireAdmin = (pool) => (req, res, next) => {
+  requireAuth(req, res, async () => {
+    try {
+      const result = await pool.query('SELECT role FROM users WHERE id = $1', [req.user.id]);
+      if (result.rows[0]?.role !== 'admin') {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+      next();
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: 'Server error' });
     }
-    next();
   });
 };
 
