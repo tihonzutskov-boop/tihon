@@ -270,9 +270,13 @@ app.put('/api/gyms/:id', requireAdmin, async (req, res) => {
     client = await pool.connect();
     await client.query('BEGIN');
 
-    // 1. Update Gym Details
+    // 1. Update Gym Details (upsert — the gym being "updated" may be the
+    // client-side DEFAULT_GYM that was never actually inserted yet)
     await client.query(
-      'UPDATE gyms SET name=$2, dimensions=$3, entrance=$4, floor_color=$5 WHERE id=$1',
+      `INSERT INTO gyms (id, name, dimensions, entrance, floor_color)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (id) DO UPDATE SET
+         name=$2, dimensions=$3, entrance=$4, floor_color=$5`,
       [id, name, JSON.stringify(dimensions), JSON.stringify(entrance), floorColor]
     );
 
