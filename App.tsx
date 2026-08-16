@@ -444,6 +444,7 @@ const App: React.FC = () => {
             zone={selectedZone} 
             onAddExercise={addExercise} 
             onClose={handleCloseSelector}
+            onWatchVideo={(url) => setViewingMachine({ id: 'video-preview', name: 'Exercise Form Guide', x: 0, y: 0, width: 0, height: 0, videoUrl: url })}
             lang={lang}
           />
         </div>

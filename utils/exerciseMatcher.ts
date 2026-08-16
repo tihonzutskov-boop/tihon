@@ -233,10 +233,10 @@ export interface ExerciseLocationResult {
  * maps to all supporting equipment, and flags unmapped exercises for manual review.
  */
 export function getExerciseLocations(
-  exercise: LibraryExercise | Exercise | { name: string; equipmentRequired?: string; equipmentId?: string; machineId?: string },
+  exercise: LibraryExercise | Exercise | { name: string; equipmentRequired?: string; equipmentId?: string; machineId?: string } | null | undefined,
   gym: Gym | undefined | null
 ): ExerciseLocationResult {
-  if (!gym || !gym.zones || gym.zones.length === 0) {
+  if (!exercise || !exercise.name || !gym || !gym.zones || gym.zones.length === 0) {
     return {
       matchedZones: [],
       matchedMachines: [],
@@ -339,9 +339,10 @@ export function getExerciseLocations(
  * Checks whether an exercise is available in a given gym zone based on exercise name criteria.
  */
 export function isExerciseAvailableInZone(
-  exercise: LibraryExercise | Exercise | { name: string; equipmentRequired?: string; equipmentId?: string },
+  exercise: LibraryExercise | Exercise | { name: string; equipmentRequired?: string; equipmentId?: string } | null | undefined,
   zone: GymZone | undefined | null
 ): boolean {
+  if (!exercise || !exercise.name) return false;
   if (!zone) return true;
 
   // Direct Zone ID match check if explicitly set
@@ -385,10 +386,10 @@ export function isExerciseAvailableInZone(
  * Checks whether an exercise is available on a specific machine.
  */
 export function isExerciseAvailableOnMachine(
-  exercise: LibraryExercise | Exercise | { name: string },
-  machine: GymMachine
+  exercise: LibraryExercise | Exercise | { name: string } | null | undefined,
+  machine: GymMachine | null | undefined
 ): boolean {
-  if (!machine) return false;
+  if (!exercise || !exercise.name || !machine) return false;
   const canonical = standardizeExerciseName(exercise.name);
   const caps = getExerciseCapabilities(exercise.name);
   const mText = `${normalizeText(machine.name)} ${normalizeText(machine.longDescription)}`;
@@ -402,25 +403,27 @@ export function isExerciseAvailableOnMachine(
  * Ensures search results and exercise locations remain synchronized after any changes to equipment/floor plan data.
  */
 export function searchAndFilterExercises({
-  exercises,
-  searchQuery,
+  exercises = [],
+  searchQuery = '',
   muscleFilter = 'All',
   categoryFilter = 'All',
   selectedZoneId = 'All',
   gym
 }: {
   exercises: { raw: LibraryExercise; translated: LibraryExercise }[];
-  searchQuery: string;
+  searchQuery?: string;
   muscleFilter?: string;
   categoryFilter?: string;
   selectedZoneId?: string;
   gym?: Gym | null;
 }) {
+  const safeExercises = Array.isArray(exercises) ? exercises : [];
   const query = normalizeText(searchQuery);
   const selectedZone = selectedZoneId !== 'All' && gym?.zones ? gym.zones.find(z => z.id === selectedZoneId) : null;
 
   // 1. Filter exercises matching zone/location, muscle, category, and search query
-  const filtered = exercises.filter(({ raw, translated }) => {
+  const filtered = safeExercises.filter(({ raw, translated }) => {
+    if (!raw || !translated) return false;
     // Check location/zone match strictly
     if (selectedZone) {
       const available = isExerciseAvailableInZone(raw, selectedZone) || isExerciseAvailableInZone(translated, selectedZone);

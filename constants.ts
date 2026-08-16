@@ -16,6 +16,7 @@ const DEFAULT_ZONES: GymZone[] = [
     color: '#2563eb', // Cardio Blue
     icon: 'Activity',
     description: 'Cardio warm-up & running area with digital incline and pace tracking.',
+    equipmentIds: ['eq-treadmill'],
     machines: [
       { 
         id: 'tread-1', 
@@ -41,6 +42,7 @@ const DEFAULT_ZONES: GymZone[] = [
     color: '#2563eb', // Cardio Blue
     icon: 'Waves',
     description: 'Concept2 air-resistance rowers for full body conditioning and intervals.',
+    equipmentIds: ['eq-rower'],
     machines: [
        { 
          id: 'row-1', 
@@ -67,6 +69,7 @@ const DEFAULT_ZONES: GymZone[] = [
     color: '#475569', // Solid slate
     icon: 'Dumbbell',
     description: 'Complete pairs of urethane dumbbells from 2kg to 50kg with adjustable benches.',
+    equipmentIds: ['eq-dumbbells', 'eq-adj-bench'],
     machines: [
       { id: 'db-rack-main', name: 'Main Dumbbell Rack', x: 15, y: 15, width: 190, height: 40, icon: 'Dumbbell' },
       { id: 'bench-1', name: 'Incline Bench 1', x: 30, y: 80, width: 40, height: 80, icon: 'BicepsFlexed' },
@@ -86,7 +89,8 @@ const DEFAULT_ZONES: GymZone[] = [
     height: 210,
     color: '#059669', // Green
     icon: 'Flame',
-    description: 'Sprint track, kettlebells, battle ropes, plyo boxes and mobility mats.'
+    description: 'Sprint track, kettlebells, battle ropes, plyo boxes and mobility mats.',
+    equipmentIds: ['eq-floor-mat', 'eq-pullup-bar', 'eq-kettlebells', 'eq-plyo-box', 'eq-resistance-bands']
   },
 
   // STRENGTH MACHINES & CABLES (Terracotta #9a3412)
@@ -101,6 +105,7 @@ const DEFAULT_ZONES: GymZone[] = [
     color: '#9a3412', // Terracotta
     icon: 'Sliders',
     description: 'Dual adjustable cable cross columns with multi-grip pull-up bar.',
+    equipmentIds: ['eq-cable-crossover', 'eq-lat-pulldown', 'eq-pullup-bar'],
     machines: [
       { id: 'cable-tower', name: 'Dual Cable Cross', x: 20, y: 15, width: 180, height: 60, icon: 'Sliders' }
     ]
@@ -116,6 +121,7 @@ const DEFAULT_ZONES: GymZone[] = [
     color: '#9a3412', // Terracotta
     icon: 'Disc',
     description: '45-degree linear leg press and seated leg extension stations.',
+    equipmentIds: ['eq-leg-press', 'eq-leg-extension'],
     machines: [
       {
         id: 'leg-press-1',
@@ -141,6 +147,7 @@ const DEFAULT_ZONES: GymZone[] = [
     color: '#9a3412', // Terracotta
     icon: 'Weight',
     description: 'Olympic power racks with integrated oak lifting platforms and bumper plates.',
+    equipmentIds: ['eq-squat-rack', 'eq-barbell-plates', 'eq-adj-bench'],
     machines: [
       { 
         id: 'rack-1', 

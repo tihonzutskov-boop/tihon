@@ -1,9 +1,10 @@
 import React from 'react';
-import { Exercise, Language } from '../types';
+import { Exercise, Language, LibraryExercise } from '../types';
 import { translations, translateExerciseName, translateMuscle, getEnglishExerciseName } from '../translations';
-import { X, Play, MapPin, ExternalLink, CheckCircle2, Info } from 'lucide-react';
+import { X, Play, MapPin, ExternalLink, CheckCircle2, Info, Flame, ShieldCheck, Zap } from 'lucide-react';
 import { getEquipmentIcon } from '../utils/equipmentIcons';
 import { getYouTubeEmbedUrl } from '../utils/youtubeEmbed';
+import { DEFAULT_EXERCISES } from '../services/api';
 
 interface ExerciseDetailModalProps {
   exercise: Exercise;
@@ -20,6 +21,27 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
 }) => {
   const t = translations[lang] || translations.et;
   const englishExerciseName = getEnglishExerciseName(exercise.name);
+
+  // Look up library exercise definition for fallback difficulty modifiers and instructions
+  let libraryExercises: LibraryExercise[] = DEFAULT_EXERCISES;
+  try {
+    const raw = localStorage.getItem('gyde_custom_exercises');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        libraryExercises = [...parsed, ...DEFAULT_EXERCISES];
+      }
+    }
+  } catch (e) {
+    // fallback
+  }
+
+  const matchingLibEx = libraryExercises.find(
+    ex => ex.id === exercise.id || ex.name.toLowerCase() === exercise.name.toLowerCase()
+  );
+
+  const displayMakeHarder = exercise.makeHarder || matchingLibEx?.makeHarder;
+  const displayMakeEasier = exercise.makeEasier || matchingLibEx?.makeEasier;
 
   // Helper to ensure URL is embed-friendly for YouTube & YouTube Shorts
   const getEmbedUrl = (url: string | undefined) => {
@@ -202,6 +224,44 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Difficulty Variations: How to make it harder & How to make it easier */}
+          {(displayMakeHarder || displayMakeEasier) && (
+            <div className="space-y-3 pt-1">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <Zap className="w-4 h-4 text-amber-400" />
+                <span>{t.difficultyModifiers || 'Difficulty Variations & Scaling'}</span>
+              </h3>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* How to make it harder */}
+                {displayMakeHarder && (
+                  <div className="bg-amber-950/25 border border-amber-500/30 rounded-xl p-4 space-y-2">
+                    <div className="flex items-center gap-2 text-xs font-bold text-amber-400 uppercase tracking-wider">
+                      <Flame className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                      <span>{t.howToMakeHarder || 'How to make it harder'}</span>
+                    </div>
+                    <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-normal">
+                      {displayMakeHarder}
+                    </p>
+                  </div>
+                )}
+
+                {/* How to make it easier */}
+                {displayMakeEasier && (
+                  <div className="bg-emerald-950/25 border border-emerald-500/30 rounded-xl p-4 space-y-2">
+                    <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
+                      <ShieldCheck className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                      <span>{t.howToMakeEasier || 'How to make it easier'}</span>
+                    </div>
+                    <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-normal">
+                      {displayMakeEasier}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
         </div>
 

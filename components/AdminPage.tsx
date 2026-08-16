@@ -1,11 +1,14 @@
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { GymZone, EquipmentType, Gym, GymDimensions, GymEntrance, GymAnnex, GymMachine, LibraryExercise } from '../types';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { GymZone, EquipmentType, Gym, GymDimensions, GymEntrance, GymAnnex, GymMachine, LibraryExercise, EquipmentItem } from '../types';
 import GymMap from './GymMap';
 import ExerciseLibrary from './ExerciseLibrary';
-import { api } from '../services/api';
+import EquipmentLibrary, { getEquipmentIconComponent } from './EquipmentLibrary';
+import { QuickAddEquipmentModal } from './QuickAddEquipmentModal';
+import { api, DEFAULT_EQUIPMENT } from '../services/api';
 import { parseFloorPlan } from '../services/geminiService';
-import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Eraser, Eye, EyeOff, Footprints, MapPin, LayoutTemplate, DoorOpen, Lock, Bath, Droplets, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle, Copy, ClipboardPaste, Dumbbell, Activity, Zap, Target, Layers, Box, Wind, RotateCcw, ArrowUpRight, ArrowUpLeft, ArrowDownRight, ArrowDownLeft, ArrowRight, ArrowUp, ArrowDown, MoveDown, Circle, Waves, Timer, Sparkles, Search, Video, Play, Film, Filter, X, ExternalLink, Compass, SlidersHorizontal, ChevronRight, Bookmark, BookmarkCheck, AlertTriangle } from 'lucide-react';
+import { evaluateZoneExercises, getZoneEquipmentIds } from '../utils/equipmentMatcher';
+import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Eraser, Eye, EyeOff, Footprints, MapPin, LayoutTemplate, DoorOpen, Lock, Bath, Droplets, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle, Copy, ClipboardPaste, Dumbbell, Activity, Zap, Target, Layers, Box, Wind, RotateCcw, ArrowUpRight, ArrowUpLeft, ArrowDownRight, ArrowDownLeft, ArrowRight, ArrowUp, ArrowDown, MoveDown, Circle, Waves, Timer, Sparkles, Search, Video, Play, Film, Filter, X, ExternalLink, Compass, SlidersHorizontal, ChevronRight, Bookmark, BookmarkCheck, AlertTriangle, Camera } from 'lucide-react';
 import { MACHINE_ICONS_LIST as MACHINE_ICONS } from '../utils/equipmentIcons';
 import { snapWallEndpoint } from '../utils/wallSnapping';
 
@@ -330,14 +333,20 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
     }
   };
 
-  // Active view tab: 'layout' for map designer, 'exercises' for exercise & video library
-  const [activeTab, setActiveTab] = useState<'layout' | 'exercises'>('layout');
+  // Active view tab: 'layout' for map designer, 'equipment' for physical gear catalog, 'exercises' for exercise & video library
+  const [activeTab, setActiveTab] = useState<'layout' | 'equipment' | 'exercises'>('layout');
 
-  // Exercise library state for floor-plan machine placements
+  // Equipment Library catalog state
+  const [equipmentList, setEquipmentList] = useState<EquipmentItem[]>(DEFAULT_EQUIPMENT);
+
+  // Exercise library state for zone exercise matching
   const [libraryExercises, setLibraryExercises] = useState<LibraryExercise[]>([]);
   const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');
   const [savingToLibrary, setSavingToLibrary] = useState(false);
   const [saveToLibraryStatus, setSaveToLibraryStatus] = useState<'idle' | 'saved' | 'exists'>('idle');
+  const [isMachineNameFocused, setIsMachineNameFocused] = useState(false);
+  const [isQuickAddModalOpen, setIsQuickAddModalOpen] = useState(false);
+  const [quickAddFeedback, setQuickAddFeedback] = useState<string | null>(null);
 
   const [widthInput, setWidthInput] = useState<string>((dimensions.width / 10).toString());
   const [heightInput, setHeightInput] = useState<string>((dimensions.height / 10).toString());
@@ -375,58 +384,63 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
   };
 
   useEffect(() => {
-    const loadExercises = async () => {
+    const loadData = async () => {
       try {
-        const fetched = await api.fetchExercises();
-        setLibraryExercises(fetched);
+        const [fetchedEx, fetchedEq] = await Promise.all([
+          api.fetchExercises(),
+          api.fetchEquipment()
+        ]);
+        if (fetchedEx && fetchedEx.length > 0) {
+          setLibraryExercises(fetchedEx);
+        }
+        if (fetchedEq && fetchedEq.length > 0) {
+          setEquipmentList(fetchedEq);
+        }
       } catch (err) {
-        console.error("Failed loading exercises inside AdminPage:", err);
+        console.error("Failed loading data inside AdminPage:", err);
       }
     };
-    loadExercises();
+    loadData();
   }, [activeTab]);
 
-  const filteredSidebarExercises = libraryExercises.filter(ex => {
-    if (!sidebarSearchQuery) return true;
+  const filteredSidebarEquipment = useMemo(() => {
+    if (!sidebarSearchQuery) return equipmentList;
     const query = sidebarSearchQuery.toLowerCase();
-    return (
-      (ex.name || '').toLowerCase().includes(query) ||
-      (ex.equipmentRequired || '').toLowerCase().includes(query) ||
-      (ex.targetMuscle || '').toLowerCase().includes(query) ||
-      (ex.category || '').toLowerCase().includes(query)
+    return equipmentList.filter(eq =>
+      (eq.name || '').toLowerCase().includes(query) ||
+      (eq.category || '').toLowerCase().includes(query) ||
+      (eq.tags || []).some(t => t.toLowerCase().includes(query)) ||
+      (eq.description || '').toLowerCase().includes(query)
     );
-  });
+  }, [equipmentList, sidebarSearchQuery]);
 
   const addMachine = useCallback(() => {
     if (!selectedZone) return;
-    const newMachine: GymMachine = { id: `machine-${Date.now()}`, name: 'Machine', x: 10, y: 10, width: 40, height: 40, icon: 'Dumbbell' };
+    const existingMachines = selectedZone.machines || [];
+    const offset = existingMachines.length * 15;
+    const x = Math.min(selectedZone.width - 45, 10 + (offset % (selectedZone.width - 50 || 100)));
+    const y = Math.min(selectedZone.height - 45, 10 + (Math.floor(offset / (selectedZone.width - 50 || 100)) * 15));
+
+    const newMachine: GymMachine = {
+      id: `machine-${Date.now()}`,
+      name: '',
+      x: Math.max(5, x),
+      y: Math.max(5, y),
+      width: 40,
+      height: 40,
+      icon: 'Dumbbell'
+    };
     const newZones = gym.zones.map(z => {
-      if (z.id === selectedZone.id) return { ...z, machines: [...(z.machines || []), newMachine] };
+      if (z.id === selectedZone.id) return { ...z, machines: [...existingMachines, newMachine] };
       return z;
     });
     update({ ...gym, zones: newZones }, true);
     setSelectedMachineId(newMachine.id);
+    setIsMachineNameFocused(true);
   }, [gym, selectedZone, update]);
 
-  const addMachineFromLibrary = useCallback((ex: LibraryExercise) => {
+  const addMachineFromEquipment = useCallback((eq: EquipmentItem) => {
     if (!selectedZone) return;
-    
-    let defaultIcon = 'Dumbbell';
-    const categoryLow = (ex.category || '').toLowerCase();
-    const muscleLow = (ex.targetMuscle || '').toLowerCase();
-    if (categoryLow.includes('cardio') || muscleLow.includes('cardio')) {
-      defaultIcon = 'Activity';
-    } else if (categoryLow.includes('mobility') || categoryLow.includes('stretch')) {
-      defaultIcon = 'Wind';
-    } else if (categoryLow.includes('functional') || categoryLow.includes('athlete')) {
-      defaultIcon = 'Zap';
-    } else if (muscleLow.includes('core')) {
-      defaultIcon = 'Target';
-    } else if (ex.equipmentRequired?.toLowerCase().includes('rack') || ex.equipmentRequired?.toLowerCase().includes('rig')) {
-      defaultIcon = 'Layers';
-    } else if (ex.equipmentRequired?.toLowerCase().includes('box') || ex.equipmentRequired?.toLowerCase().includes('bench')) {
-      defaultIcon = 'Box';
-    }
 
     const existingMachines = selectedZone.machines || [];
     const offset = existingMachines.length * 15;
@@ -435,94 +449,160 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
 
     const newMachine: GymMachine = {
       id: `machine-${Date.now()}`,
-      name: ex.name,
+      name: eq.name,
       x: Math.max(5, x),
       y: Math.max(5, y),
       width: 40,
       height: 40,
-      icon: defaultIcon,
-      longDescription: ex.instructions || '',
-      videoUrl: ex.videoUrl || ''
+      icon: eq.icon || 'Dumbbell',
+      longDescription: eq.description || '',
+      videoUrl: ''
     };
 
+    // Ensure the zone's equipmentIds includes this physical equipment's ID
+    const currentEqIds = selectedZone.equipmentIds || [];
+    const updatedEqIds = currentEqIds.includes(eq.id) ? currentEqIds : [...currentEqIds, eq.id];
+
     const newZones = gym.zones.map(z => {
-      if (z.id === selectedZone.id) return { ...z, machines: [...existingMachines, newMachine] };
+      if (z.id === selectedZone.id) {
+        return {
+          ...z,
+          equipmentIds: updatedEqIds,
+          machines: [...existingMachines, newMachine]
+        };
+      }
       return z;
     });
 
     update({ ...gym, zones: newZones }, true);
     setSelectedMachineId(newMachine.id);
-
-    // Persist mapped equipmentId back to library if unmapped or has different zone
-    if (ex.equipmentId !== selectedZone.id) {
-       const updatedEx = { ...ex, equipmentId: selectedZone.id };
-       api.saveExercise(updatedEx).catch(e => console.error("Auto mapping error:", e));
-       setLibraryExercises(prev => prev.map(item => item.id === ex.id ? updatedEx : item));
-    }
   }, [gym, selectedZone, update]);
 
-  const saveMachineToLibrary = useCallback(async () => {
+  const handleQuickAddEquipmentCreated = useCallback((newEq: EquipmentItem, targetZoneId?: string) => {
+    // 1. Update shared equipment list state
+    setEquipmentList(prev => [newEq, ...prev.filter(item => item.id !== newEq.id)]);
+
+    // 2. Identify target zone
+    const targetId = targetZoneId || selectedZoneId || gym.zones[0]?.id;
+    if (!targetId) return;
+
+    const targetZoneObj = gym.zones.find(z => z.id === targetId);
+    if (!targetZoneObj) return;
+
+    const existingMachines = targetZoneObj.machines || [];
+    const offset = existingMachines.length * 15;
+    const x = Math.min(targetZoneObj.width - 45, 10 + (offset % (targetZoneObj.width - 50 || 100)));
+    const y = Math.min(targetZoneObj.height - 45, 10 + (Math.floor(offset / (targetZoneObj.width - 50 || 100)) * 15));
+
+    const newMachine: GymMachine = {
+      id: `machine-${Date.now()}`,
+      name: newEq.name,
+      equipmentId: newEq.id,
+      x: Math.max(5, x),
+      y: Math.max(5, y),
+      width: 40,
+      height: 40,
+      icon: 'Camera',
+      imageUrl: newEq.imageUrl
+    };
+
+    const currentEqIds = targetZoneObj.equipmentIds || [];
+    const updatedEqIds = currentEqIds.includes(newEq.id) ? currentEqIds : [...currentEqIds, newEq.id];
+
+    const newZones = gym.zones.map(z => {
+      if (z.id === targetId) {
+        return {
+          ...z,
+          equipmentIds: updatedEqIds,
+          machines: [...existingMachines, newMachine]
+        };
+      }
+      return z;
+    });
+
+    update({ ...gym, zones: newZones }, true);
+    setSelectedZoneId(targetId);
+    setSelectedMachineId(newMachine.id);
+
+    setQuickAddFeedback(`Placed "${newEq.name}" in ${targetZoneObj.name} and registered to Equipment Library!`);
+    setTimeout(() => setQuickAddFeedback(null), 4000);
+  }, [gym, selectedZoneId, update]);
+
+  const saveMachineToEquipmentLibrary = useCallback(async (customName?: string) => {
     if (!selectedZone || !selectedMachineId) return;
     const currentMachine = (selectedZone.machines || []).find(m => m.id === selectedMachineId);
-    if (!currentMachine || !currentMachine.name?.trim()) return;
+    const targetName = (customName || currentMachine?.name || '').trim();
+    if (!targetName) return;
 
-    const trimmedName = currentMachine.name.trim();
-
-    // Check if exercise with this name already exists in library (case-insensitive)
-    const existingIndex = libraryExercises.findIndex(
-      e => e.name.trim().toLowerCase() === trimmedName.toLowerCase()
+    // Check if equipment with this name already exists in Equipment Library (case-insensitive)
+    const existingEquipment = equipmentList.find(
+      e => e.name.trim().toLowerCase() === targetName.toLowerCase()
     );
 
     setSavingToLibrary(true);
     try {
-      if (existingIndex !== -1) {
-        // Update existing library exercise with any new instructions, video URL, equipment mapping
-        const existing = libraryExercises[existingIndex];
-        const updatedExercise: LibraryExercise = {
-          ...existing,
-          name: trimmedName,
-          equipmentRequired: trimmedName,
-          equipmentId: selectedZone.id,
-          instructions: currentMachine.longDescription || existing.instructions || '',
-          videoUrl: currentMachine.videoUrl || existing.videoUrl || ''
+      let equipmentIdToLink = existingEquipment?.id;
+
+      if (existingEquipment) {
+        // Update existing equipment item
+        const updatedEquipment: EquipmentItem = {
+          ...existingEquipment,
+          name: targetName,
+          icon: currentMachine?.icon || existingEquipment.icon || 'Dumbbell',
+          description: currentMachine?.longDescription || existingEquipment.description || ''
         };
-        await api.saveExercise(updatedExercise);
-        setLibraryExercises(prev => prev.map(item => item.id === existing.id ? updatedExercise : item));
+        await api.saveEquipment(updatedEquipment);
+        setEquipmentList(prev => prev.map(item => item.id === existingEquipment.id ? updatedEquipment : item));
         setSaveToLibraryStatus('exists');
+        equipmentIdToLink = existingEquipment.id;
       } else {
-        // Create new library exercise entry
-        let category: any = 'Strength';
-        const iconName = (currentMachine.icon || '').toLowerCase();
-        if (iconName.includes('activity') || iconName.includes('treadmill') || iconName.includes('bike') || iconName.includes('rower') || iconName.includes('elliptical') || iconName.includes('stair') || iconName.includes('ski')) {
+        // Create new Equipment Library item
+        const newId = `eq-${targetName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || Date.now()}`;
+        
+        let category: 'Strength' | 'Cardio' | 'Mobility' | 'Functional' | 'Free Weights' | 'Accessories' = 'Strength';
+        const iconName = (currentMachine?.icon || '').toLowerCase();
+        if (iconName.includes('activity') || iconName.includes('treadmill') || iconName.includes('bike') || iconName.includes('rower') || iconName.includes('waves') || iconName.includes('elliptical') || iconName.includes('stair') || iconName.includes('ski')) {
           category = 'Cardio';
         } else if (iconName.includes('wind') || iconName.includes('stretch') || iconName.includes('mat')) {
           category = 'Mobility';
+        } else if (iconName.includes('flame') || iconName.includes('zap') || iconName.includes('box')) {
+          category = 'Functional';
+        } else if (iconName.includes('dumbbell') || iconName.includes('weight')) {
+          category = 'Free Weights';
         }
 
-        const newExercise: LibraryExercise = {
-          id: `ex-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-          name: trimmedName,
+        const newEquipment: EquipmentItem = {
+          id: newId,
+          name: targetName,
           category,
-          targetMuscle: selectedZone.name || 'Full Body',
-          equipmentRequired: trimmedName,
-          equipmentId: selectedZone.id,
-          instructions: currentMachine.longDescription || `Standard training on ${trimmedName}`,
-          videoUrl: currentMachine.videoUrl || ''
+          icon: currentMachine?.icon || 'Dumbbell',
+          description: currentMachine?.longDescription || `${targetName} station`
         };
-        await api.createExercise(newExercise);
-        setLibraryExercises(prev => [newExercise, ...prev]);
+        await api.createEquipment(newEquipment);
+        setEquipmentList(prev => [newEquipment, ...prev]);
         setSaveToLibraryStatus('saved');
+        equipmentIdToLink = newId;
+      }
+
+      // Ensure the zone's equipmentIds includes this equipment ID
+      if (equipmentIdToLink && !(selectedZone.equipmentIds || []).includes(equipmentIdToLink)) {
+        const updatedZone = {
+          ...selectedZone,
+          equipmentIds: [...(selectedZone.equipmentIds || []), equipmentIdToLink]
+        };
+        const newZones = gym.zones.map(z => z.id === selectedZone.id ? updatedZone : z);
+        update({ ...gym, zones: newZones }, false);
       }
 
       setTimeout(() => {
         setSaveToLibraryStatus('idle');
       }, 3000);
     } catch (err) {
-      console.error('Failed saving machine to library:', err);
+      console.error('Failed saving machine to equipment library:', err);
     } finally {
       setSavingToLibrary(false);
     }
-  }, [selectedZone, selectedMachineId, libraryExercises]);
+  }, [selectedZone, selectedMachineId, equipmentList, gym, update]);
 
   const deleteMachine = useCallback(() => {
     if (!selectedZone || !selectedMachineId) return;
@@ -1236,22 +1316,36 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
               className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
                 activeTab === 'layout' 
                   ? 'bg-slate-800 text-white shadow-md' 
-                  : 'text-slate-400 hover:text-slate-350'
+                  : 'text-slate-400 hover:text-slate-300'
               }`}
             >
               <LayoutTemplate className="w-3.5 h-3.5" />
               Floor Plan & Layout
             </button>
             <button 
+              onClick={() => setActiveTab('equipment')}
+              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
+                activeTab === 'equipment' 
+                  ? 'bg-slate-800 text-white shadow-md' 
+                  : 'text-slate-400 hover:text-slate-300'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5 text-lime-400" />
+              Equipment Library
+              <span className="ml-0.5 px-1.5 py-0.2 rounded bg-slate-900 text-[10px] text-lime-400 font-mono border border-slate-750">
+                {equipmentList.length}
+              </span>
+            </button>
+            <button 
               onClick={() => setActiveTab('exercises')}
               className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
                 activeTab === 'exercises' 
                   ? 'bg-slate-800 text-white shadow-md' 
-                  : 'text-slate-400 hover:text-slate-350'
+                  : 'text-slate-400 hover:text-slate-300'
               }`}
             >
               <Dumbbell className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
-              Exercise Library (Admin)
+              Exercise Library
             </button>
           </div>
         </div>
@@ -1356,7 +1450,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 pt-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5 pt-4">
                   {/* Option 1: Zones and Layout */}
                   <button
                     onClick={() => {
@@ -1364,101 +1458,125 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
                       setSelectedWorkspaceOption('layout');
                       setSelectedZoneId(null);
                     }}
-                    className="group relative bg-slate-900 hover:bg-slate-900/80 border border-slate-800 hover:border-blue-500/50 rounded-2xl p-6 text-left transition-all duration-300 hover:shadow-2xl hover:shadow-blue-500/5 hover:-translate-y-1 flex flex-col h-full cursor-pointer focus:outline-none"
+                    className="group relative bg-slate-900 hover:bg-slate-900/80 border border-slate-800 hover:border-blue-500/50 rounded-2xl p-5 text-left transition-all duration-300 hover:shadow-2xl hover:shadow-blue-500/5 hover:-translate-y-1 flex flex-col h-full cursor-pointer focus:outline-none"
                   >
-                    <div className="p-3 bg-blue-500/10 group-hover:bg-blue-500/20 text-blue-400 rounded-xl w-12 h-12 flex items-center justify-center mb-5 transition-all group-hover:scale-110">
+                    <div className="p-3 bg-blue-500/10 group-hover:bg-blue-500/20 text-blue-400 rounded-xl w-12 h-12 flex items-center justify-center mb-4 transition-all group-hover:scale-110">
                       <Grid className="w-6 h-6" />
                     </div>
-                    <h3 className="text-lg font-bold text-white group-hover:text-blue-400 transition-colors mb-2 flex items-center">
-                      Zones & Equipment Layout
+                    <h3 className="text-base font-bold text-white group-hover:text-blue-400 transition-colors mb-2 flex items-center">
+                      Zones & Layout
                       <ArrowRightLeft className="w-4 h-4 ml-2 opacity-0 group-hover:opacity-100 transition-all transform translate-x-[-10px] group-hover:translate-x-0 text-blue-400 animate-pulse" />
                     </h3>
-                    <p className="text-xs text-slate-400 leading-relaxed mb-6">
-                      Create specialized training areas like cardio, strength, or active recovery. Draw or place zone layouts, then arrange custom exercise machines and rigs within them.
+                    <p className="text-xs text-slate-400 leading-relaxed mb-5">
+                      Create workout sectors (cardio, free weights, strength). Arrange machines and equipment within zones.
                     </p>
-                    <div className="mt-auto pt-4 border-t border-slate-800/60 flex items-center justify-between text-xs font-bold text-slate-500 group-hover:text-blue-400 transition-colors">
-                      <span>MANAGE WORKOUT SECTORS</span>
-                      <span className="text-[10px] bg-slate-950 px-2.5 py-1 rounded border border-slate-850 group-hover:border-blue-900/50">OPEN BUILDER</span>
+                    <div className="mt-auto pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] font-bold text-slate-500 group-hover:text-blue-400 transition-colors">
+                      <span>MANAGE ZONES</span>
+                      <span className="text-[10px] bg-slate-950 px-2 py-0.5 rounded border border-slate-850 group-hover:border-blue-900/50">OPEN</span>
                     </div>
                   </button>
 
-                  {/* Option 2: Floor Plan */}
+                  {/* Option 2: Equipment Library */}
+                  <button
+                    onClick={() => {
+                      setActiveTab('equipment');
+                      setSelectedWorkspaceOption('layout');
+                    }}
+                    className="group relative bg-slate-900 hover:bg-slate-900/80 border border-slate-800 hover:border-lime-500/50 rounded-2xl p-5 text-left transition-all duration-300 hover:shadow-2xl hover:shadow-lime-500/5 hover:-translate-y-1 flex flex-col h-full cursor-pointer focus:outline-none"
+                  >
+                    <div className="p-3 bg-lime-500/10 group-hover:bg-lime-500/20 text-lime-400 rounded-xl w-12 h-12 flex items-center justify-center mb-4 transition-all group-hover:scale-110">
+                      <Layers className="w-6 h-6" />
+                    </div>
+                    <h3 className="text-base font-bold text-white group-hover:text-lime-400 transition-colors mb-2 flex items-center">
+                      Equipment Library
+                      <ArrowRightLeft className="w-4 h-4 ml-2 opacity-0 group-hover:opacity-100 transition-all transform translate-x-[-10px] group-hover:translate-x-0 text-lime-400 animate-pulse" />
+                    </h3>
+                    <p className="text-xs text-slate-400 leading-relaxed mb-5">
+                      Manage physical gear catalog (dumbbells, barbells, benches, rigs, cardio). Link to zones & exercises.
+                    </p>
+                    <div className="mt-auto pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] font-bold text-slate-500 group-hover:text-lime-400 transition-colors">
+                      <span>EQUIPMENT CATALOG</span>
+                      <span className="text-[10px] bg-slate-950 px-2 py-0.5 rounded border border-slate-850 group-hover:border-lime-900/50">OPEN</span>
+                    </div>
+                  </button>
+
+                  {/* Option 3: Floor Plan */}
                   <button
                     onClick={() => {
                       setEditMode('room');
                       setSelectedWorkspaceOption('room');
                       setSelectedZoneId(null);
                     }}
-                    className="group relative bg-slate-900 hover:bg-slate-900/80 border border-slate-800 hover:border-lime-500/50 rounded-2xl p-6 text-left transition-all duration-300 hover:shadow-2xl hover:shadow-lime-500/5 hover:-translate-y-1 flex flex-col h-full cursor-pointer focus:outline-none"
+                    className="group relative bg-slate-900 hover:bg-slate-900/80 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-5 text-left transition-all duration-300 hover:shadow-2xl hover:shadow-emerald-500/5 hover:-translate-y-1 flex flex-col h-full cursor-pointer focus:outline-none"
                   >
-                    <div className="p-3 bg-lime-500/10 group-hover:bg-lime-500/20 text-lime-400 rounded-xl w-12 h-12 flex items-center justify-center mb-5 transition-all group-hover:scale-110">
+                    <div className="p-3 bg-emerald-500/10 group-hover:bg-emerald-500/20 text-emerald-400 rounded-xl w-12 h-12 flex items-center justify-center mb-4 transition-all group-hover:scale-110">
                       <Scaling className="w-6 h-6" />
                     </div>
-                    <h3 className="text-lg font-bold text-white group-hover:text-lime-400 transition-colors mb-2 flex items-center">
-                      Floor Plan & Dimensions
-                      <ArrowRightLeft className="w-4 h-4 ml-2 opacity-0 group-hover:opacity-100 transition-all transform translate-x-[-10px] group-hover:translate-x-0 text-lime-400 animate-pulse" />
+                    <h3 className="text-base font-bold text-white group-hover:text-emerald-400 transition-colors mb-2 flex items-center">
+                      Floor Plan & Size
+                      <ArrowRightLeft className="w-4 h-4 ml-2 opacity-0 group-hover:opacity-100 transition-all transform translate-x-[-10px] group-hover:translate-x-0 text-emerald-400 animate-pulse" />
                     </h3>
-                    <p className="text-xs text-slate-400 leading-relaxed mb-6">
-                      Adjust the main gym hall boundary dimensions, draw or add custom room extensions (L-shape), choose floor themes and colors, and position the main entrance doorway.
+                    <p className="text-xs text-slate-400 leading-relaxed mb-5">
+                      Adjust boundary dimensions, draw room extensions (L-shape wings), floor colors, and main entrance.
                     </p>
-                    <div className="mt-auto pt-4 border-t border-slate-800/60 flex items-center justify-between text-xs font-bold text-slate-500 group-hover:text-lime-400 transition-colors">
-                      <span>MANAGE ROOM SIZE & DETAILS</span>
-                      <span className="text-[10px] bg-slate-950 px-2.5 py-1 rounded border border-slate-850 group-hover:border-lime-900/50">OPEN DESIGNER</span>
+                    <div className="mt-auto pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] font-bold text-slate-500 group-hover:text-emerald-400 transition-colors">
+                      <span>ROOM METRICS</span>
+                      <span className="text-[10px] bg-slate-950 px-2 py-0.5 rounded border border-slate-850 group-hover:border-emerald-900/50">OPEN</span>
                     </div>
                   </button>
 
-                  {/* Option 3: Import Floor Plan with AI */}
+                  {/* Option 4: Import Floor Plan with AI */}
                   <div
                     onClick={triggerImportFlow}
                     onDragEnter={handleDrag}
                     onDragOver={handleDrag}
                     onDragLeave={handleDrag}
                     onDrop={handleDrop}
-                    className={`group relative bg-slate-900 border rounded-2xl p-6 text-left transition-all duration-300 hover:shadow-2xl flex flex-col h-full cursor-pointer focus:outline-none ${
+                    className={`group relative bg-slate-900 border rounded-2xl p-5 text-left transition-all duration-300 hover:shadow-2xl flex flex-col h-full cursor-pointer focus:outline-none ${
                       isDragActive 
                         ? 'border-purple-500 bg-purple-950/20 shadow-lg shadow-purple-500/10 scale-[1.02]' 
                         : 'border-slate-800 hover:border-purple-500/50 hover:shadow-purple-500/5 hover:-translate-y-1'
                     }`}
                   >
-                    <div className={`p-3 rounded-xl w-12 h-12 flex items-center justify-center mb-5 transition-all group-hover:scale-110 ${
+                    <div className={`p-3 rounded-xl w-12 h-12 flex items-center justify-center mb-4 transition-all group-hover:scale-110 ${
                       isDragActive ? 'bg-purple-500/30 text-purple-300' : 'bg-purple-500/10 text-purple-400 group-hover:bg-purple-500/20'
                     }`}>
                       <Sparkles className="w-6 h-6 animate-pulse" />
                     </div>
-                    <h3 className="text-lg font-bold text-white group-hover:text-purple-400 transition-colors mb-2 flex items-center">
+                    <h3 className="text-base font-bold text-white group-hover:text-purple-400 transition-colors mb-2 flex items-center">
                       Import Floor Plan (AI)
                       <ArrowRightLeft className="w-4 h-4 ml-2 opacity-0 group-hover:opacity-100 transition-all transform translate-x-[-10px] group-hover:translate-x-0 text-purple-400" />
                     </h3>
-                    <p className="text-xs text-slate-400 leading-relaxed mb-6">
-                      Upload or drag-and-drop a PDF, JPG, or PNG floor plan. Our AI auto-detects walls, room boundaries, doors, and equipment to create your digital layout instantly.
+                    <p className="text-xs text-slate-400 leading-relaxed mb-5">
+                      Upload PDF or image floor plans. AI auto-detects walls, room shapes, doors, and equipment automatically.
                     </p>
-                    <div className="mt-auto pt-4 border-t border-slate-800/60 flex items-center justify-between text-xs font-bold text-slate-500 group-hover:text-purple-400 transition-colors">
-                      <span>AUTO-CONVERT PDF OR IMAGES</span>
-                      <span className="text-[10px] bg-slate-950 px-2.5 py-1 rounded border border-slate-850 group-hover:border-purple-900/50">UPLOAD FILE</span>
+                    <div className="mt-auto pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] font-bold text-slate-500 group-hover:text-purple-400 transition-colors">
+                      <span>AUTO-CONVERT</span>
+                      <span className="text-[10px] bg-slate-950 px-2 py-0.5 rounded border border-slate-850 group-hover:border-purple-900/50">UPLOAD</span>
                     </div>
                   </div>
 
-                  {/* Option 4: Exercise & Video Library (Admin Only) */}
+                  {/* Option 5: Exercise & Video Library (Admin Only) */}
                   <button
                     onClick={() => {
                       setActiveTab('exercises');
                       setSelectedWorkspaceOption('layout');
                     }}
-                    className="group relative bg-slate-900 hover:bg-slate-900/80 border border-slate-800 hover:border-amber-500/50 rounded-2xl p-6 text-left transition-all duration-300 hover:shadow-2xl hover:shadow-amber-500/5 hover:-translate-y-1 flex flex-col h-full cursor-pointer focus:outline-none"
+                    className="group relative bg-slate-900 hover:bg-slate-900/80 border border-slate-800 hover:border-amber-500/50 rounded-2xl p-5 text-left transition-all duration-300 hover:shadow-2xl hover:shadow-amber-500/5 hover:-translate-y-1 flex flex-col h-full cursor-pointer focus:outline-none"
                   >
-                    <div className="p-3 bg-amber-500/10 group-hover:bg-amber-500/20 text-amber-400 rounded-xl w-12 h-12 flex items-center justify-center mb-5 transition-all group-hover:scale-110">
+                    <div className="p-3 bg-amber-500/10 group-hover:bg-amber-500/20 text-amber-400 rounded-xl w-12 h-12 flex items-center justify-center mb-4 transition-all group-hover:scale-110">
                       <Dumbbell className="w-6 h-6" />
                     </div>
-                    <h3 className="text-lg font-bold text-white group-hover:text-amber-400 transition-colors mb-2 flex items-center">
-                      Exercise & Video Library
+                    <h3 className="text-base font-bold text-white group-hover:text-amber-400 transition-colors mb-2 flex items-center">
+                      Exercise Library
                       <ArrowRightLeft className="w-4 h-4 ml-2 opacity-0 group-hover:opacity-100 transition-all transform translate-x-[-10px] group-hover:translate-x-0 text-amber-400 animate-pulse" />
                     </h3>
-                    <p className="text-xs text-slate-400 leading-relaxed mb-6">
-                      Manage global exercises, assign target muscle groups and gym equipment, add step-by-step instructions, and attach YouTube Shorts demonstration video links.
+                    <p className="text-xs text-slate-400 leading-relaxed mb-5">
+                      Manage movement patterns, required equipment, step-by-step instructions, and YouTube demonstration videos.
                     </p>
-                    <div className="mt-auto pt-4 border-t border-slate-800/60 flex items-center justify-between text-xs font-bold text-slate-500 group-hover:text-amber-400 transition-colors">
-                      <span>ADMIN EXERCISE DATABASE</span>
-                      <span className="text-[10px] bg-slate-950 px-2.5 py-1 rounded border border-slate-850 group-hover:border-amber-900/50">OPEN LIBRARY</span>
+                    <div className="mt-auto pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] font-bold text-slate-500 group-hover:text-amber-400 transition-colors">
+                      <span>EXERCISE DATABASE</span>
+                      <span className="text-[10px] bg-slate-950 px-2 py-0.5 rounded border border-slate-850 group-hover:border-amber-900/50">OPEN</span>
                     </div>
                   </button>
                 </div>
@@ -1604,46 +1722,85 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
                         </div>
                     ) : (
                         <div className="space-y-3">
-                           <ToolButton onClick={addMachine} icon={Cpu} label="Add Custom Machine" description="Place a generic template item" variant="action" />
+                           {/* Quick Add with Picture (Minimal Floor Plan Flow) */}
+                           <button
+                             type="button"
+                             onClick={() => setIsQuickAddModalOpen(true)}
+                             className="w-full flex items-center justify-center gap-2 p-2.5 bg-lime-500/10 hover:bg-lime-500/20 text-lime-400 border border-lime-500/30 hover:border-lime-500/50 rounded-xl text-xs font-bold transition-all shadow-sm group"
+                             title="Quick Add: Upload a picture to instantly place equipment into this zone"
+                           >
+                             <Camera className="w-4 h-4 text-lime-400 group-hover:scale-110 transition-transform" />
+                             <span>+ Quick Add Equipment (Picture Only)</span>
+                           </button>
+
+                           <ToolButton onClick={addMachine} icon={Cpu} label="Add Custom Machine" description="Place equipment with library autocomplete" variant="action" />
                            
-                           {/* Add from Exercise Library option */}
+                           {/* Add from Equipment Library Catalog */}
                            <div className="border border-slate-800 rounded-xl bg-slate-950/60 p-3 mt-4 animate-in fade-in duration-300">
-                             <div className="flex items-center gap-1.5 text-[10px] font-extrabold text-blue-400 uppercase tracking-wider mb-2">
-                               <Sparkles className="w-3.5 h-3.5" />
-                               Add from Exercise Library
+                             <div className="flex items-center justify-between mb-2">
+                               <div className="flex items-center gap-1.5 text-[10px] font-extrabold text-lime-400 uppercase tracking-wider">
+                                 <Layers className="w-3.5 h-3.5" />
+                                 Add from Equipment Library
+                               </div>
+                               <span className="text-[9px] font-mono text-slate-400 px-1.5 py-0.2 rounded bg-slate-900 border border-slate-800">
+                                 {equipmentList.length} items
+                               </span>
                              </div>
                              <p className="text-[10px] text-slate-500 mb-3 leading-relaxed">
-                               Select an exercise to place on the floor map:
+                               Select physical equipment to place inside <span className="text-slate-300 font-semibold">{selectedZone.name}</span>:
                              </p>
 
-                             {/* Sidebar Exercise Search */}
+                             {/* Sidebar Equipment Search */}
                              <div className="relative mb-2.5">
                                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
                                <input
                                  type="text"
-                                 placeholder="Search exercises..."
+                                 placeholder="Search equipment (benches, racks, bars...)"
                                  value={sidebarSearchQuery}
                                  onChange={(e) => setSidebarSearchQuery(e.target.value)}
-                                 className="w-full bg-slate-900 border border-slate-850 rounded-lg pl-8 pr-2 py-1.5 text-[11px] text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500/50"
+                                 className="w-full bg-slate-900 border border-slate-850 rounded-lg pl-8 pr-2 py-1.5 text-[11px] text-slate-200 placeholder-slate-600 focus:outline-none focus:border-lime-500/50"
                                />
                              </div>
 
                              <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-                               {filteredSidebarExercises.length === 0 ? (
-                                 <p className="text-[10px] text-slate-600 text-center py-2 italic">No matching exercises.</p>
-                               ) : (
-                                 filteredSidebarExercises.map(ex => (
+                               {filteredSidebarEquipment.length === 0 ? (
+                                 <div className="text-center py-3 space-y-2">
+                                   <p className="text-[10px] text-slate-600 italic">No matching equipment found.</p>
                                    <button
-                                     key={ex.id}
-                                     onClick={() => addMachineFromLibrary(ex)}
-                                     className="w-full text-left p-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-850 hover:border-blue-550/30 text-xs text-slate-300 hover:text-white transition-all flex flex-col gap-0.5 group"
-                                     title={`Required: ${ex.equipmentRequired}`}
+                                     type="button"
+                                     onClick={() => setIsQuickAddModalOpen(true)}
+                                     className="inline-flex items-center gap-1.5 text-[10px] px-3 py-1.5 bg-lime-500/10 hover:bg-lime-500/20 text-lime-400 border border-lime-500/30 rounded-lg font-bold transition-colors"
                                    >
-                                     <span className="font-semibold text-[11px] truncate uppercase group-hover:text-blue-400 font-mono transition-colors">{ex.name}</span>
-                                     <span className="text-[9px] text-slate-500 truncate">Req: {ex.equipmentRequired || 'Bodyweight'}</span>
+                                     <Camera className="w-3.5 h-3.5" />
+                                     <span>+ Quick Add with Picture</span>
                                    </button>
-                                 ))
-                                )}
+                                 </div>
+                               ) : (
+                                 filteredSidebarEquipment.map(eq => {
+                                   const EqIcon = getEquipmentIconComponent(eq.icon);
+                                   return (
+                                     <button
+                                       key={eq.id}
+                                       onClick={() => addMachineFromEquipment(eq)}
+                                       className="w-full text-left p-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-850 hover:border-lime-500/40 text-xs text-slate-300 hover:text-white transition-all flex items-center justify-between group"
+                                       title={eq.description || eq.name}
+                                     >
+                                       <div className="flex items-center gap-2 min-w-0">
+                                         <EqIcon className="w-3.5 h-3.5 text-lime-400 flex-shrink-0 group-hover:scale-110 transition-transform" />
+                                         <div className="truncate">
+                                           <span className="font-semibold text-[11px] truncate block group-hover:text-lime-300 transition-colors">
+                                             {eq.name}
+                                           </span>
+                                           <span className="text-[9px] text-slate-500 block truncate">
+                                             {eq.category}
+                                           </span>
+                                         </div>
+                                       </div>
+                                       <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-lime-400 flex-shrink-0 transition-colors" />
+                                     </button>
+                                   );
+                                 })
+                               )}
                              </div>
                            </div>
 
@@ -1724,9 +1881,231 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
                   </select>
                 </div>
                 <div><label className="block text-xs text-slate-500 mb-1.5">Description</label><textarea value={selectedZone.description || ''} onFocus={() => snapshot()} onChange={(e) => updateZone('description', e.target.value)} rows={3} className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none resize-none" /></div>
-                <div><button onClick={() => setEditMode('machine')} className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-blue-400 hover:text-blue-300 border border-slate-700 hover:border-blue-500/50 rounded flex items-center justify-center transition-all text-xs font-bold uppercase tracking-wide"><Dumbbell className="w-4 h-4 mr-2" />Manage Equipment</button><p className="text-[10px] text-center mt-2 text-slate-500">{selectedZone.machines?.length || 0} machines inside</p></div>
+                
                 <div className="h-px bg-slate-800 my-2" />
                 <div><label className="block text-xs text-slate-500 mb-1.5">Color Code</label><div className="flex items-center space-x-2"><input type="color" value={selectedZone.color} onFocus={() => snapshot()} onChange={(e) => updateZone('color', e.target.value)} className="h-9 w-9 bg-transparent border-0 cursor-pointer rounded" /><input type="text" value={selectedZone.color} onFocus={() => snapshot()} onChange={(e) => updateZone('color', e.target.value)} className="flex-1 bg-slate-950 border border-slate-700 rounded p-2 text-sm text-mono text-white focus:border-blue-500 focus:outline-none" /></div></div>
+
+                {/* Section: Zone Equipment Inventory */}
+                <div className="h-px bg-slate-800 my-2" />
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-lime-400" />
+                      Physical Equipment
+                    </label>
+                    <span className="text-[10px] text-lime-400 font-mono">
+                      {getZoneEquipmentIds(selectedZone, equipmentList).length} items
+                    </span>
+                  </div>
+
+                  {/* Floor Space / Mat Area toggle */}
+                  {(() => {
+                    const hasFloor = (selectedZone.equipmentIds || []).includes('eq-floor-mat') || selectedZone.hasFloorSpace;
+                    return (
+                      <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="text-xs font-semibold text-white flex items-center gap-1">
+                            🧘 Open Floor / Mat Area
+                          </span>
+                          <span className="text-[10px] text-slate-400">Allows bodyweight & floor exercises</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            snapshot();
+                            const currentIds = selectedZone.equipmentIds || [];
+                            let newIds: string[];
+                            if (hasFloor) {
+                              newIds = currentIds.filter(id => id !== 'eq-floor-mat');
+                            } else {
+                              newIds = [...currentIds, 'eq-floor-mat'];
+                            }
+                            updateZone('equipmentIds', newIds);
+                          }}
+                          className={`w-9 h-5 flex items-center rounded-full p-0.5 transition-colors ${
+                            hasFloor ? 'bg-lime-600 justify-end' : 'bg-slate-800 justify-start'
+                          }`}
+                        >
+                          <div className="w-4 h-4 rounded-full bg-white shadow-md" />
+                        </button>
+                      </div>
+                    );
+                  })()}
+
+                  {/* List of current equipment items */}
+                  <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                    {(() => {
+                      const zoneEqIds = getZoneEquipmentIds(selectedZone, equipmentList);
+                      if (zoneEqIds.length === 0) {
+                        return (
+                          <div className="text-[11px] text-slate-500 italic py-2 text-center bg-slate-950/40 rounded border border-slate-850">
+                            No physical equipment added yet.
+                          </div>
+                        );
+                      }
+
+                      return zoneEqIds.map(eqId => {
+                        const item = equipmentList.find(e => e.id === eqId) || {
+                          id: eqId,
+                          name: eqId.replace('eq-', '').replace(/-/g, ' '),
+                          category: 'accessory' as const,
+                          icon: 'Dumbbell',
+                        };
+                        const Icon = getEquipmentIconComponent(item.icon);
+                        const isFromExplicit = (selectedZone.equipmentIds || []).includes(eqId);
+
+                        return (
+                          <div
+                            key={eqId}
+                            className="flex items-center justify-between px-2.5 py-1.5 bg-slate-950/70 border border-slate-800 rounded text-xs text-slate-300 group hover:border-slate-700"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Icon className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
+                              <span className="truncate font-medium">{item.name}</span>
+                              {!isFromExplicit && (
+                                <span className="text-[9px] px-1 py-0.2 rounded bg-blue-950/60 text-blue-400 border border-blue-900/40 flex-shrink-0">
+                                  Machine
+                                </span>
+                              )}
+                            </div>
+                            {isFromExplicit && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  snapshot();
+                                  const newIds = (selectedZone.equipmentIds || []).filter(id => id !== eqId);
+                                  updateZone('equipmentIds', newIds);
+                                }}
+                                className="text-slate-500 hover:text-red-400 p-0.5 opacity-60 group-hover:opacity-100 transition-opacity"
+                                title="Remove equipment from zone"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+
+                  {/* Add Equipment Dropdown & Quick Add */}
+                  <div className="pt-1 space-y-2">
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        const chosenId = e.target.value;
+                        if (!chosenId) return;
+                        if (chosenId === '__quick_add__') {
+                          setIsQuickAddModalOpen(true);
+                          return;
+                        }
+                        snapshot();
+                        const currentIds = selectedZone.equipmentIds || [];
+                        if (!currentIds.includes(chosenId)) {
+                          updateZone('equipmentIds', [...currentIds, chosenId]);
+                        }
+                      }}
+                      className="w-full bg-slate-950 border border-slate-700 hover:border-slate-600 rounded p-2 text-xs text-slate-200 focus:border-lime-500 focus:outline-none cursor-pointer"
+                    >
+                      <option value="">+ Add Equipment to Zone...</option>
+                      <option value="__quick_add__" className="text-lime-400 font-semibold">
+                        📸 + Quick Add New (Upload Picture)...
+                      </option>
+                      {equipmentList
+                        .filter(eq => !(selectedZone.equipmentIds || []).includes(eq.id))
+                        .map(eq => (
+                          <option key={eq.id} value={eq.id}>
+                            {eq.name} ({eq.category})
+                          </option>
+                        ))}
+                    </select>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsQuickAddModalOpen(true)}
+                      className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-lime-500/10 hover:bg-lime-500/20 text-lime-400 border border-lime-500/30 hover:border-lime-500/50 rounded-lg text-xs font-bold transition-all"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>+ Quick Add with Picture</span>
+                    </button>
+                  </div>
+
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setEditMode('machine')}
+                      className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-blue-400 hover:text-blue-300 border border-slate-700 hover:border-blue-500/50 rounded flex items-center justify-center transition-all text-xs font-bold uppercase tracking-wide"
+                    >
+                      <Dumbbell className="w-4 h-4 mr-2" />
+                      Place / Edit Machines on Map
+                    </button>
+                    <p className="text-[10px] text-center mt-1.5 text-slate-500">
+                      {selectedZone.machines?.length || 0} machines placed inside
+                    </p>
+                  </div>
+                </div>
+
+                {/* Section: Zone Available Exercises Live Matcher */}
+                <div className="h-px bg-slate-800 my-2" />
+                {(() => {
+                  const evaluation = evaluateZoneExercises(selectedZone, libraryExercises, equipmentList);
+                  return (
+                    <div className="space-y-3 bg-slate-950/40 p-3 rounded-lg border border-slate-800/80">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                          <Zap className="w-3.5 h-3.5 text-amber-400" />
+                          Possible Exercises Here
+                        </h3>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800/50 font-bold">
+                          {evaluation.fullySupported.length} Available
+                        </span>
+                      </div>
+
+                      {evaluation.fullySupported.length > 0 ? (
+                        <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                          {evaluation.fullySupported.map(ex => (
+                            <div
+                              key={ex.id}
+                              className="px-2 py-1.5 bg-slate-900/90 rounded border border-slate-800 text-xs flex items-center justify-between"
+                            >
+                              <span className="font-medium text-white truncate">{ex.name}</span>
+                              <span className="text-[9px] text-slate-400 capitalize px-1.5 py-0.5 rounded bg-slate-950">
+                                {ex.targetMuscle || 'Full Body'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-slate-500 leading-relaxed">
+                          Add equipment or enable floor space to unlock workout exercises for this zone.
+                        </p>
+                      )}
+
+                      {/* Unlock Suggestions */}
+                      {evaluation.partiallySupported.length > 0 && (
+                        <div className="pt-2 border-t border-slate-800/60">
+                          <div className="text-[10px] font-bold text-amber-400/90 uppercase tracking-wider mb-1.5">
+                            +1 Equipment to Unlock ({evaluation.partiallySupported.length})
+                          </div>
+                          <div className="space-y-1 max-h-24 overflow-y-auto pr-1">
+                            {evaluation.partiallySupported.slice(0, 5).map(({ exercise, missingEquipment }) => (
+                              <div
+                                key={exercise.id}
+                                className="text-[11px] px-2 py-1 bg-amber-950/15 border border-amber-900/30 rounded text-slate-300 flex items-center justify-between"
+                              >
+                                <span className="truncate">{exercise.name}</span>
+                                <span className="text-[9px] text-amber-400 font-mono">
+                                  + {missingEquipment[0]?.name}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
               </div>
               <div className="mt-8 pt-6 border-t border-slate-800"><button type="button" onClick={deleteZone} className="w-full flex items-center justify-center px-4 py-3 bg-red-950/30 hover:bg-red-900/50 text-red-400 hover:text-red-200 border border-red-900/50 rounded-lg text-sm font-medium transition-all group"><Trash2 className="w-4 h-4 mr-2 group-hover:scale-110 transition-transform" />Delete Zone</button></div>
             </div>
@@ -1804,60 +2183,191 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
                                 })}
                              </div>
                         </div>
-                        <div><label className="block text-xs text-slate-500 mb-1">Label</label><input value={(selectedZone.machines || []).find(m => m.id === selectedMachineId)?.name || ''} onFocus={() => snapshot()} onChange={(e) => { const newZones = gym.zones.map(z => { if (z.id !== selectedZone.id) return z; return { ...z, machines: (z.machines || []).map(m => m.id === selectedMachineId ? { ...m, name: e.target.value } : m) }; }); update({ ...gym, zones: newZones }, false); }} className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none" /></div>
-                        <div><label className="block text-xs text-slate-500 mb-1">Video URL (YouTube / Shorts)</label><input value={(selectedZone.machines || []).find(m => m.id === selectedMachineId)?.videoUrl || ''} onFocus={() => snapshot()} onChange={(e) => { const newZones = gym.zones.map(z => { if (z.id !== selectedZone.id) return z; return { ...z, machines: (z.machines || []).map(m => m.id === selectedMachineId ? { ...m, videoUrl: e.target.value } : m) }; }); update({ ...gym, zones: newZones }, false); }} placeholder="https://www.youtube.com/watch?v=... or shorts" className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none" /></div>
-                        <div><label className="block text-xs text-slate-500 mb-1">Instructions</label><textarea value={(selectedZone.machines || []).find(m => m.id === selectedMachineId)?.longDescription || ''} onFocus={() => snapshot()} onChange={(e) => { const newZones = gym.zones.map(z => { if (z.id !== selectedZone.id) return z; return { ...z, machines: (z.machines || []).map(m => m.id === selectedMachineId ? { ...m, longDescription: e.target.value } : m) }; }); update({ ...gym, zones: newZones }, false); }} rows={4} placeholder="Detailed steps..." className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none resize-none" /></div>
+                        {/* Equipment Name / Autocomplete from Equipment Library */}
+                        <div className="relative">
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-xs text-slate-400 font-semibold">Equipment Name</label>
+                            <span className="text-[10px] text-lime-400 flex items-center gap-1 font-mono">
+                              <Layers className="w-3 h-3" /> Equipment Library
+                            </span>
+                          </div>
+                          
+                          <div className="relative">
+                            <input
+                              value={(selectedZone.machines || []).find(m => m.id === selectedMachineId)?.name || ''}
+                              onFocus={() => {
+                                snapshot();
+                                setIsMachineNameFocused(true);
+                              }}
+                              onBlur={() => {
+                                setTimeout(() => setIsMachineNameFocused(false), 250);
+                              }}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                const newZones = gym.zones.map(z => {
+                                  if (z.id !== selectedZone.id) return z;
+                                  return {
+                                    ...z,
+                                    machines: (z.machines || []).map(m => m.id === selectedMachineId ? { ...m, name: val } : m)
+                                  };
+                                });
+                                update({ ...gym, zones: newZones }, false);
+                              }}
+                              placeholder="e.g. Incline Bench, Power Rack, Cable Crossover..."
+                              className="w-full bg-slate-950 border border-slate-700 focus:border-lime-500 rounded p-2 text-sm text-white focus:outline-none transition-colors"
+                            />
+                          </div>
 
-                        {/* Save to Exercise Library action */}
+                          {/* Autocomplete suggestions from Equipment Library */}
+                          {isMachineNameFocused && (
+                            <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl max-h-52 overflow-y-auto divide-y divide-slate-800 animate-in fade-in zoom-in-95 duration-150">
+                              {(() => {
+                                const currentMachine = (selectedZone.machines || []).find(m => m.id === selectedMachineId);
+                                const currentQuery = (currentMachine?.name || '').trim().toLowerCase();
+                                const suggestions = equipmentList.filter(eq =>
+                                  !currentQuery ||
+                                  eq.name.toLowerCase().includes(currentQuery) ||
+                                  (eq.category || '').toLowerCase().includes(currentQuery) ||
+                                  (eq.tags || []).some(t => t.toLowerCase().includes(currentQuery))
+                                );
+                                const hasExactMatch = suggestions.some(eq => eq.name.toLowerCase() === currentQuery);
+
+                                if (suggestions.length === 0 && !currentQuery) {
+                                  return (
+                                    <div className="p-2.5 text-[11px] text-slate-500 text-center">
+                                      Type to search Equipment Library catalog...
+                                    </div>
+                                  );
+                                }
+
+                                return (
+                                  <>
+                                    {suggestions.map(eq => {
+                                      const EqIcon = getEquipmentIconComponent(eq.icon);
+                                      return (
+                                        <button
+                                          key={eq.id}
+                                          type="button"
+                                          onMouseDown={(e) => {
+                                            e.preventDefault();
+                                            const currentEqIds = selectedZone.equipmentIds || [];
+                                            const updatedEqIds = currentEqIds.includes(eq.id) ? currentEqIds : [...currentEqIds, eq.id];
+                                            const newZones = gym.zones.map(z => {
+                                              if (z.id !== selectedZone.id) return z;
+                                              return {
+                                                ...z,
+                                                equipmentIds: updatedEqIds,
+                                                machines: (z.machines || []).map(m =>
+                                                  m.id === selectedMachineId
+                                                    ? {
+                                                        ...m,
+                                                        name: eq.name,
+                                                        icon: eq.icon || m.icon || 'Dumbbell',
+                                                        longDescription: eq.description || m.longDescription || ''
+                                                      }
+                                                    : m
+                                                )
+                                              };
+                                            });
+                                            update({ ...gym, zones: newZones }, false);
+                                            setIsMachineNameFocused(false);
+                                          }}
+                                          className="w-full text-left px-3 py-2 hover:bg-slate-800 transition-colors flex items-center justify-between group"
+                                        >
+                                          <div className="flex items-center gap-2 min-w-0">
+                                            <EqIcon className="w-3.5 h-3.5 text-lime-400 flex-shrink-0 group-hover:scale-110 transition-transform" />
+                                            <div className="truncate">
+                                              <div className="text-xs font-semibold text-white group-hover:text-lime-300 transition-colors truncate">
+                                                {eq.name}
+                                              </div>
+                                              <div className="text-[10px] text-slate-400">
+                                                {eq.category}
+                                              </div>
+                                            </div>
+                                          </div>
+                                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-950 border border-slate-750 text-slate-400 group-hover:text-lime-400 group-hover:border-lime-500/40 font-medium">
+                                            Use Equipment
+                                          </span>
+                                        </button>
+                                      );
+                                    })}
+
+                                    {!hasExactMatch && currentQuery && (
+                                      <button
+                                        type="button"
+                                        onMouseDown={async (e) => {
+                                          e.preventDefault();
+                                          await saveMachineToEquipmentLibrary(currentMachine?.name);
+                                          setIsMachineNameFocused(false);
+                                        }}
+                                        className="w-full text-left px-3 py-2 bg-lime-950/20 hover:bg-lime-950/40 transition-colors flex items-center gap-2 text-lime-400 border-t border-lime-900/30"
+                                      >
+                                        <Plus className="w-3.5 h-3.5 flex-shrink-0" />
+                                        <div className="text-xs font-semibold">
+                                          + Save new equipment: <span className="underline italic">"{currentMachine?.name}"</span>
+                                        </div>
+                                      </button>
+                                    )}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          )}
+                        </div>
+
+                        <div><label className="block text-xs text-slate-500 mb-1">Video URL (YouTube / Shorts)</label><input value={(selectedZone.machines || []).find(m => m.id === selectedMachineId)?.videoUrl || ''} onFocus={() => snapshot()} onChange={(e) => { const newZones = gym.zones.map(z => { if (z.id !== selectedZone.id) return z; return { ...z, machines: (z.machines || []).map(m => m.id === selectedMachineId ? { ...m, videoUrl: e.target.value } : m) }; }); update({ ...gym, zones: newZones }, false); }} placeholder="https://www.youtube.com/watch?v=... or shorts" className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none" /></div>
+                        <div><label className="block text-xs text-slate-500 mb-1">Equipment Specs & Instructions</label><textarea value={(selectedZone.machines || []).find(m => m.id === selectedMachineId)?.longDescription || ''} onFocus={() => snapshot()} onChange={(e) => { const newZones = gym.zones.map(z => { if (z.id !== selectedZone.id) return z; return { ...z, machines: (z.machines || []).map(m => m.id === selectedMachineId ? { ...m, longDescription: e.target.value } : m) }; }); update({ ...gym, zones: newZones }, false); }} rows={4} placeholder="Detailed setup, seat pin height, barbell collars..." className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none resize-none" /></div>
+
+                        {/* Save to Equipment Library action */}
                         {(() => {
                           const currentMachine = (selectedZone.machines || []).find(m => m.id === selectedMachineId);
                           const machineName = (currentMachine?.name || '').trim();
-                          const existingInLib = machineName ? libraryExercises.find(e => e.name.trim().toLowerCase() === machineName.toLowerCase()) : null;
+                          const existingInLib = machineName ? equipmentList.find(e => e.name.trim().toLowerCase() === machineName.toLowerCase()) : null;
 
                           return (
                             <div className="space-y-2 pt-2 border-t border-slate-800/80">
                               <button
-                                onClick={saveMachineToLibrary}
+                                onClick={() => saveMachineToEquipmentLibrary()}
                                 disabled={savingToLibrary || !machineName}
                                 className={`w-full flex items-center justify-center px-4 py-2.5 rounded-lg text-xs font-bold transition-all border shadow-sm ${
                                   saveToLibraryStatus === 'saved'
-                                    ? 'bg-emerald-600 border-emerald-500 text-white shadow-emerald-900/20'
+                                    ? 'bg-lime-600 border-lime-500 text-white shadow-lime-900/20'
                                     : saveToLibraryStatus === 'exists'
-                                    ? 'bg-blue-600 border-blue-500 text-white shadow-blue-900/20'
+                                    ? 'bg-emerald-600 border-emerald-500 text-white shadow-emerald-900/20'
                                     : 'bg-slate-800 hover:bg-slate-700 border-slate-700 hover:border-slate-600 text-slate-200 hover:text-white'
                                 } ${(!machineName || savingToLibrary) ? 'opacity-50 cursor-not-allowed' : ''}`}
                               >
                                 {savingToLibrary ? (
                                   <>
-                                    <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin text-blue-400" />
-                                    <span>Saving to Library...</span>
+                                    <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin text-lime-400" />
+                                    <span>Saving to Equipment Library...</span>
                                   </>
                                 ) : saveToLibraryStatus === 'saved' ? (
                                   <>
                                     <Check className="w-3.5 h-3.5 mr-2 text-white" />
-                                    <span>Saved to Exercise Library!</span>
+                                    <span>Saved to Equipment Library!</span>
                                   </>
                                 ) : saveToLibraryStatus === 'exists' ? (
                                   <>
                                     <Check className="w-3.5 h-3.5 mr-2 text-white" />
-                                    <span>Updated in Exercise Library!</span>
+                                    <span>Updated in Equipment Library!</span>
                                   </>
                                 ) : (
                                   <>
-                                    <Bookmark className="w-3.5 h-3.5 mr-2 text-blue-400" />
-                                    <span>Save to Exercise Library</span>
+                                    <Bookmark className="w-3.5 h-3.5 mr-2 text-lime-400" />
+                                    <span>Save to Equipment Library</span>
                                   </>
                                 )}
                               </button>
 
                               {existingInLib ? (
-                                <div className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-blue-950/30 border border-blue-900/30 text-[10px] text-blue-300">
-                                  <BookmarkCheck className="w-3.5 h-3.5 flex-shrink-0 text-blue-400" />
-                                  <span>In Exercise Library (Saving updates existing record)</span>
+                                <div className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-lime-950/30 border border-lime-900/30 text-[10px] text-lime-300">
+                                  <BookmarkCheck className="w-3.5 h-3.5 flex-shrink-0 text-lime-400" />
+                                  <span>In Equipment Library ({existingInLib.category})</span>
                                 </div>
                               ) : (
                                 <p className="text-[10px] text-slate-500 px-1 leading-tight">
-                                  Stores this machine to your Exercise Library for instant 1-click placement across any zone.
+                                  Stores this physical gear item into your Equipment Library for quick reuse and exercise mapping.
                                 </p>
                               )}
                             </div>
@@ -2315,12 +2825,39 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
                 </div>
               </div>
           )}
-
         </div>
         </>
           )
+        ) : activeTab === 'equipment' ? (
+          <EquipmentLibrary
+            gym={gym}
+            equipmentList={equipmentList}
+            exercises={libraryExercises}
+            onEquipmentChange={setEquipmentList}
+            onGymChange={(updated) => update(updated, true)}
+          />
         ) : (
-          <ExerciseLibrary gym={gym} />
+          <ExerciseLibrary
+            gym={gym}
+            equipmentList={equipmentList}
+          />
+        )}
+
+        {/* Quick Add Equipment Modal (Minimal Photo-only flow) */}
+        <QuickAddEquipmentModal
+          isOpen={isQuickAddModalOpen}
+          onClose={() => setIsQuickAddModalOpen(false)}
+          targetZone={selectedZone}
+          availableZones={gym.zones}
+          onEquipmentCreated={handleQuickAddEquipmentCreated}
+        />
+
+        {/* Quick Add Success Toast */}
+        {quickAddFeedback && (
+          <div className="fixed bottom-6 right-6 z-50 bg-lime-500 text-slate-950 px-4 py-3 rounded-xl shadow-2xl font-bold text-xs flex items-center gap-2 border border-lime-400 animate-in slide-in-from-bottom-5 duration-200">
+            <Check className="w-4 h-4 text-slate-950" />
+            <span>{quickAddFeedback}</span>
+          </div>
         )}
       </div>
     </div>

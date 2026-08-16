@@ -22,6 +22,17 @@ export enum EquipmentType {
 
 export type Language = 'et' | 'en' | 'ru';
 
+export interface EquipmentItem {
+  id: string;
+  name: string;
+  category: 'Free Weights' | 'Machines' | 'Benches & Racks' | 'Cables' | 'Cardio' | 'Functional & Floor' | 'Accessories' | string;
+  description?: string; // Text instructions describing what it looks like / how to identify or set it up
+  icon?: string;
+  imageUrl?: string; // Uploaded picture of the physical equipment
+  defaultFootprint?: { width: number; height: number };
+  isFloorSpace?: boolean; // Tag indicating open floor / mat area for bodyweight exercises
+}
+
 export interface GymMachine {
   id: string;
   name: string;
@@ -33,6 +44,8 @@ export interface GymMachine {
   longDescription?: string;
   videoUrl?: string;
   icon?: string;
+  equipmentId?: string; // Links this placed machine to an EquipmentItem in the Equipment Library
+  exerciseId?: string;  // Optional direct link to a LibraryExercise
 }
 
 export interface GymAnnex {
@@ -57,6 +70,7 @@ export interface GymZone {
   icon: string;
   description?: string;
   machines?: GymMachine[];
+  equipmentIds?: string[]; // Array of EquipmentItem.id present in this zone
   isHallway?: boolean;
 }
 
@@ -131,6 +145,8 @@ export interface Exercise {
   equipmentId: string;
   machineId?: string; // Links to a specific machine in the zone
   videoUrl?: string; // Specific video for this exercise
+  makeHarder?: string; // How to make it harder variation instructions
+  makeEasier?: string; // How to make it easier variation instructions
 }
 
 export interface LibraryExercise {
@@ -138,11 +154,13 @@ export interface LibraryExercise {
   name: string;
   targetMuscle: string;      // Target muscle group(s)
   equipmentRequired: string; // e.g., Dumbbell, barbell, leg press machine
+  requiredEquipmentIds?: string[]; // Array of EquipmentItem.id required for this exercise (links to Equipment Library)
   category: string;          // compound/isolation, strength, cardio, mobility, etc.
-  instructions: string;      // Clear instructions on how to perform the exercise
+  instructions: string;      // Clear movement execution & form instructions
   equipmentId?: string;      // Optional mapped zone/location ID on the gym map
-  videoUrl?: string;         // Optional video URL
-  imageUrl?: string;         // Optional image URL
+  videoUrl?: string;         // Uploaded video URL demonstrating how to perform the movement
+  makeHarder?: string;       // Instructions for increasing difficulty (tempo, load, ROM, stance)
+  makeEasier?: string;       // Instructions for regressing difficulty (assistance, bands, ROM, load)
 }
 
 export interface WorkoutDay {
