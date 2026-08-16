@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { WorkoutPlan, Language, Exercise, WorkoutDay } from '../types';
 import { generateProgramAnalysis } from '../services/geminiService';
-import { translations } from '../translations';
-import { Trash2, Dumbbell, BrainCircuit, X, Calendar, Plus, Edit2, Check, Sparkles, ChevronRight, MapPin, Play } from 'lucide-react';
+import { translations, translateMuscle, translateExerciseName, translateDayName } from '../translations';
+import { Trash2, Dumbbell, BrainCircuit, X, Calendar, Plus, Edit2, Check, Sparkles, ChevronRight, MapPin, Play, Download, Info } from 'lucide-react';
+import { getEquipmentIcon } from '../utils/equipmentIcons';
+import { exportWorkoutToPdf } from '../utils/pdfExporter';
+import ExerciseDetailModal from './ExerciseDetailModal';
 
 interface ProgramListProps {
   workout: WorkoutPlan;
@@ -37,6 +40,8 @@ const ProgramList: React.FC<ProgramListProps> = ({
   const [analyzing, setAnalyzing] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedDetailExercise, setSelectedDetailExercise] = useState<Exercise | null>(null);
+  const [isPlanSaved, setIsPlanSaved] = useState(false);
   const t = translations[lang];
 
   const currentDay = workout.days[activeDayIndex] || workout.days[0];
@@ -125,13 +130,14 @@ const ProgramList: React.FC<ProgramListProps> = ({
             {t.trainingPlan}
           </h2>
           <div className="flex items-center space-x-2">
-            <span className="text-xs bg-slate-800 text-slate-400 px-2 py-1 rounded-full border border-slate-700">
+            <span className="text-xs bg-slate-800 text-slate-400 px-2.5 py-1 rounded-full border border-slate-700 font-semibold">
               {totalExercises} {t.items}
             </span>
             {onClose && (
               <button 
                 onClick={onClose}
-                className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded transition-colors"
+                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -152,7 +158,7 @@ const ProgramList: React.FC<ProgramListProps> = ({
           <div className="flex overflow-x-auto scrollbar-hide space-x-2 pb-2">
             {workout.days.map((day, idx) => (
               <button
-                key={day.id}
+                key={`${day.id}-${idx}`}
                 onClick={() => setActiveDayIndex(idx)}
                 className={`
                   flex-shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border
@@ -173,7 +179,7 @@ const ProgramList: React.FC<ProgramListProps> = ({
           <div className="mb-4">
              <div className="flex items-center text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 px-1">
                <ChevronRight className="w-3 h-3 mr-1 text-lime-500" />
-               {currentDay.name}
+               {translateDayName(currentDay.name, activeDayIndex, lang)}
              </div>
           </div>
         )}
@@ -259,9 +265,10 @@ const ProgramList: React.FC<ProgramListProps> = ({
             </div>
           </div>
         ) : (
-          currentDay.exercises.map((ex, index) => (
-            editingId === ex.id ? (
-              <form key={ex.id} onSubmit={handleUpdate} className="bg-slate-800 border border-blue-500/30 rounded-lg p-3 space-y-3 animate-in zoom-in-95 duration-200">
+          currentDay.exercises.map((ex, index) => {
+            const ExIcon = getEquipmentIcon('', ex.name, ex.targetMuscle);
+            return editingId === ex.id ? (
+              <form key={`edit-${ex.id}-${index}`} onSubmit={handleUpdate} className="bg-slate-800 border border-blue-500/30 rounded-lg p-3 space-y-3 animate-in zoom-in-95 duration-200">
                 <div className="space-y-1">
                   <input 
                     autoFocus
@@ -306,33 +313,41 @@ const ProgramList: React.FC<ProgramListProps> = ({
                 </div>
               </form>
             ) : (
-              <div key={ex.id} className="bg-slate-800/50 hover:bg-slate-800 rounded-lg p-3 border border-slate-700/50 hover:border-slate-600 transition-all">
-                <div className="flex justify-between group">
+              <div 
+                key={`ex-${ex.id}-${index}`} 
+                onClick={() => setSelectedDetailExercise(ex)}
+                className="bg-slate-800/50 hover:bg-slate-800 rounded-lg p-3 border border-slate-700/50 hover:border-slate-600 transition-all cursor-pointer group hover:shadow-lg hover:shadow-slate-950/40 relative"
+              >
+                <div className="flex justify-between items-start">
                   <div className="flex items-start space-x-3">
-                    <div className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-900 text-slate-500 text-xs font-mono mt-0.5 border border-slate-800">
+                    <div className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-900 text-slate-500 text-xs font-mono mt-0.5 border border-slate-800 group-hover:border-lime-500/50 group-hover:text-lime-400 transition-colors">
                       {index + 1}
                     </div>
                     <div>
-                      <h4 className="font-medium text-slate-200 text-sm">{ex.name}</h4>
+                      <h4 className="font-medium text-slate-200 text-sm group-hover:text-white transition-colors flex items-center gap-1.5">
+                        <ExIcon className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
+                        <span>{translateExerciseName(ex.name, lang)}</span>
+                        <Info className="w-3.5 h-3.5 text-slate-500 group-hover:text-blue-400 opacity-60 group-hover:opacity-100 transition-all ml-1" />
+                      </h4>
                       <div className="flex items-center space-x-2 text-xs text-slate-500 mt-1">
                         <span className="text-lime-400/80 font-mono">{ex.sets} x {ex.reps}</span>
                         <span className="text-slate-700">•</span>
-                        <span className="text-purple-400/80">{ex.targetMuscle}</span>
+                        <span className="text-purple-400/80">{translateMuscle(ex.targetMuscle, lang)}</span>
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center space-x-1 opacity-80 sm:opacity-0 group-hover:opacity-100 transition-opacity">
                     <button 
-                      onClick={() => startEditing(ex)}
-                      className="text-slate-600 hover:text-blue-400 p-1"
+                      onClick={(e) => { e.stopPropagation(); startEditing(ex); }}
+                      className="text-slate-500 hover:text-blue-400 p-1 rounded hover:bg-slate-700/50 transition-colors"
                       title={t.edit}
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
                     <button 
-                      onClick={() => onRemoveExercise(ex.id)}
-                      className="text-slate-600 hover:text-red-400 p-1"
-                      title="Remove"
+                      onClick={(e) => { e.stopPropagation(); onRemoveExercise(ex.id); }}
+                      className="text-slate-500 hover:text-red-400 p-1 rounded hover:bg-slate-700/50 transition-colors"
+                      title={t.remove}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -340,7 +355,7 @@ const ProgramList: React.FC<ProgramListProps> = ({
                 </div>
 
                 {/* Direct Action Buttons for Ease of Use */}
-                <div className="mt-3 flex space-x-2">
+                <div className="mt-3 flex space-x-2" onClick={(e) => e.stopPropagation()}>
                    {ex.equipmentId !== 'manual' && (
                      <button 
                        onClick={() => onLocateExercise(ex)}
@@ -350,21 +365,28 @@ const ProgramList: React.FC<ProgramListProps> = ({
                        {t.locate}
                      </button>
                    )}
-                   {ex.videoUrl && (
-                     <button 
-                       onClick={() => onWatchVideo(ex)}
-                       className="flex-1 py-1.5 bg-slate-900 hover:bg-slate-700 text-[10px] font-bold text-slate-400 hover:text-blue-400 rounded border border-slate-800 flex items-center justify-center transition-colors"
-                     >
-                       <Play className="w-3 h-3 mr-1.5" />
-                       {t.watchVideo}
-                     </button>
-                   )}
+                   <button 
+                     onClick={() => setSelectedDetailExercise(ex)}
+                     className="flex-1 py-1.5 bg-slate-900 hover:bg-slate-700 text-[10px] font-bold text-slate-400 hover:text-blue-400 rounded border border-slate-800 flex items-center justify-center transition-colors"
+                   >
+                     <Play className="w-3 h-3 mr-1.5 text-blue-400" />
+                     {t.watchVideo}
+                   </button>
                 </div>
               </div>
-            )
-          ))
+            );
+          })
         )}
       </div>
+
+      {selectedDetailExercise && (
+        <ExerciseDetailModal 
+          exercise={selectedDetailExercise}
+          onClose={() => setSelectedDetailExercise(null)}
+          onLocateExercise={onLocateExercise}
+          lang={lang}
+        />
+      )}
 
       <div className="p-4 bg-slate-900 border-t border-slate-800 sticky bottom-0 z-10">
         {analyzing ? (
@@ -383,16 +405,47 @@ const ProgramList: React.FC<ProgramListProps> = ({
         ) : null}
 
         {totalExercises > 0 && (
-          <div className="flex space-x-2">
+          <div className="space-y-2">
              <button 
-               onClick={onClear}
-               className="flex-1 py-2.5 text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+               onClick={() => exportWorkoutToPdf(workout, lang)}
+               className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs sm:text-sm transition-all shadow-lg shadow-blue-900/20 flex items-center justify-center gap-1.5 min-h-[44px]"
              >
-               {t.clear}
+               <Download className="w-4 h-4" />
+               {t.exportPlan}
              </button>
-             <button className="flex-[2] py-2.5 bg-gradient-to-r from-lime-500 to-lime-600 hover:from-lime-400 hover:to-lime-500 text-slate-950 font-black rounded-lg text-sm transition-all shadow-lg shadow-lime-900/20 flex items-center justify-center">
-               {t.savePlan}
-             </button>
+             <div className="flex space-x-2">
+                <button 
+                  onClick={onClear}
+                  className="flex-1 py-2.5 text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors border border-slate-800 min-h-[44px] flex items-center justify-center"
+                >
+                  {t.clear}
+                </button>
+                <button 
+                  onClick={() => {
+                    try {
+                      localStorage.setItem('gyde_saved_workout', JSON.stringify(workout));
+                      setIsPlanSaved(true);
+                      setTimeout(() => setIsPlanSaved(false), 2500);
+                    } catch (e) {
+                      console.error('Failed to save workout plan:', e);
+                    }
+                  }}
+                  className={`flex-1 py-2.5 font-black rounded-xl text-xs transition-all shadow-lg flex items-center justify-center gap-1.5 min-h-[44px] ${
+                    isPlanSaved 
+                      ? 'bg-emerald-500 text-slate-950 shadow-emerald-900/30' 
+                      : 'bg-gradient-to-r from-lime-500 to-lime-600 hover:from-lime-400 hover:to-lime-500 text-slate-950 shadow-lime-900/20 active:scale-95'
+                  }`}
+                >
+                  {isPlanSaved ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>{lang === 'et' ? 'Salvestatud!' : lang === 'ru' ? 'Сохранено!' : 'Saved!'}</span>
+                    </>
+                  ) : (
+                    <span>{t.savePlan}</span>
+                  )}
+                </button>
+             </div>
           </div>
         )}
       </div>

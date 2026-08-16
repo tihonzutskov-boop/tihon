@@ -1,16 +1,263 @@
 import React, { useState, useEffect } from 'react';
-import { Gym, LibraryExercise } from '../types';
+import { Gym, LibraryExercise, Language } from '../types';
 import { api } from '../services/api';
+import { searchAndFilterExercises, getExerciseLocations } from '../utils/exerciseMatcher';
+import { getEquipmentIcon, isBeginnerFriendly } from '../utils/equipmentIcons';
+import { getYouTubeEmbedUrl } from '../utils/youtubeEmbed';
 import { 
-  Search, Filter, MapPin, Dumbbell, Play, Edit3, Trash2, Plus, X, Loader2, Video, KeyRound, Tag, Box, Info, Image, Sparkles
+  Search, Filter, MapPin, Dumbbell, Play, Edit3, Trash2, Plus, X, Loader2, Video, KeyRound, Tag, Box, Info, Image, Sparkles, Globe
 } from 'lucide-react';
 
 interface ExerciseLibraryProps {
   gym: Gym;
+  lang?: Language;
+  onLanguageChange?: (lang: Language) => void;
+  onLocateExercise?: (exercise: any) => void;
 }
 
-const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ gym }) => {
-  // Exercises state
+const LIB_UI: Record<Language, any> = {
+  en: {
+    headerTitle: 'Global Gym Exercise Library',
+    headerDesc: 'This database defines standard movement patterns, mapped equipment requirements, form videos, and category classifications. These modular components are utilized dynamically by the AI Engine to construct personalized workout programming.',
+    searchPlace: 'Search exercises by name, muscle, equipment, category...',
+    muscleFilter: 'Muscle:',
+    categoryFilter: 'Category:',
+    locationFilter: 'Map Location:',
+    allLocations: 'All Locations',
+    addExBtn: 'Add Exercise',
+    loading: 'Loading gym exercises database...',
+    noFoundTitle: 'No matching library exercises found',
+    noFoundDesc: 'Create customized weights drills, warm-ups, or cardio guides without workout programming details like sets or reps.',
+    createFirstBtn: 'Create Your First Custom Exercise',
+    equipReqLabel: 'Equipment required:',
+    bodyweight: 'None (Bodyweight)',
+    execGuidance: 'Execution & Form Guidance:',
+    noInstructions: 'No custom training instructions defined.',
+    mapAlign: 'Map floor alignment:',
+    notMapped: 'Not Mapped',
+    watchGuide: 'Watch Guide Video',
+    noFormVideo: 'No Form Video Configured',
+    modalAddTitle: 'Register New Library Exercise',
+    modalEditTitle: 'Modify Library Exercise Info',
+    exNameLabel: 'Exercise Name',
+    targetMuscleLabel: 'Target Muscle',
+    exCatLabel: 'Exercise Category',
+    equipReqInputLabel: 'Equipment Required',
+    gymZoneLabel: 'Gym Zone Location Mapping',
+    unassignedOpt: 'Unassigned (None / Free Space)',
+    ytLinkLabel: 'YouTube Video Link / Shorts',
+    ytLinkHelp: 'Accepts any YouTube URL (watch links, shorts, youtu.be, or embed links with timestamps/playlists).',
+    imgUrlLabel: 'Optional Form Demonstration Image URL',
+    stepInstructionsLabel: 'Step-By-Step Setup & Form instructions',
+    instructionsPlace: 'Explain step-by-step setup, starting posture, control phase, breath control mechanisms, and focus cues to prevent injuries...',
+    discardBtn: 'Discard',
+    saveBtn: 'Save Changes',
+    publishBtn: 'Publish Exercise',
+    confirmDeleteMsg: 'Are you sure you want to delete this exercise from the library?',
+    langSelectTitle: 'Exercise Library Language:',
+    allOpt: 'All'
+  },
+  et: {
+    headerTitle: 'Ülemaailmne Jõusaali Harjutuste Kogu',
+    headerDesc: 'See andmebaas määratleb standardsed liikumismustrid, vajaliku varustuse, õppevideod ja kategooriad. Tehisintellekt kasutab neid komponente dünaamiliselt personaalsete treeningprogrammide koostamiseks.',
+    searchPlace: 'Otsi harjutusi nime, lihase, varustuse või kategooria järgi...',
+    muscleFilter: 'Lihasgrupp:',
+    categoryFilter: 'Kategooria:',
+    locationFilter: 'Asukoht saalis:',
+    allLocations: 'Kõik asukohad',
+    addExBtn: 'Lisa harjutus',
+    loading: 'Harjutuste andmebaasi laadimine...',
+    noFoundTitle: 'Sobivaid harjutusi ei leitud',
+    noFoundDesc: 'Loo kohandatud jõuharjutusi, soojendusi või kardiojuhiseid ilma korduste või seeriate detailideta.',
+    createFirstBtn: 'Loo oma esimene kohandatud harjutus',
+    equipReqLabel: 'Vajalik varustus:',
+    bodyweight: 'Puudub (Keharaskus)',
+    execGuidance: 'Sooritus ja tehnika juhised:',
+    noInstructions: 'Täpsed juhised puuduvad.',
+    mapAlign: 'Seos tsooniga:',
+    notMapped: 'Määramata',
+    watchGuide: 'Vaata õppevideot',
+    noFormVideo: 'Video puudub',
+    modalAddTitle: 'Uue harjutuse registreerimine',
+    modalEditTitle: 'Harjutuse info muutmine',
+    exNameLabel: 'Harjutuse nimi',
+    targetMuscleLabel: 'Sihtlihas',
+    exCatLabel: 'Kategooria',
+    equipReqInputLabel: 'Vajalik varustus',
+    gymZoneLabel: 'Asukoht plaanil',
+    unassignedOpt: 'Määramata (Vaba ala)',
+    ytLinkLabel: 'YouTube Shortsi / video viide',
+    ytLinkHelp: 'Toetab YouTube Shortsi linke ja tavalisi YouTube videolinke.',
+    imgUrlLabel: 'Demonstratsioonpildi URL (valikuline)',
+    stepInstructionsLabel: 'Samm-sammulised juhised ja tehnika',
+    instructionsPlace: 'Selgita algasendit, liigutuse faase, hingamist ja olulisi detaile vigastuste vältimiseks...',
+    discardBtn: 'Tühista',
+    saveBtn: 'Salvesta muudatused',
+    publishBtn: 'Avalda harjutus',
+    confirmDeleteMsg: 'Kas oled kindel, et soovite selle harjutuse kogumikust kustutada?',
+    langSelectTitle: 'Harjutuste kogu keel:',
+    allOpt: 'Kõik'
+  },
+  ru: {
+    headerTitle: 'Глобальная библиотека упражнений',
+    headerDesc: 'Эта база данных определяет стандартные движения, необходимый инвентарь, видео и категории. ИИ динамически использует эти компоненты для составления индивидуальных программ тренировок.',
+    searchPlace: 'Поиск упражнений по названию, мышцам, инвентарю, категории...',
+    muscleFilter: 'Мышцы:',
+    categoryFilter: 'Категория:',
+    locationFilter: 'Локация в зале:',
+    allLocations: 'Все локации',
+    addExBtn: 'Добавить упражнение',
+    loading: 'Загрузка базы упражнений...',
+    noFoundTitle: 'Упражнения не найдены',
+    noFoundDesc: 'Создавайте собственные силовые упражнения, разминки или кардиопрограммы без указания подходов и повторений.',
+    createFirstBtn: 'Создать первое упражнение',
+    equipReqLabel: 'Необходимый инвентарь:',
+    bodyweight: 'Нет (Свой вес)',
+    execGuidance: 'Техника выполнения:',
+    noInstructions: 'Инструкции не указаны.',
+    mapAlign: 'Привязка к карте:',
+    notMapped: 'Не привязано',
+    watchGuide: 'Смотреть видеоурок',
+    noFormVideo: 'Видео не добавлено',
+    modalAddTitle: 'Новое упражнение',
+    modalEditTitle: 'Редактировать упражнение',
+    exNameLabel: 'Название упражнения',
+    targetMuscleLabel: 'Целевая мышца',
+    exCatLabel: 'Категория',
+    equipReqInputLabel: 'Необходимое оборудование',
+    gymZoneLabel: 'Привязка к зоне зала',
+    unassignedOpt: 'Не назначено (Свободная зона)',
+    ytLinkLabel: 'Ссылка на YouTube Shorts / видео',
+    ytLinkHelp: 'Поддерживаются ссылки YouTube Shorts и обычные видео YouTube.',
+    imgUrlLabel: 'URL изображения (опционально)',
+    stepInstructionsLabel: 'Пошаговая инструкция и техника',
+    instructionsPlace: 'Опишите исходное положение, фазу контроля, дыхание и ключевые моменты для предотвращения травм...',
+    discardBtn: 'Отмена',
+    saveBtn: 'Сохранить изменения',
+    publishBtn: 'Опубликовать',
+    confirmDeleteMsg: 'Вы уверены, что хотите удалить это упражнение из библиотеки?',
+    langSelectTitle: 'Язык библиотеки упражнений:',
+    allOpt: 'Все'
+  }
+};
+
+const MUSCLE_TRANSLATIONS: Record<Language, Record<string, string>> = {
+  en: {
+    'All': 'All', 'Quads': 'Quads', 'Glutes': 'Glutes', 'Legs/Quads': 'Legs/Quads', 'Glutes/Quads': 'Glutes/Quads',
+    'Back': 'Back', 'Back/Full Body': 'Back/Full Body', 'Chest': 'Chest', 'Shoulders': 'Shoulders', 'Arms/Biceps': 'Arms/Biceps', 'Arms/Triceps': 'Arms/Triceps', 'Cardio': 'Cardio', 'Core': 'Core', 'Full Body': 'Full Body'
+  },
+  et: {
+    'All': 'Kõik', 'Quads': 'Nelipealihas', 'Glutes': 'Tuhar', 'Legs/Quads': 'Jalad/Nelipealihas', 'Glutes/Quads': 'Tuhar/Nelipealihas',
+    'Back': 'Selg', 'Back/Full Body': 'Selg/Kogu keha', 'Chest': 'Rind', 'Shoulders': 'Õlad', 'Arms/Biceps': 'Käed/Biitseps', 'Arms/Triceps': 'Käed/Triitseps', 'Cardio': 'Kardio', 'Core': 'Tüvelihased', 'Full Body': 'Kogu keha'
+  },
+  ru: {
+    'All': 'Все', 'Quads': 'Квадрицепс', 'Glutes': 'Ягодицы', 'Legs/Quads': 'Ноги/Квадрицепс', 'Glutes/Quads': 'Ягодицы/Квадрицепс',
+    'Back': 'Спина', 'Back/Full Body': 'Спина/Все тело', 'Chest': 'Грудь', 'Shoulders': 'Плечи', 'Arms/Biceps': 'Руки/Бицепс', 'Arms/Triceps': 'Руки/Трицепс', 'Cardio': 'Кардио', 'Core': 'Кор', 'Full Body': 'Все тело'
+  }
+};
+
+const CATEGORY_TRANSLATIONS: Record<Language, Record<string, string>> = {
+  en: {
+    'All': 'All', 'Compound (Strength)': 'Compound (Strength)', 'Isolation (Hypertrophy)': 'Isolation (Hypertrophy)', 'Cardio / Aerobic': 'Cardio / Aerobic', 'Mobility / Stretching': 'Mobility / Stretching', 'Functional / Athlete': 'Functional / Athlete', 'Warm-up / Cooldown': 'Warm-up / Cooldown'
+  },
+  et: {
+    'All': 'Kõik', 'Compound (Strength)': 'Baasharjutus (Jõud)', 'Isolation (Hypertrophy)': 'Isoleeriv (Hüpertroofia)', 'Cardio / Aerobic': 'Kardio / Aeroobne', 'Mobility / Stretching': 'Liikuvus / Venitus', 'Functional / Athlete': 'Funktsionaalne', 'Warm-up / Cooldown': 'Soojendus / Taastumine'
+  },
+  ru: {
+    'All': 'Все', 'Compound (Strength)': 'Базовое (Сила)', 'Isolation (Hypertrophy)': 'Изолирующее (Гипертрофия)', 'Cardio / Aerobic': 'Кардио / Аэробное', 'Mobility / Stretching': 'Мобильность / Растяжка', 'Functional / Athlete': 'Функциональное', 'Warm-up / Cooldown': 'Разминка / Заминка'
+  }
+};
+
+const EXERCISE_DATA_TRANSLATIONS: Record<string, Record<Language, { name: string; equipmentRequired: string; instructions: string }>> = {
+  'ex-squat': {
+    en: {
+      name: 'Barbell Back Squat',
+      equipmentRequired: 'Olympic Barbell & Squat Rack',
+      instructions: 'Keep your chest high, engage your core, squat deep in a full range of motion while maintaining flat heels on the floor.'
+    },
+    et: {
+      name: 'Kangiga kükk turjal',
+      equipmentRequired: 'Olümpia kang & kükipuur',
+      instructions: 'Hoia rind üleval, aktiveeri tüvelihased, küki sügavale täieliku ulatusega, hoides kandasid tugevalt maas.'
+    },
+    ru: {
+      name: 'Приседания со штангой на плечах',
+      equipmentRequired: 'Олимпийская штанга и силовая рама',
+      instructions: 'Держите грудь высоко, напрягите мышцы кора, приседайте глубоко с полной амплитудой, сохраняйте пятки прижатыми к полу.'
+    }
+  },
+  'ex-rowing': {
+    en: {
+      name: 'Concept2 Rowing Conditioning',
+      equipmentRequired: 'Concept2 Rowing Machine',
+      instructions: 'Drive primarily with your legs by keeping heels flat, extend hips, and coordinate handles to follow after your body matches the lean angle.'
+    },
+    et: {
+      name: 'Concept2 sõudeergomeetri treening',
+      equipmentRequired: 'Concept2 sõudeergomeeter',
+      instructions: 'Tõuka eelkõige jalgadega, hoia kannad maas, siruta puusad ja tõmba käepidet alles siis, kui keha on kergelt tahapoole kallutatud.'
+    },
+    ru: {
+      name: 'Гребля на тренажере Concept2',
+      equipmentRequired: 'Гребной тренажер Concept2',
+      instructions: 'Толкайтесь в основном ногами, сохраняя пятки прижатыми, разгибайте тазобедренный сустав и тяните рукоятку к поясу.'
+    }
+  },
+  'ex-treadmill': {
+    en: {
+      name: 'Treadmill Incline Hike',
+      equipmentRequired: 'Commercial Treadmill',
+      instructions: 'Set the target treadmill incline level to 10%–15% and keep a steady active walking pace at 3.0–3.5 mph. Avoid holding onto handrails to maximize core engagement.'
+    },
+    et: {
+      name: 'Kõndimine jooksulindil kaldega',
+      equipmentRequired: 'Professionaalne jooksulint',
+      instructions: 'Seadista jooksulindi kaldenurk 10%–15% ja hoia ühtlast aktiivset kõnnitempot (5–6 km/h). Tüvelihaste paremaks kaasamiseks väldi käetugedest kinni hoidmist.'
+    },
+    ru: {
+      name: 'Ходьба в гору на беговой дорожке',
+      equipmentRequired: 'Беговая дорожка',
+      instructions: 'Установите наклон дорожки на 10%–15% и поддерживайте активный темп ходьбы 5–6 км/ч. Не держитесь за поручни для максимальной работы мышц кора.'
+    }
+  },
+  'ex-legpress': {
+    en: {
+      name: 'Machine Leg Press 45°',
+      equipmentRequired: '45-Degree Plate-Loaded Leg Press',
+      instructions: 'Set deep comfortable feet placement, unlock structural handle safety pins, pull yourself down into seat support, and avoid rolling lower back off pad on negative phase.'
+    },
+    et: {
+      name: 'Jalapress masinal 45°',
+      equipmentRequired: '45-kraadine jalapressi masin',
+      instructions: 'Aseta jalad mugavalt platvormile, vabasta turvakonnad, suru selg tugevalt vastu seljatuge ja väldi alaselja ümardamist langetamise faasis.'
+    },
+    ru: {
+      name: 'Жим ногами в тренажере 45°',
+      equipmentRequired: 'Тренажер для жима ногами под углом 45°',
+      instructions: 'Установите стопы на ширине плеч, снимите фиксаторы безопасности, прижмите поясницу к спинке и не отрывайте таз в нижней точке траектории.'
+    }
+  },
+  'ex-dumbbell-curl': {
+    en: {
+      name: 'Seated Dumbbell Hammer Curl',
+      equipmentRequired: 'Set of Dumbbells & Bench',
+      instructions: 'Sit stable with chest proud, grip dumbbells with a neutral hammer orientation, keep elbows firmly tucked against your ribcage, and curl without swaying upper body shoulders.'
+    },
+    et: {
+      name: 'Istudes hantlitega haamertõste',
+      equipmentRequired: 'Hantlite komplekt & pink',
+      instructions: 'Istu sirgelt, hoia hantleid neutraalse haardega (peopesad vastamisi), suru küünarnukid vastu külgi ja tõsta raskust ilma ülakehaga hoogu võtmata.'
+    },
+    ru: {
+      name: 'Сгибания рук с гантелями "Молот" сидя',
+      equipmentRequired: 'Набор гантелей и скамья',
+      instructions: 'Сядьте ровно с прямой спиной, возьмите гантели нейтральным хватом, зафиксируйте локти вдоль корпуса и сгибайте руки без раскачивания туловища.'
+    }
+  }
+};
+
+const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ gym, lang, onLanguageChange, onLocateExercise }) => {
+  const [libLang, setLibLang] = useState<Language>('en');
   const [libraryExercises, setLibraryExercises] = useState<LibraryExercise[]>([]);
   const [exercisesSearchQuery, setExercisesSearchQuery] = useState('');
   const [selectedMuscleFilter, setSelectedMuscleFilter] = useState('All');
@@ -18,14 +265,24 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ gym }) => {
   const [selectedZoneFilter, setSelectedZoneFilter] = useState('All');
   const [isLoadingExercises, setIsLoadingExercises] = useState(false);
   
-  // Modal states for Exercise Library add/edit
   const [isExerciseModalOpen, setIsExerciseModalOpen] = useState(false);
   const [editingExercise, setEditingExercise] = useState<LibraryExercise | null>(null);
   
-  // Video player modal state
   const [playingVideoUrl, setPlayingVideoUrl] = useState<string | null>(null);
 
-  // Load exercises on mount
+  useEffect(() => {
+    if (lang && lang !== libLang) {
+      setLibLang(lang);
+    }
+  }, [lang]);
+
+  const handleLanguageSelect = (newLang: Language) => {
+    setLibLang(newLang);
+    onLanguageChange?.(newLang);
+  };
+
+  const t = LIB_UI[libLang];
+
   useEffect(() => {
     const loadExercises = async () => {
       setIsLoadingExercises(true);
@@ -56,49 +313,50 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ gym }) => {
   };
   
   const handleDeleteExercise = async (id: string) => {
-    if (window.confirm("Are you sure you want to delete this exercise from the library?")) {
+    if (window.confirm(t.confirmDeleteMsg)) {
        setLibraryExercises(prev => prev.filter(ex => ex.id !== id));
        await api.deleteExercise(id);
     }
   };
 
-  // Convert regular watch urls to embed format
   const getEmbedUrl = (url: string) => {
-    if (!url) return '';
-    try {
-      if (url.includes('youtube.com/watch?v=')) {
-        return url.replace('watch?v=', 'embed/');
-      }
-      if (url.includes('youtu.be/')) {
-        const splitted = url.split('/');
-        const id = splitted[splitted.length - 1].split('?')[0];
-        return `https://www.youtube.com/embed/${id}`;
-      }
-      return url;
-    } catch {
-      return url;
-    }
+    return getYouTubeEmbedUrl(url);
   };
 
-  // Filter exercises matching predicates
-  const filteredExercises = libraryExercises.filter(ex => {
-    const searchLow = exercisesSearchQuery.toLowerCase();
-    const matchesSearch = 
-      ex.name.toLowerCase().includes(searchLow) ||
-      (ex.targetMuscle || '').toLowerCase().includes(searchLow) ||
-      (ex.instructions || '').toLowerCase().includes(searchLow) ||
-      (ex.category || '').toLowerCase().includes(searchLow) ||
-      (ex.equipmentRequired || '').toLowerCase().includes(searchLow);
-      
-    const matchesMuscle = selectedMuscleFilter === 'All' || ex.targetMuscle === selectedMuscleFilter;
-    const matchesCategory = selectedCategoryFilter === 'All' || ex.category === selectedCategoryFilter;
-    
-    let matchesZone = true;
-    if (selectedZoneFilter !== 'All') {
-       matchesZone = ex.equipmentId === selectedZoneFilter;
+  const translateEx = (ex: LibraryExercise): LibraryExercise => {
+    const custom = EXERCISE_DATA_TRANSLATIONS[ex.id]?.[libLang];
+    const translatedCategory = CATEGORY_TRANSLATIONS[libLang][ex.category] || ex.category;
+    const translatedMuscle = MUSCLE_TRANSLATIONS[libLang][ex.targetMuscle] || ex.targetMuscle;
+
+    if (custom) {
+      return {
+        ...ex,
+        name: custom.name,
+        equipmentRequired: custom.equipmentRequired,
+        instructions: custom.instructions,
+        category: translatedCategory,
+        targetMuscle: translatedMuscle
+      };
     }
-    
-    return matchesSearch && matchesMuscle && matchesCategory && matchesZone;
+    return {
+      ...ex,
+      category: translatedCategory,
+      targetMuscle: translatedMuscle
+    };
+  };
+
+  const translatedLibraryList = libraryExercises.map(ex => ({
+    raw: ex,
+    translated: translateEx(ex)
+  }));
+
+  const filteredExercises = searchAndFilterExercises({
+    exercises: translatedLibraryList,
+    searchQuery: exercisesSearchQuery,
+    muscleFilter: selectedMuscleFilter,
+    categoryFilter: selectedCategoryFilter,
+    selectedZoneId: selectedZoneFilter,
+    gym
   });
 
   const musclePresetGroups = [
@@ -119,9 +377,9 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ gym }) => {
           <Sparkles className="w-5 h-5" />
         </div>
         <div className="space-y-1">
-          <h2 className="text-xs font-bold text-slate-100 uppercase tracking-widest leading-none">Global Gym Exercise Library</h2>
+          <h2 className="text-xs font-bold text-slate-100 uppercase tracking-widest leading-none">{t.headerTitle}</h2>
           <p className="text-xs text-slate-400 leading-relaxed max-w-3xl">
-            This database defines standard movement patterns, mapped equipment requirements, form videos, and category classifications. These modular components are utilized dynamically by the AI Engine to construct personalized workout programming (reps, sets, rest schedules) for any user preference.
+            {t.headerDesc}
           </p>
         </div>
       </div>
@@ -134,7 +392,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ gym }) => {
             type="text" 
             value={exercisesSearchQuery}
             onChange={(e) => setExercisesSearchQuery(e.target.value)}
-            placeholder="Search exercises by name, muscle, equipment, category..."
+            placeholder={t.searchPlace}
             className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 transition-colors"
           />
         </div>
@@ -142,46 +400,50 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ gym }) => {
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 px-3 py-2 rounded-xl text-xs text-slate-400">
             <Filter className="w-3.5 h-3.5 text-slate-500" />
-            <span>Muscle:</span>
+            <span>{t.muscleFilter}</span>
             <select
               value={selectedMuscleFilter}
               onChange={(e) => setSelectedMuscleFilter(e.target.value)}
               className="bg-transparent border-none text-white focus:outline-none cursor-pointer text-xs font-semibold"
             >
-              {musclePresetGroups.map(m => (
-                <option key={m} value={m} className="bg-slate-950 text-white">{m}</option>
-              ))}
-            </select>
-          </div>
+          {musclePresetGroups.map((m, idx) => (
+            <option key={`m-${m}-${idx}`} value={m} className="bg-slate-950 text-white">
+              {m === 'All' ? t.allOpt : (MUSCLE_TRANSLATIONS[libLang][m] || m)}
+            </option>
+          ))}
+        </select>
+      </div>
 
-          <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 px-3 py-2 rounded-xl text-xs text-slate-400">
-            <Tag className="w-3.5 h-3.5 text-slate-500" />
-            <span>Category:</span>
-            <select
-              value={selectedCategoryFilter}
-              onChange={(e) => setSelectedCategoryFilter(e.target.value)}
-              className="bg-transparent border-none text-white focus:outline-none cursor-pointer text-xs font-semibold"
-            >
-              {categoryPresets.map(c => (
-                <option key={c} value={c} className="bg-slate-950 text-white">{c}</option>
-              ))}
-            </select>
-          </div>
+      <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 px-3 py-2 rounded-xl text-xs text-slate-400">
+        <Tag className="w-3.5 h-3.5 text-slate-500" />
+        <span>{t.categoryFilter}</span>
+        <select
+          value={selectedCategoryFilter}
+          onChange={(e) => setSelectedCategoryFilter(e.target.value)}
+          className="bg-transparent border-none text-white focus:outline-none cursor-pointer text-xs font-semibold"
+        >
+          {categoryPresets.map((c, idx) => (
+            <option key={`c-${c}-${idx}`} value={c} className="bg-slate-950 text-white">
+              {c === 'All' ? t.allOpt : (CATEGORY_TRANSLATIONS[libLang][c] || c)}
+            </option>
+          ))}
+        </select>
+      </div>
 
-          <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 px-3 py-2 rounded-xl text-xs text-slate-400">
-            <MapPin className="w-3.5 h-3.5 text-slate-500" />
-            <span>Map Location:</span>
-            <select
-              value={selectedZoneFilter}
-              onChange={(e) => setSelectedZoneFilter(e.target.value)}
-              className="bg-transparent border-none text-white focus:outline-none cursor-pointer text-xs font-semibold"
-            >
-              <option value="All" className="bg-slate-950 text-white">All Locations</option>
-              {gym.zones.map(z => (
-                <option key={z.id} value={z.id} className="bg-slate-950 text-white">{z.name}</option>
-              ))}
-            </select>
-          </div>
+      <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 px-3 py-2 rounded-xl text-xs text-slate-400">
+        <MapPin className="w-3.5 h-3.5 text-slate-500" />
+        <span>{t.locationFilter}</span>
+        <select
+          value={selectedZoneFilter}
+          onChange={(e) => setSelectedZoneFilter(e.target.value)}
+          className="bg-transparent border-none text-white focus:outline-none cursor-pointer text-xs font-semibold"
+        >
+          <option value="All" className="bg-slate-950 text-white">{t.allLocations}</option>
+          {gym?.zones?.map((z, idx) => (
+            <option key={`z-${z.id}-${idx}`} value={z.id} className="bg-slate-950 text-white">{z.name}</option>
+          ))}
+        </select>
+      </div>
 
           <button
             onClick={() => {
@@ -190,7 +452,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ gym }) => {
             }}
             className="flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-950/50"
           >
-            <Plus className="w-4 h-4 mr-1" /> Add Exercise
+            <Plus className="w-4 h-4 mr-1" /> {t.addExBtn}
           </button>
         </div>
       </div>
@@ -199,13 +461,13 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ gym }) => {
       {isLoadingExercises ? (
         <div className="flex-1 flex flex-col items-center justify-center text-slate-500 gap-3 py-12">
           <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
-          <p className="text-xs">Loading gym exercises database...</p>
+          <p className="text-xs">{t.loading}</p>
         </div>
       ) : filteredExercises.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center p-12 border border-dashed border-slate-800 rounded-2xl text-center bg-slate-900/10 my-6">
           <div className="w-12 h-12 bg-slate-900/80 rounded-2xl flex items-center justify-center mb-4 border border-slate-800 text-slate-500"><Dumbbell className="w-6 h-6 animate-bounce" /></div>
-          <h3 className="text-sm font-bold text-slate-200 mb-1">No matching library exercises found</h3>
-          <p className="text-xs text-slate-500 max-w-xs leading-relaxed mb-6">Create customized weights drills, warm-ups, or cardio guides without workout programming details like sets or reps.</p>
+          <h3 className="text-sm font-bold text-slate-200 mb-1">{t.noFoundTitle}</h3>
+          <p className="text-xs text-slate-500 max-w-xs leading-relaxed mb-6">{t.noFoundDesc}</p>
           <button
             onClick={() => {
               setEditingExercise(null);
@@ -213,15 +475,21 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ gym }) => {
             }}
             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition-all"
           >
-            Create Your First Custom Exercise
+            {t.createFirstBtn}
           </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {filteredExercises.map(ex => {
-            const matchingZone = gym.zones.find(z => z.id === ex.equipmentId);
+          {filteredExercises.map(({ raw, translated: ex }, exIndex) => {
+            const locationResult = getExerciseLocations(raw, gym);
+            const { matchedZones, primaryZone, primaryMachine, needsManualReview, isMapped } = locationResult;
+            const EquipIcon = getEquipmentIcon('', ex.equipmentRequired || ex.name, ex.category);
+            const locationLabel = isMapped 
+              ? matchedZones.map(z => z.name).join(', ')
+              : 'Unassigned';
+
             return (
-              <div key={ex.id} className="bg-slate-900/40 border border-slate-850/80 hover:border-slate-800 rounded-2xl overflow-hidden hover:shadow-xl transition-all flex flex-col group min-h-[280px] hover:bg-slate-900/70">
+              <div key={`ex-card-${ex.id}-${raw.id || ''}-${exIndex}`} className="bg-slate-900/40 border border-slate-850/80 hover:border-slate-800 rounded-2xl overflow-hidden hover:shadow-xl transition-all flex flex-col group min-h-[280px] hover:bg-slate-900/70 animate-in fade-in duration-300">
                 <div className="p-5 flex-1 flex flex-col">
                   {/* Top classification badges */}
                   <div className="flex items-start justify-between gap-2 mb-3">
@@ -232,17 +500,27 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ gym }) => {
                       <span className="px-2.5 py-0.5 rounded-full bg-indigo-950/80 text-indigo-400 border border-indigo-900/30 text-[9px] font-bold tracking-wide uppercase">
                         {ex.targetMuscle}
                       </span>
+                      {isBeginnerFriendly(raw) && (
+                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-950/90 text-emerald-400 border border-emerald-500/40 text-[9px] font-bold tracking-wide uppercase flex items-center gap-1">
+                          🌱 Beginner
+                        </span>
+                      )}
+                      {needsManualReview && (
+                        <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 text-[9px] font-bold tracking-wide uppercase flex items-center gap-1">
+                          ⚠️ Review Needed
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                       <button 
-                        onClick={() => { setEditingExercise(ex); setIsExerciseModalOpen(true); }}
+                        onClick={() => { setEditingExercise(raw); setIsExerciseModalOpen(true); }}
                         className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
                         title="Edit Exercise"
                       >
                         <Edit3 className="w-3.5 h-3.5" />
                       </button>
                       <button 
-                        onClick={() => handleDeleteExercise(ex.id)}
+                        onClick={() => handleDeleteExercise(raw.id)}
                         className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-950/20 rounded-lg transition-colors"
                         title="Delete Exercise"
                       >
@@ -259,11 +537,11 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ gym }) => {
                   {/* Specifications required */}
                   <div className="space-y-1.5 mb-4 bg-slate-950/40 p-3 rounded-xl border border-slate-900/70">
                     <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-                      <Box className="w-3.5 h-3.5 text-slate-500" />
-                      <span className="font-semibold text-slate-300">Equipment required:</span>
+                      <EquipIcon className="w-3.5 h-3.5 text-indigo-400" />
+                      <span className="font-semibold text-slate-300">{t.equipReqLabel}</span>
                     </div>
                     <p className="text-xs font-bold text-slate-200 pl-5">
-                      {ex.equipmentRequired || 'None (Bodyweight)'}
+                      {ex.equipmentRequired || t.bodyweight}
                     </p>
                   </div>
 
@@ -271,19 +549,31 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ gym }) => {
                   <div className="flex-1">
                     <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mb-1">
                       <Info className="w-3.5 h-3.5" />
-                      <span>Execution & Form Guidance:</span>
+                      <span>{t.execGuidance}</span>
                     </div>
                     <p className="text-xs text-slate-400 leading-relaxed font-sans line-clamp-4">
-                      {ex.instructions || 'No custom training instructions defined.'}
+                      {ex.instructions || t.noInstructions}
                     </p>
                   </div>
                   
                   {/* Floor zone link indicator */}
-                  <div className="mt-4 pt-3 border-t border-slate-850/40 flex justify-between items-center text-[11px]">
-                    <span className="text-slate-500 font-semibold uppercase tracking-wider text-[9px]">Map floor alignment:</span>
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${matchingZone ? 'bg-indigo-950/40 text-indigo-400 hover:underline cursor-pointer' : 'text-slate-600'}`}>
-                      {matchingZone ? matchingZone.name : 'Not Mapped'}
-                    </span>
+                  <div className="mt-4 pt-3 border-t border-slate-850/40 flex justify-between items-center text-[11px] gap-2">
+                    <span className="text-slate-500 font-semibold uppercase tracking-wider text-[9px] flex-shrink-0">{t.mapAlign}</span>
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${isMapped ? 'bg-indigo-950/40 text-indigo-400 border border-indigo-800/30' : 'bg-amber-950/30 text-amber-400 border border-amber-800/30'}`}>
+                        {isMapped ? locationLabel : '⚠️ Manual Review'}
+                      </span>
+                      {isMapped && primaryZone && onLocateExercise && (
+                        <button
+                          onClick={() => onLocateExercise({ id: ex.id, name: ex.name, targetMuscle: ex.targetMuscle, sets: 3, reps: '10', equipmentId: primaryZone.id, machineId: primaryMachine?.id })}
+                          className="px-2 py-0.5 rounded bg-lime-500 hover:bg-lime-400 text-slate-950 text-[10px] font-bold flex items-center gap-1 transition-all shadow cursor-pointer active:scale-95"
+                          title="Locate on Gym Map"
+                        >
+                          <MapPin className="w-3 h-3" />
+                          <span>Map</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
                 
@@ -294,11 +584,11 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ gym }) => {
                     className="w-full py-3 bg-slate-950/80 hover:bg-slate-900 border-t border-slate-850/65 text-indigo-400 hover:text-indigo-300 text-xs font-bold transition-all flex items-center justify-center gap-1.5"
                   >
                     <Play className="w-4 h-4 fill-indigo-400 text-indigo-400" />
-                    Watch Guide Video
+                    {t.watchGuide}
                   </button>
                 ) : (
                   <div className="w-full py-3 bg-slate-950/20 text-slate-600 text-[10px] text-center border-t border-slate-850/20 font-medium select-none">
-                    No Form Video Configured
+                    {t.noFormVideo}
                   </div>
                 )}
               </div>
@@ -311,12 +601,19 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ gym }) => {
       {isExerciseModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-sm" onClick={() => setIsExerciseModalOpen(false)} />
-          <div className="relative bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
-             <div className="flex justify-between items-center px-6 py-4 border-b border-slate-800 bg-slate-900/50">
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-                  {editingExercise ? 'Modify Library Exercise Info' : 'Register New Library Exercise'}
+          <div className="relative bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90dvh] my-auto animate-in zoom-in-95 duration-200">
+             <div className="flex justify-between items-center px-6 py-4 border-b border-slate-800 bg-slate-900/90 flex-shrink-0">
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <Dumbbell className="w-4 h-4 text-indigo-400" />
+                  <span>{editingExercise ? t.modalEditTitle : t.modalAddTitle}</span>
                 </h3>
-                <button onClick={() => setIsExerciseModalOpen(false)} className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-850 rounded-full transition-colors"><X className="w-4 h-4" /></button>
+                <button 
+                  onClick={() => setIsExerciseModalOpen(false)} 
+                  className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+                  aria-label="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
              </div>
              
              <form onSubmit={(e) => {
@@ -339,66 +636,72 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ gym }) => {
                   handleAddNewExercise(exData);
                 }
                 setIsExerciseModalOpen(false);
-             }} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
-                <div>
-                  <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Exercise Name <span className="text-red-500">*</span></label>
-                  <input required name="name" type="text" defaultValue={editingExercise?.name || ''} placeholder="e.g., Dumbbell Flat Bench Press" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 transition-colors" />
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
+             }} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                <div className="p-6 space-y-4 overflow-y-auto flex-1">
                   <div>
-                    <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Target Muscle <span className="text-red-500">*</span></label>
-                    <select required name="targetMuscle" defaultValue={editingExercise?.targetMuscle || 'Legs/Quads'} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-indigo-500/50 transition-colors cursor-pointer">
-                      {musclePresetGroups.slice(1).map(m => (
-                        <option key={m} value={m} className="bg-slate-950 text-white">{m}</option>
+                    <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">{t.exNameLabel} <span className="text-red-500">*</span></label>
+                    <input required name="name" type="text" defaultValue={editingExercise?.name || ''} placeholder="e.g., Dumbbell Flat Bench Press" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 transition-colors min-h-[44px]" />
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">{t.targetMuscleLabel} <span className="text-red-500">*</span></label>
+                      <select required name="targetMuscle" defaultValue={editingExercise?.targetMuscle || 'Legs/Quads'} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-indigo-500/50 transition-colors cursor-pointer min-h-[44px]">
+                        {musclePresetGroups.slice(1).map(m => (
+                          <option key={m} value={m} className="bg-slate-950 text-white">
+                            {MUSCLE_TRANSLATIONS[libLang][m] || m}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">{t.exCatLabel} <span className="text-red-500">*</span></label>
+                      <select required name="category" defaultValue={editingExercise?.category || 'Compound (Strength)'} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-indigo-500/50 transition-colors cursor-pointer min-h-[44px]">
+                        {categoryPresets.slice(1).map(c => (
+                          <option key={c} value={c} className="bg-slate-950 text-white">
+                            {CATEGORY_TRANSLATIONS[libLang][c] || c}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">{t.equipReqInputLabel} <span className="text-red-500">*</span></label>
+                    <input required name="equipmentRequired" type="text" defaultValue={editingExercise?.equipmentRequired || ''} placeholder="e.g. Set of Dumbbells & Bench, Olympic Barbell, Lat Pulldown Machine" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 transition-colors min-h-[44px]" />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">{t.gymZoneLabel}</label>
+                    <select name="equipmentId" defaultValue={editingExercise?.equipmentId || ''} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-indigo-500/50 transition-colors cursor-pointer min-h-[44px]">
+                      <option value="" className="bg-slate-950 text-white">{t.unassignedOpt}</option>
+                      {gym?.zones?.map(z => (
+                        <option key={z.id} value={z.id} className="bg-slate-950 text-white">{z.name}</option>
                       ))}
                     </select>
                   </div>
+
                   <div>
-                    <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Exercise Category <span className="text-red-500">*</span></label>
-                    <select required name="category" defaultValue={editingExercise?.category || 'Compound (Strength)'} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-indigo-500/50 transition-colors cursor-pointer">
-                      {categoryPresets.slice(1).map(c => (
-                        <option key={c} value={c} className="bg-slate-950 text-white">{c}</option>
-                      ))}
-                    </select>
+                    <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">{t.ytLinkLabel}</label>
+                    <input name="videoUrl" type="url" defaultValue={editingExercise?.videoUrl || ''} placeholder="e.g. https://www.youtube.com/watch?v=ultWZbUMPL8" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-700 focus:outline-none focus:border-indigo-500/50 transition-colors min-h-[44px]" />
+                    <p className="text-[9px] text-slate-500 leading-relaxed mt-1">{t.ytLinkHelp}</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">{t.imgUrlLabel}</label>
+                    <input name="imageUrl" type="url" defaultValue={editingExercise?.imageUrl || ''} placeholder="e.g. https://example.com/squat_form.jpg" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-700 focus:outline-none focus:border-indigo-500/50 transition-colors min-h-[44px]" />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">{t.stepInstructionsLabel} <span className="text-red-500">*</span></label>
+                    <textarea required name="instructions" rows={4} defaultValue={editingExercise?.instructions || ''} placeholder={t.instructionsPlace} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-indigo-500/50 transition-colors resize-none" />
                   </div>
                 </div>
-
-                <div>
-                  <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Equipment Required <span className="text-red-500">*</span></label>
-                  <input required name="equipmentRequired" type="text" defaultValue={editingExercise?.equipmentRequired || ''} placeholder="e.g. Set of Dumbbells & Bench, Olympic Barbell, Lat Pulldown Machine" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 transition-colors" />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Gym Zone Location Mapping</label>
-                  <select name="equipmentId" defaultValue={editingExercise?.equipmentId || ''} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-indigo-500/50 transition-colors cursor-pointer">
-                    <option value="" className="bg-slate-950 text-white">Unassigned (None / Free Space)</option>
-                    {gym.zones.map(z => (
-                      <option key={z.id} value={z.id} className="bg-slate-950 text-white">{z.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">YouTube Demo Video Link</label>
-                  <input name="videoUrl" type="url" defaultValue={editingExercise?.videoUrl || ''} placeholder="e.g. https://www.youtube.com/watch?v=8iPEnn-ltC8" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-700 focus:outline-none focus:border-indigo-500/50 transition-colors" />
-                  <p className="text-[9px] text-slate-500 leading-relaxed mt-1">Accepts standard watch links or direct share links, and auto-formats to active embedded layout players.</p>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Optional Form Demonstration Image URL</label>
-                  <input name="imageUrl" type="url" defaultValue={editingExercise?.imageUrl || ''} placeholder="e.g. https://example.com/squat_form.jpg" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-700 focus:outline-none focus:border-indigo-500/50 transition-colors" />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Step-By-Step Setup & Form instructions <span className="text-red-500">*</span></label>
-                  <textarea required name="instructions" rows={5} defaultValue={editingExercise?.instructions || ''} placeholder="Explain step-by-step setup, starting postura, control phase, breath control mechanisms, and focus cues to prevent injuries..." className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-indigo-500/50 transition-colors resize-none" />
-                </div>
                 
-                <div className="pt-4 border-t border-slate-800 flex justify-end space-x-3">
-                   <button type="button" onClick={() => setIsExerciseModalOpen(false)} className="px-4 py-2 bg-slate-950 hover:bg-slate-850 rounded-xl text-xs font-bold text-slate-400 border border-slate-800 transition-colors">Discard</button>
-                   <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-xs font-bold text-white shadow-md shadow-indigo-900/10">
-                     {editingExercise ? 'Save Changes' : 'Publish Exercise'}
+                <div className="p-4 border-t border-slate-800 bg-slate-900 flex justify-end space-x-3 flex-shrink-0">
+                   <button type="button" onClick={() => setIsExerciseModalOpen(false)} className="px-5 py-2.5 bg-slate-950 hover:bg-slate-800 rounded-xl text-xs font-bold text-slate-400 border border-slate-800 transition-colors min-h-[44px]">{t.discardBtn}</button>
+                   <button type="submit" className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-xs font-bold text-white shadow-md shadow-indigo-900/10 min-h-[44px]">
+                     {editingExercise ? t.saveBtn : t.publishBtn}
                    </button>
                 </div>
              </form>
@@ -410,13 +713,14 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ gym }) => {
       {playingVideoUrl && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md" onClick={() => setPlayingVideoUrl(null)} />
-          <div className="relative bg-black border border-slate-850 rounded-2xl w-full max-w-3xl shadow-2xl aspect-video overflow-hidden animate-in zoom-in-95 duration-250">
+          <div className="relative bg-black border border-slate-850 rounded-2xl w-full max-w-3xl shadow-2xl aspect-video overflow-hidden animate-in zoom-in-95 duration-250 my-auto">
              <button 
                onClick={() => setPlayingVideoUrl(null)} 
-               className="absolute top-4 right-4 z-50 p-2 bg-black/60 hover:bg-black/80 rounded-full text-white/80 hover:text-white transition-colors"
+               className="absolute top-3 right-3 z-50 p-2.5 bg-black/80 hover:bg-black rounded-full text-white/90 hover:text-white transition-colors border border-slate-700 min-w-[44px] min-h-[44px] flex items-center justify-center"
                title="Close Video"
+               aria-label="Close"
              >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
              </button>
              <iframe
                src={getEmbedUrl(playingVideoUrl)}

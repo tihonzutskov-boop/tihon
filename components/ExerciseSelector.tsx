@@ -2,8 +2,9 @@
 import React, { useState } from 'react';
 import { GymZone, AiSuggestion, Exercise, Language } from '../types';
 import { generateExercisesForEquipment } from '../services/geminiService';
-import { translations, getGymTranslation } from '../translations';
-import { Loader2, Plus, Sparkles } from 'lucide-react';
+import { translations, getGymTranslation, translateMuscle, translateExerciseName } from '../translations';
+import { Loader2, Plus, Sparkles, Map, X } from 'lucide-react';
+import { getEquipmentIcon } from '../utils/equipmentIcons';
 
 interface ExerciseSelectorProps {
   zone: GymZone | null;
@@ -29,31 +30,37 @@ const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ zone, onAddExercise
   if (!zone) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-slate-500 p-6 text-center border-l border-slate-700">
-        <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mb-4">
-          <svg className="w-8 h-8 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0121 18.382V7.618a1 1 0 01-.894-1.447L14 7m0 13V7" />
-          </svg>
+        <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mb-4 border border-slate-700">
+          <Map className="w-8 h-8 opacity-50 text-lime-400" />
         </div>
-        <h3 className="text-lg font-medium text-slate-300">Select a Zone</h3>
+        <h3 className="text-lg font-medium text-slate-300">{t.selectZoneTitle}</h3>
         <p className="text-sm mt-2">{t.selectEquipment}</p>
       </div>
     );
   }
+
+  const ZoneIcon = getEquipmentIcon(zone.icon, zone.name, zone.type);
 
   return (
     <div className="flex flex-col h-full bg-slate-900 border-l border-slate-700 shadow-xl overflow-hidden">
       <div className="p-6 border-b border-slate-800 bg-slate-800/50">
         <div className="flex justify-between items-start">
           <div>
-            <span className="text-xs font-bold tracking-wider text-blue-400 uppercase">{zone.type}</span>
+            <div className="flex items-center space-x-2">
+              <ZoneIcon className="w-4 h-4 text-lime-400" />
+              <span className="text-xs font-bold tracking-wider text-blue-400 uppercase">{zone.type}</span>
+            </div>
             <h2 className="text-2xl font-bold text-white mt-1">{getGymTranslation(zone.name, lang)}</h2>
             {zone.description && (
               <p className="text-sm text-slate-400 mt-2 leading-relaxed">{getGymTranslation(zone.description, lang)}</p>
             )}
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
-            <span className="sr-only">Close</span>
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          <button 
+            onClick={onClose} 
+            className="p-2.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0"
+            aria-label="Close"
+          >
+            <X className="w-5 h-5" />
           </button>
         </div>
       </div>
@@ -64,20 +71,20 @@ const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ zone, onAddExercise
           <select 
             value={goal} 
             onChange={(e) => setGoal(e.target.value)}
-            className="w-full bg-slate-950 text-white rounded-lg px-4 py-2 border border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none"
+            className="w-full bg-slate-950 text-white rounded-xl px-4 py-2.5 border border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none text-sm min-h-[44px]"
           >
-            <option value="Hypertrophy">Hypertrophy (Muscle Growth)</option>
-            <option value="Strength">Max Strength</option>
-            <option value="Endurance">Endurance / Cardio</option>
-            <option value="Rehabilitation">Rehabilitation</option>
-            <option value="Explosive Power">Explosive Power</option>
+            <option value="Hypertrophy">{t.goalHypertrophy}</option>
+            <option value="Strength">{t.goalMaxStrength}</option>
+            <option value="Endurance">{t.goalCardio}</option>
+            <option value="Rehabilitation">{t.goalRehab}</option>
+            <option value="Explosive Power">{t.goalPower}</option>
           </select>
         </div>
 
         <button
           onClick={handleGenerate}
           disabled={loading}
-          className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold py-3 px-4 rounded-lg flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-900/20"
+          className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-900/20 text-sm min-h-[44px]"
         >
           {loading ? (
             <>
@@ -101,12 +108,12 @@ const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ zone, onAddExercise
         )}
 
         {suggestions.map((sug, idx) => (
-          <div key={idx} className="bg-slate-800 rounded-lg p-4 border border-slate-700 hover:border-blue-500/50 transition-colors group">
-            <div className="flex justify-between items-start mb-2">
-              <h4 className="font-semibold text-white">{sug.name}</h4>
+          <div key={`sug-${sug.name}-${idx}`} className="bg-slate-800 rounded-xl p-4 border border-slate-700 hover:border-blue-500/50 transition-colors group">
+            <div className="flex justify-between items-start mb-2 gap-2">
+              <h4 className="font-semibold text-white text-sm">{translateExerciseName(sug.name, lang)}</h4>
               <button
                 onClick={() => onAddExercise({
-                  id: Date.now().toString() + idx,
+                  id: `ex-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
                   name: sug.name,
                   sets: sug.sets,
                   reps: sug.reps,
@@ -114,16 +121,16 @@ const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ zone, onAddExercise
                   notes: sug.notes,
                   equipmentId: zone.id
                 })}
-                className="bg-slate-700 hover:bg-emerald-500 hover:text-white text-slate-300 p-1.5 rounded-full transition-colors"
-                title="Add to Program"
+                className="bg-lime-500 hover:bg-lime-400 text-slate-950 font-bold p-2 rounded-xl transition-all min-w-[40px] min-h-[40px] flex items-center justify-center flex-shrink-0 shadow-md"
+                title={t.addToProgram}
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-5 h-5" />
               </button>
             </div>
             <div className="flex items-center text-xs text-slate-400 space-x-3 mb-2">
               <span className="bg-slate-900 px-2 py-0.5 rounded text-blue-300">{sug.sets} {t.sets}</span>
               <span className="bg-slate-900 px-2 py-0.5 rounded text-blue-300">{sug.reps} {t.reps}</span>
-              <span className="bg-slate-900 px-2 py-0.5 rounded text-purple-300">{sug.targetMuscle}</span>
+              <span className="bg-slate-900 px-2 py-0.5 rounded text-purple-300">{translateMuscle(sug.targetMuscle, lang)}</span>
             </div>
             <p className="text-xs text-slate-500 italic">"{sug.notes}"</p>
           </div>

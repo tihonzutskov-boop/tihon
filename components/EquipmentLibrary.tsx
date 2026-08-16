@@ -1,21 +1,23 @@
-
 import React, { useState, useMemo } from 'react';
-import { GymZone, GymMachine, EquipmentType, Language } from '../types';
+import { GymZone, GymMachine, EquipmentType, Language, Gym } from '../types';
 import { translations, getGymTranslation } from '../translations';
-import { Search, Info, MapPin, X, Dumbbell, Play, Filter, Activity, Zap, Target, Cpu, Layers, Box, Wind, RotateCcw, ArrowUpRight, MoveDown, Circle, Waves, Timer } from 'lucide-react';
+import { Search, MapPin, X, Dumbbell, Play } from 'lucide-react';
+import { getEquipmentIcon } from '../utils/equipmentIcons';
 
 const ICON_MAP: Record<string, any> = {
-  Dumbbell, Activity, Zap, Target, Cpu, Layers, Box, Wind, RotateCcw, ArrowUpRight, MoveDown, Circle, Waves, Timer
+  Dumbbell, Play, MapPin
 };
 
 interface EquipmentLibraryProps {
+  gym: Gym;
   zones: GymZone[];
   onSelectMachine: (machine: GymMachine, zoneId: string) => void;
   onClose: () => void;
   lang: Language;
+  onLangChange?: (lang: Language) => void;
 }
 
-const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({ zones, onSelectMachine, onClose, lang }) => {
+const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({ gym, zones, onSelectMachine, onClose, lang }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState<string | 'All'>('All');
   const t = translations[lang];
@@ -51,7 +53,11 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({ zones, onSelectMach
             <Dumbbell className="w-6 h-6 text-lime-400" />
             <h2 className="text-xl font-bold text-white tracking-tight">{t.library}</h2>
           </div>
-          <button onClick={onClose} className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-full transition-colors">
+          <button 
+            onClick={onClose} 
+            className="p-2.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+            aria-label="Close"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -63,17 +69,17 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({ zones, onSelectMach
             placeholder={t.searchPlaceholder}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:ring-2 focus:ring-lime-500/50 focus:border-lime-500 outline-none transition-all"
+            className="w-full bg-slate-950 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:ring-2 focus:ring-lime-500/50 focus:border-lime-500 outline-none transition-all min-h-[44px]"
           />
         </div>
 
         <div className="flex overflow-x-auto pb-2 scrollbar-hide space-x-2">
-          {categories.map(cat => (
+          {categories.map((cat, idx) => (
             <button
-              key={cat}
+              key={`cat-${cat}-${idx}`}
               onClick={() => setActiveFilter(cat)}
               className={`
-                whitespace-nowrap px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border
+                whitespace-nowrap px-3.5 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all border min-h-[36px] flex items-center
                 ${activeFilter === cat 
                   ? 'bg-lime-500 border-lime-500 text-slate-900' 
                   : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'}
@@ -94,11 +100,11 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({ zones, onSelectMach
             <p className="text-sm font-medium text-slate-400">{t.noEquipmentFound}</p>
           </div>
         ) : (
-          filteredMachines.map(({ machine, zone }) => {
-            const MachineIcon = machine.icon ? ICON_MAP[machine.icon] : Dumbbell;
+          filteredMachines.map(({ machine, zone }, idx) => {
+            const MachineIcon = getEquipmentIcon(machine.icon, machine.name, zone.type);
             return (
               <div 
-                key={machine.id}
+                key={`eq-${zone.id}-${machine.id}-${idx}`}
                 className="bg-slate-800/40 border border-slate-800 hover:border-slate-600 hover:bg-slate-800 rounded-xl p-4 transition-all group relative overflow-hidden"
               >
                 <div className="absolute top-0 right-0 px-2 py-1 bg-slate-900 rounded-bl-lg border-l border-b border-slate-800 text-[8px] font-bold text-slate-500 uppercase tracking-tighter">
@@ -121,13 +127,13 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({ zones, onSelectMach
                 <div className="flex items-center space-x-2 mt-4">
                   <button 
                     onClick={() => onSelectMachine(machine, zone.id)}
-                    className="flex-1 py-2 bg-slate-900 hover:bg-lime-500 text-slate-400 hover:text-slate-900 border border-slate-700 hover:border-lime-500 rounded-lg text-xs font-bold transition-all flex items-center justify-center"
+                    className="flex-1 py-2.5 bg-slate-900 hover:bg-lime-500 text-slate-300 hover:text-slate-950 border border-slate-700 hover:border-lime-500 rounded-xl text-xs font-bold transition-all flex items-center justify-center min-h-[44px]"
                   >
-                    <MapPin className="w-3 h-3 mr-2" />
+                    <MapPin className="w-3.5 h-3.5 mr-2" />
                     {t.showOnMap}
                   </button>
                   {machine.videoUrl && (
-                    <div className="w-8 h-8 bg-blue-900/20 border border-blue-800/30 rounded-lg flex items-center justify-center text-blue-400">
+                    <div className="w-11 h-11 bg-blue-900/20 border border-blue-800/30 rounded-xl flex items-center justify-center text-blue-400 flex-shrink-0">
                       <Play className="w-4 h-4" />
                     </div>
                   )}

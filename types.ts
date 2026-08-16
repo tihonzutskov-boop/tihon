@@ -6,6 +6,18 @@ export enum EquipmentType {
   FUNCTIONAL = 'Functional',
   CORRIDOR = 'Corridor',
   FACILITY = 'Facility',
+  RECEPTION = 'Reception',
+  LOBBY = 'Lobby',
+  GYM_FLOOR = 'Gym Floor',
+  STUDIO = 'Group Fitness Studio',
+  CHANGING = 'Changing Rooms',
+  SHOWERS = 'Showers',
+  TOILETS = 'Toilets',
+  SAUNA = 'Sauna',
+  POOL = 'Pool',
+  OFFICE = 'Office',
+  STORAGE = 'Storage',
+  CAFE = 'Café',
 }
 
 export type Language = 'et' | 'en' | 'ru';
@@ -23,6 +35,16 @@ export interface GymMachine {
   icon?: string;
 }
 
+export interface GymAnnex {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  name?: string;
+  color?: string;
+}
+
 export interface GymZone {
   id: string;
   name: string;
@@ -35,6 +57,7 @@ export interface GymZone {
   icon: string;
   description?: string;
   machines?: GymMachine[];
+  isHallway?: boolean;
 }
 
 export interface GymEntrance {
@@ -48,25 +71,43 @@ export interface SketchPoint {
   y: number;
 }
 
-export interface SketchStroke {
+export interface GymWallNode {
   id: string;
+  x: number;
+  y: number;
+}
+
+export interface GymWall {
+  id: string;
+  type: 'straight' | 'curved';
+  wallType: 'exterior' | 'interior' | 'window' | 'door' | 'corridor' | 'staircase' | 'elevator';
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  startNodeId?: string;
+  endNodeId?: string;
+  controlX?: number;
+  controlY?: number;
+  thickness?: number;
+  confidence?: 'high' | 'low';
+}
+
+export interface GymHallway {
+  id: string;
+  name: string;
   points: SketchPoint[];
-  color: string;
   width: number;
+  color?: string;
+  surfaceType?: 'walkway' | 'turf' | 'tile' | 'wood';
 }
 
 export interface GymDimensions {
   width: number;
   height: number;
-  sketchStrokes?: SketchStroke[];
-}
-
-export interface GymAnnex {
-  id: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
+  walls?: GymWall[];
+  nodes?: GymWallNode[];
+  hallways?: GymHallway[];
 }
 
 export interface Gym {
@@ -77,6 +118,7 @@ export interface Gym {
   entrance?: GymEntrance;
   floorColor?: string;
   annexes?: GymAnnex[];
+  walls?: GymWall[];
 }
 
 export interface Exercise {

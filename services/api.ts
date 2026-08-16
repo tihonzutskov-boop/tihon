@@ -4,10 +4,44 @@ import { DEFAULT_GYM } from '../constants';
 
 const API_BASE = 'http://localhost:3001/api';
 
-/**
- * API Service to interact with the Node/Postgres backend.
- * Includes error handling to fallback gracefully if backend is offline.
- */
+// Helper to provide default fallback YouTube video URLs only when none is provided
+const sanitizeExerciseVideos = (exercises: LibraryExercise[]): LibraryExercise[] => {
+  const youtubeDefaults: Record<string, string> = {
+    'ex-squat': 'https://www.youtube.com/watch?v=ultWZbUMPL8',
+    'ex-rowing': 'https://www.youtube.com/watch?v=H0r_Zcp4pG4',
+    'ex-treadmill': 'https://www.youtube.com/watch?v=8iPEnn-ltC8',
+    'ex-legpress': 'https://www.youtube.com/watch?v=IZxyjW7MPJQ',
+    'ex-dumbbell-curl': 'https://www.youtube.com/watch?v=yTwo27QT6Lg'
+  };
+
+  return exercises.map(ex => {
+    // If the exercise already has a videoUrl, preserve it EXACTLY as entered
+    if (ex.videoUrl && ex.videoUrl.trim() !== '') {
+      return ex;
+    }
+
+    let videoUrl = '';
+    if (youtubeDefaults[ex.id]) {
+      videoUrl = youtubeDefaults[ex.id];
+    } else {
+      const nameLower = (ex.name || '').toLowerCase();
+      if (nameLower.includes('bench press')) videoUrl = 'https://www.youtube.com/watch?v=rT7DgCr-3pg';
+      else if (nameLower.includes('deadlift')) videoUrl = 'https://www.youtube.com/watch?v=_oyxCn2iSjU';
+      else if (nameLower.includes('squat')) videoUrl = 'https://www.youtube.com/watch?v=ultWZbUMPL8';
+      else if (nameLower.includes('pulldown')) videoUrl = 'https://www.youtube.com/watch?v=CAwf7n6Luuc';
+      else if (nameLower.includes('shoulder press')) videoUrl = 'https://www.youtube.com/watch?v=qEwKCR5JCog';
+      else if (nameLower.includes('row')) videoUrl = 'https://www.youtube.com/watch?v=H0r_Zcp4pG4';
+      else if (nameLower.includes('treadmill') || nameLower.includes('hike')) videoUrl = 'https://www.youtube.com/watch?v=8iPEnn-ltC8';
+      else if (nameLower.includes('press')) videoUrl = 'https://www.youtube.com/watch?v=IZxyjW7MPJQ';
+      else if (nameLower.includes('curl')) videoUrl = 'https://www.youtube.com/watch?v=yTwo27QT6Lg';
+      else videoUrl = 'https://www.youtube.com/watch?v=SW_C1A-rejs';
+    }
+    return { ...ex, videoUrl };
+  });
+};
+
+// API Service to interact with the Node/Postgres backend.
+// Includes error handling to fallback gracefully if backend is offline.
 export const api = {
   
   // --- AUTH ---
@@ -109,14 +143,20 @@ export const api = {
       const response = await fetch(`${API_BASE}/exercises`);
       if (!response.ok) throw new Error(`Status: ${response.status}`);
       const data = await response.json();
-      return data.length > 0 ? data : DEFAULT_EXERCISES;
+      const list = data.length > 0 ? data : DEFAULT_EXERCISES;
+      return sanitizeExerciseVideos(list);
     } catch (error) {
       console.warn("Backend unavailable. Using local fallback storage or default exercises.", error);
       const cached = localStorage.getItem('gym_exercises');
       if (cached) {
-         try { return JSON.parse(cached); } catch (e) { }
+         try {
+           const parsed = JSON.parse(cached);
+           if (Array.isArray(parsed) && parsed.length > 0) {
+             return sanitizeExerciseVideos(parsed);
+           }
+         } catch (e) { }
       }
-      return DEFAULT_EXERCISES;
+      return sanitizeExerciseVideos(DEFAULT_EXERCISES);
     }
   },
 
@@ -176,7 +216,7 @@ export const api = {
   }
 };
 
-// Default high-quality standard exercises that load instantly as demo data
+// Default high-quality standard exercises that load instantly as demo data with YouTube videos
 const DEFAULT_EXERCISES: LibraryExercise[] = [
   {
     id: 'ex-squat',
@@ -186,7 +226,7 @@ const DEFAULT_EXERCISES: LibraryExercise[] = [
     category: 'Compound (Strength)',
     instructions: 'Keep your chest high, engage your core, squat deep in a full range of motion while maintaining flat heels on the floor.',
     equipmentId: 'zone-racks',
-    videoUrl: 'https://www.youtube.com/embed/SW_C1A-rejs'
+    videoUrl: 'https://www.youtube.com/embed/ultWZbUMPL8'
   },
   {
     id: 'ex-rowing',
@@ -226,6 +266,6 @@ const DEFAULT_EXERCISES: LibraryExercise[] = [
     category: 'Isolation (Hypertrophy)',
     instructions: 'Sit stable with chest proud, grip dumbbells with a neutral hammer orientation, keep elbows firmly tucked against your ribcage, and curl without swaying upper body shoulders.',
     equipmentId: 'zone-weights-1',
-    videoUrl: 'https://www.youtube.com/embed/8iPEnn-ltC8'
+    videoUrl: 'https://www.youtube.com/embed/yTwo27QT6Lg'
   }
 ];

@@ -8,19 +8,20 @@ import UserDashboard from './components/UserDashboard';
 import AuthModal from './components/AuthModal';
 import MachineDetailModal from './components/MachineDetailModal';
 import EquipmentLibrary from './components/EquipmentLibrary';
+import ExerciseLibrary from './components/ExerciseLibrary';
 import PlanWizard from './components/PlanWizard';
 import { GymZone, WorkoutPlan, Exercise, Gym, GymMachine, User, Language, WorkoutDay } from './types';
 import { DEFAULT_GYM } from './constants';
 import { api } from './services/api';
 import { translations, getGymTranslation } from './translations';
-import { ChevronDown, MapPin, Loader2, ClipboardList, ArrowLeft, BookOpen, Globe } from 'lucide-react';
+import { ChevronDown, MapPin, Loader2, ClipboardList, ArrowLeft, BookOpen, Globe, Search, X } from 'lucide-react';
 
 type ViewState = 'landing' | 'app' | 'admin' | 'dashboard';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewState>('landing');
-  const [lang, setLang] = useState<Language>('et');
-  const t = translations[lang];
+  const [lang] = useState<Language>('en');
+  const t = translations[lang] || translations.en;
 
   const [gyms, setGyms] = useState<Gym[]>([DEFAULT_GYM]);
   const [isLoading, setIsLoading] = useState(true);
@@ -117,7 +118,11 @@ const App: React.FC = () => {
     setWorkoutPlan(prev => {
       const newDays = [...prev.days];
       const targetDay = newDays[activeDayIndex] || newDays[0];
-      targetDay.exercises = [...targetDay.exercises, exercise];
+      const uniqueEx = {
+        ...exercise,
+        id: `ex-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+      };
+      targetDay.exercises = [...targetDay.exercises, uniqueEx];
       return { ...prev, days: newDays };
     });
   };
@@ -222,22 +227,6 @@ const App: React.FC = () => {
     setCurrentView('landing');
   };
 
-  const LanguageSwitcher = () => (
-    <div className="flex bg-slate-800/50 rounded-lg p-1 border border-slate-700">
-      {(['et', 'en', 'ru'] as Language[]).map((l) => (
-        <button
-          key={l}
-          onClick={() => setLang(l)}
-          className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${
-            lang === l ? 'bg-lime-500 text-slate-950 shadow-lg' : 'text-slate-500 hover:text-slate-300'
-          }`}
-        >
-          {l}
-        </button>
-      ))}
-    </div>
-  );
-
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400">
@@ -325,8 +314,6 @@ const App: React.FC = () => {
         </div>
 
         <div className="flex items-center space-x-2 sm:space-x-4">
-           <LanguageSwitcher />
-
            {user && (
              <button 
                 onClick={() => setCurrentView('dashboard')}
@@ -414,6 +401,7 @@ const App: React.FC = () => {
           `}
         >
           <EquipmentLibrary 
+            gym={activeGym}
             zones={zones}
             onClose={() => setIsLibraryOpen(false)}
             onSelectMachine={handleLibrarySelect}
@@ -427,7 +415,7 @@ const App: React.FC = () => {
                ${isPlanOpen || isSelectorOpen || isLibraryOpen ? 'opacity-100' : 'opacity-0'}
              `} 
           />
-          <div className="w-full h-full p-4 md:p-8">
+          <div className="w-full h-full p-4 md:p-6 lg:p-8 max-w-7xl flex items-center justify-center">
             <GymMap 
               zones={zones}
               dimensions={dimensions}
@@ -440,6 +428,7 @@ const App: React.FC = () => {
               selectedZoneId={selectedZone?.id || null}
               focusedZoneId={focusedZoneId}
               selectedMachineId={selectedMachineId}
+              hideSearch={isPlanOpen || isLibraryOpen || isSelectorOpen || isWizardOpen || Boolean(viewingMachine)}
               lang={lang}
             />
           </div>
