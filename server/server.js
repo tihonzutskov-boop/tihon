@@ -2,7 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import express from 'express';
-import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import { Pool } from 'pg';
 import {
   generateFullProgramFromPreferences,
@@ -10,6 +10,15 @@ import {
   generateProgramAnalysis,
   parseFloorPlan,
 } from './gemini.js';
+import {
+  verifyGoogleToken,
+  signSession,
+  setSessionCookie,
+  clearSessionCookie,
+  requireAuth,
+  requireAdmin,
+  isAdminEmail,
+} from './auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -32,37 +41,99 @@ const initDb = async () => {
 };
 initDb();
 
-app.use(cors());
+app.use(cookieParser());
 app.use(express.json({ limit: '25mb' }));
 
 // --- Auth Routes ---
 
-// Login (Passwordless)
-app.post('/api/login', async (req, res) => {
-  const { email } = req.body;
+const computeStats = async (client, userId) => {
+  const result = await client.query(
+    `SELECT COUNT(*)::int AS count,
+            COALESCE(SUM(duration_minutes), 0)::int AS total_minutes,
+            ARRAY_AGG(DISTINCT completed_at::date ORDER BY completed_at::date DESC) AS days
+     FROM workout_logs WHERE user_id = $1`,
+    [userId]
+  );
+  const { count, total_minutes, days } = result.rows[0];
+
+  let streakDays = 0;
+  if (days && days.length > 0) {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    let cursor = today;
+    for (const d of days) {
+      const day = new Date(d); day.setHours(0, 0, 0, 0);
+      const diff = Math.round((cursor - day) / 86400000);
+      if (diff === 0 || diff === 1) {
+        streakDays++;
+        cursor = day;
+      } else {
+        break;
+      }
+    }
+  }
+
+  return { workoutsCompleted: count, totalMinutes: total_minutes, streakDays };
+};
+
+// Sign in with Google — verifies the ID token, finds or creates the user,
+// and issues our own httpOnly session cookie. Admin role is granted only to
+// emails listed in ADMIN_EMAILS — never client-controlled.
+app.post('/api/auth/google', async (req, res) => {
+  const { idToken } = req.body;
   let client;
 
   try {
-    client = await pool.connect();
-    const result = await client.query('SELECT * FROM users WHERE email = $1', [email]);
+    const payload = await verifyGoogleToken(idToken);
+    const { email, name, sub: googleId, picture } = payload;
 
+    client = await pool.connect();
+    const existing = await client.query('SELECT * FROM users WHERE email = $1', [email]);
+
+    const role = isAdminEmail(email) ? 'admin' : (existing.rows[0]?.role || 'user');
+    let user;
+
+    if (existing.rows.length > 0) {
+      const updated = await client.query(
+        'UPDATE users SET name=$1, google_id=$2, avatar_url=$3, role=$4 WHERE email=$5 RETURNING *',
+        [name, googleId, picture, role, email]
+      );
+      user = updated.rows[0];
+    } else {
+      const created = await client.query(
+        'INSERT INTO users (name, email, role, google_id, avatar_url) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+        [name, email, role, googleId, picture]
+      );
+      user = created.rows[0];
+    }
+
+    const { password_hash, ...userProfile } = user;
+    userProfile.stats = await computeStats(client, user.id);
+
+    setSessionCookie(res, signSession(user));
+    res.json({ user: userProfile });
+  } catch (err) {
+    console.error(err);
+    res.status(401).json({ error: 'Google sign-in failed' });
+  } finally {
+    client?.release();
+  }
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  clearSessionCookie(res);
+  res.json({ success: true });
+});
+
+app.get('/api/auth/me', requireAuth, async (req, res) => {
+  let client;
+  try {
+    client = await pool.connect();
+    const result = await client.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
     if (result.rows.length === 0) {
       return res.status(401).json({ error: 'User not found' });
     }
-
-    const user = result.rows[0];
-
-    // Note: Password check removed for demo/guest access
-
-    const { password_hash, ...userProfile } = user;
-
-    // Add mock stats
-    userProfile.stats = {
-       workoutsCompleted: 12,
-       totalMinutes: 480,
-       streakDays: 3
-    };
-
+    const { password_hash, ...userProfile } = result.rows[0];
+    userProfile.stats = await computeStats(client, req.user.id);
     res.json({ user: userProfile });
   } catch (err) {
     console.error(err);
@@ -72,37 +143,44 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// Signup (Passwordless)
-app.post('/api/signup', async (req, res) => {
-  const { name, email } = req.body;
-  let client;
+// --- Workout Tracking Routes ---
 
+app.post('/api/workouts', requireAuth, async (req, res) => {
+  const { dayName, exerciseCount } = req.body;
   try {
-    client = await pool.connect();
-    // Check if user exists
-    const check = await client.query('SELECT * FROM users WHERE email = $1', [email]);
-    if (check.rows.length > 0) {
-      return res.status(400).json({ error: 'User already exists' });
-    }
-
-    // Insert new user
-    // Store dummy password string since column likely expects it
-    const dummyPassword = 'nopassword';
-
-    const result = await client.query(
-      'INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING *',
-      [name, email, dummyPassword, 'user']
+    await pool.query(
+      'INSERT INTO workout_logs (user_id, day_name, exercise_count) VALUES ($1, $2, $3)',
+      [req.user.id, dayName || 'Workout', exerciseCount || 0]
     );
-
-    const newUser = result.rows[0];
-    const { password_hash, ...userProfile } = newUser;
-
-    userProfile.stats = { workoutsCompleted: 0, totalMinutes: 0, streakDays: 0 };
-
-    res.json({ user: userProfile });
+    res.json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: 'Database error logging workout' });
+  }
+});
+
+app.get('/api/workouts/me', requireAuth, async (req, res) => {
+  let client;
+  try {
+    client = await pool.connect();
+    const logsRes = await client.query(
+      'SELECT * FROM workout_logs WHERE user_id = $1 ORDER BY completed_at DESC LIMIT 20',
+      [req.user.id]
+    );
+    const stats = await computeStats(client, req.user.id);
+    res.json({
+      logs: logsRes.rows.map(row => ({
+        id: row.id,
+        dayName: row.day_name,
+        exerciseCount: row.exercise_count,
+        durationMinutes: row.duration_minutes,
+        completedAt: row.completed_at
+      })),
+      stats
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error fetching workouts' });
   } finally {
     client?.release();
   }
@@ -138,7 +216,7 @@ app.get('/api/gyms', async (req, res) => {
 });
 
 // POST Create Gym
-app.post('/api/gyms', async (req, res) => {
+app.post('/api/gyms', requireAdmin, async (req, res) => {
   const { id, name, dimensions, entrance, floorColor, zones, annexes } = req.body;
   let client;
 
@@ -183,7 +261,7 @@ app.post('/api/gyms', async (req, res) => {
 });
 
 // PUT Update Gym (Full Save)
-app.put('/api/gyms/:id', async (req, res) => {
+app.put('/api/gyms/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
   const { name, dimensions, entrance, floorColor, zones, annexes } = req.body;
   let client;
@@ -232,7 +310,7 @@ app.put('/api/gyms/:id', async (req, res) => {
 });
 
 // DELETE Gym
-app.delete('/api/gyms/:id', async (req, res) => {
+app.delete('/api/gyms/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
   try {
     await pool.query('DELETE FROM gyms WHERE id = $1', [id]);
@@ -271,7 +349,7 @@ app.get('/api/equipment', async (req, res) => {
 });
 
 // POST Create Equipment
-app.post('/api/equipment', async (req, res) => {
+app.post('/api/equipment', requireAdmin, async (req, res) => {
   const { id, name, category, description, icon, imageUrl, defaultFootprint, isFloorSpace } = req.body;
   let client;
   try {
@@ -290,7 +368,7 @@ app.post('/api/equipment', async (req, res) => {
 });
 
 // PUT Update Equipment
-app.put('/api/equipment/:id', async (req, res) => {
+app.put('/api/equipment/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
   const { name, category, description, icon, imageUrl, defaultFootprint, isFloorSpace } = req.body;
   let client;
@@ -310,7 +388,7 @@ app.put('/api/equipment/:id', async (req, res) => {
 });
 
 // DELETE Equipment
-app.delete('/api/equipment/:id', async (req, res) => {
+app.delete('/api/equipment/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
   let client;
   try {
@@ -355,7 +433,7 @@ app.get('/api/exercises', async (req, res) => {
 });
 
 // POST Create Exercise
-app.post('/api/exercises', async (req, res) => {
+app.post('/api/exercises', requireAdmin, async (req, res) => {
   const { id, name, targetMuscle, equipmentRequired, category, instructions, equipmentId, videoUrl, imageUrl } = req.body;
   let client;
   try {
@@ -384,7 +462,7 @@ app.post('/api/exercises', async (req, res) => {
 });
 
 // PUT Update Exercise
-app.put('/api/exercises/:id', async (req, res) => {
+app.put('/api/exercises/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
   const { name, targetMuscle, equipmentRequired, category, instructions, equipmentId, videoUrl, imageUrl } = req.body;
   let client;
@@ -414,7 +492,7 @@ app.put('/api/exercises/:id', async (req, res) => {
 });
 
 // DELETE Exercise
-app.delete('/api/exercises/:id', async (req, res) => {
+app.delete('/api/exercises/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
   let client;
   try {

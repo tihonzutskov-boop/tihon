@@ -10,9 +10,9 @@ import MachineDetailModal from './components/MachineDetailModal';
 import EquipmentLibrary from './components/EquipmentLibrary';
 import ExerciseLibrary from './components/ExerciseLibrary';
 import PlanWizard from './components/PlanWizard';
-import { GymZone, WorkoutPlan, Exercise, Gym, GymMachine, User, Language, WorkoutDay } from './types';
+import { GymZone, WorkoutPlan, Exercise, Gym, GymMachine, User, Language, WorkoutDay, EquipmentItem } from './types';
 import { DEFAULT_GYM } from './constants';
-import { api } from './services/api';
+import { api, DEFAULT_EQUIPMENT } from './services/api';
 import { translations, getGymTranslation } from './translations';
 import { ChevronDown, MapPin, Loader2, ClipboardList, ArrowLeft, BookOpen, Globe, Search, X } from 'lucide-react';
 
@@ -24,6 +24,7 @@ const App: React.FC = () => {
   const t = translations[lang] || translations.en;
 
   const [gyms, setGyms] = useState<Gym[]>([DEFAULT_GYM]);
+  const [equipmentList, setEquipmentList] = useState<EquipmentItem[]>(DEFAULT_EQUIPMENT);
   const [isLoading, setIsLoading] = useState(true);
   
   const [user, setUser] = useState<User | null>(null);
@@ -40,6 +41,8 @@ const App: React.FC = () => {
         if (!fetchedGyms.find(g => g.id === activeGymId)) {
           setActiveGymId(fetchedGyms[0]?.id || 'default-gym');
         }
+        const fetchedEquipment = await api.fetchEquipment();
+        setEquipmentList(fetchedEquipment);
       } catch (e) {
         console.error("Failed to load gyms", e);
       } finally {
@@ -47,6 +50,14 @@ const App: React.FC = () => {
       }
     };
     loadData();
+
+    // Restore an existing session (httpOnly cookie) on page load/refresh.
+    api.fetchMe().then(existingUser => {
+      if (existingUser) {
+        setUser(existingUser);
+        setCurrentView(existingUser.role === 'admin' ? 'admin' : 'dashboard');
+      }
+    });
   }, []);
 
   const activeGym = gyms.find(g => g.id === activeGymId) || gyms[0];
@@ -223,6 +234,7 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
+    api.logout();
     setUser(null);
     setCurrentView('landing');
   };
@@ -239,10 +251,9 @@ const App: React.FC = () => {
   if (currentView === 'landing') {
     return (
       <>
-        <LandingPage 
+        <LandingPage
           gyms={gyms}
           onSelectGym= {handleGymSelect}
-          onAdminEnter={() => setCurrentView('admin')}
           onLoginClick={handleLoginClick}
           lang={lang}
         />
@@ -378,8 +389,8 @@ const App: React.FC = () => {
             ${isPlanOpen ? 'translate-x-0' : '-translate-x-full'}
           `}
         >
-          <ProgramList 
-            workout={workoutPlan} 
+          <ProgramList
+            workout={workoutPlan}
             activeDayIndex={activeDayIndex}
             setActiveDayIndex={setActiveDayIndex}
             onRemoveExercise={removeExercise}
@@ -390,6 +401,8 @@ const App: React.FC = () => {
             onLocateExercise={handleLocateExercise}
             onWatchVideo={handleWatchVideo}
             onClose={() => setIsPlanOpen(false)}
+            isLoggedIn={!!user}
+            onCompleteWorkout={(dayName, exerciseCount) => api.completeWorkout(dayName, exerciseCount)}
             lang={lang}
           />
         </div>
@@ -400,9 +413,11 @@ const App: React.FC = () => {
             ${isLibraryOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'}
           `}
         >
-          <EquipmentLibrary 
+          <EquipmentLibrary
             gym={activeGym}
             zones={zones}
+            equipmentList={equipmentList}
+            onEquipmentChange={setEquipmentList}
             onClose={() => setIsLibraryOpen(false)}
             onSelectMachine={handleLibrarySelect}
             lang={lang}

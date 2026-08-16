@@ -179,38 +179,52 @@ const sanitizeExerciseVideos = (exercises: LibraryExercise[]): LibraryExercise[]
 export const api = {
   
   // --- AUTH ---
-  async login(email: string): Promise<User> {
+  // All auth is via Google Sign-In; the backend verifies the ID token and
+  // issues its own httpOnly session cookie. Admin role is decided server-side
+  // (ADMIN_EMAILS allow-list) — never trust a client-supplied role.
+  async googleLogin(idToken: string): Promise<User> {
+    const response = await fetch(`${API_BASE}/auth/google`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken }),
+    });
+    if (!response.ok) throw new Error('Google sign-in failed');
+    const data = await response.json();
+    return data.user;
+  },
+
+  async logout(): Promise<void> {
+    await fetch(`${API_BASE}/auth/logout`, { method: 'POST' });
+  },
+
+  async fetchMe(): Promise<User | null> {
     try {
-      const response = await fetch(`${API_BASE}/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      });
-      if (!response.ok) throw new Error('Login failed');
+      const response = await fetch(`${API_BASE}/auth/me`);
+      if (!response.ok) return null;
       const data = await response.json();
       return data.user;
-    } catch (error) {
-      console.warn("Backend unavailable. Using mock login.", error);
-      if (email === 'admin@gym.com') {
-         return { id: 'admin-1', name: 'Admin User', email, role: 'admin', joinedDate: '2023-01-01', stats: { workoutsCompleted: 100, totalMinutes: 5000, streakDays: 10 } };
-      }
-      return { id: 'user-1', name: 'Demo User', email, role: 'user', joinedDate: new Date().toISOString(), stats: { workoutsCompleted: 5, totalMinutes: 120, streakDays: 1 } };
+    } catch {
+      return null;
     }
   },
 
-  async signup(name: string, email: string): Promise<User> {
+  // --- WORKOUT TRACKING ---
+
+  async completeWorkout(dayName: string, exerciseCount: number): Promise<void> {
+    await fetch(`${API_BASE}/workouts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dayName, exerciseCount }),
+    });
+  },
+
+  async fetchMyWorkouts(): Promise<{ logs: any[]; stats: { workoutsCompleted: number; totalMinutes: number; streakDays: number } }> {
     try {
-      const response = await fetch(`${API_BASE}/signup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email }),
-      });
-      if (!response.ok) throw new Error('Signup failed');
-      const data = await response.json();
-      return data.user;
-    } catch (error) {
-       console.warn("Backend unavailable. Using mock signup.");
-       return { id: `user-${Date.now()}`, name, email, role: 'user', joinedDate: new Date().toISOString(), stats: { workoutsCompleted: 0, totalMinutes: 0, streakDays: 0 } };
+      const response = await fetch(`${API_BASE}/workouts/me`);
+      if (!response.ok) throw new Error(`Status: ${response.status}`);
+      return await response.json();
+    } catch {
+      return { logs: [], stats: { workoutsCompleted: 0, totalMinutes: 0, streakDays: 0 } };
     }
   },
 

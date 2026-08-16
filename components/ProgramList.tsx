@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { WorkoutPlan, Language, Exercise, WorkoutDay } from '../types';
 import { generateProgramAnalysis } from '../services/geminiService';
 import { translations, translateMuscle, translateExerciseName, translateDayName } from '../translations';
-import { Trash2, Dumbbell, BrainCircuit, X, Calendar, Plus, Edit2, Check, Sparkles, ChevronRight, MapPin, Play, Download, Info } from 'lucide-react';
+import { Trash2, Dumbbell, BrainCircuit, X, Calendar, Plus, Edit2, Check, Sparkles, ChevronRight, MapPin, Play, Download, Info, PartyPopper } from 'lucide-react';
 import { getEquipmentIcon } from '../utils/equipmentIcons';
 import { exportWorkoutToPdf } from '../utils/pdfExporter';
 import ExerciseDetailModal from './ExerciseDetailModal';
@@ -19,22 +19,26 @@ interface ProgramListProps {
   onLocateExercise: (exercise: Exercise) => void;
   onWatchVideo: (exercise: Exercise) => void;
   onClose?: () => void;
+  isLoggedIn?: boolean;
+  onCompleteWorkout?: (dayName: string, exerciseCount: number) => Promise<void>;
   lang: Language;
 }
 
-const ProgramList: React.FC<ProgramListProps> = ({ 
-  workout, 
+const ProgramList: React.FC<ProgramListProps> = ({
+  workout,
   activeDayIndex,
   setActiveDayIndex,
-  onRemoveExercise, 
-  onAddExercise, 
+  onRemoveExercise,
+  onAddExercise,
   onUpdateExercise,
-  onClear, 
+  onClear,
   onStartWizard,
   onLocateExercise,
   onWatchVideo,
-  onClose, 
-  lang 
+  onClose,
+  isLoggedIn = false,
+  onCompleteWorkout,
+  lang
 }) => {
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -42,6 +46,8 @@ const ProgramList: React.FC<ProgramListProps> = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedDetailExercise, setSelectedDetailExercise] = useState<Exercise | null>(null);
   const [isPlanSaved, setIsPlanSaved] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
+  const [isCompleted, setIsCompleted] = useState(false);
   const t = translations[lang];
 
   const currentDay = workout.days[activeDayIndex] || workout.days[0];
@@ -117,6 +123,21 @@ const ProgramList: React.FC<ProgramListProps> = ({
     setFormSets(3);
     setFormReps('10');
     setFormMuscle('');
+  };
+
+  useEffect(() => {
+    setIsCompleted(false);
+  }, [activeDayIndex]);
+
+  const handleCompleteWorkout = async () => {
+    if (!onCompleteWorkout || !currentDay || isCompleting) return;
+    setIsCompleting(true);
+    try {
+      await onCompleteWorkout(currentDay.name, currentDay.exercises.length);
+      setIsCompleted(true);
+    } finally {
+      setIsCompleting(false);
+    }
   };
 
   const totalExercises = workout.days.reduce((acc, d) => acc + d.exercises.length, 0);
@@ -446,6 +467,29 @@ const ProgramList: React.FC<ProgramListProps> = ({
                   )}
                 </button>
              </div>
+
+             {isLoggedIn ? (
+               <button
+                 onClick={handleCompleteWorkout}
+                 disabled={isCompleting || isCompleted}
+                 className={`w-full py-2.5 font-black rounded-xl text-xs transition-all shadow-lg flex items-center justify-center gap-1.5 min-h-[44px] disabled:cursor-not-allowed ${
+                   isCompleted
+                     ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                     : 'bg-slate-800 hover:bg-slate-700 text-white border border-slate-700'
+                 }`}
+               >
+                 {isCompleted ? (
+                   <>
+                     <PartyPopper className="w-4 h-4" />
+                     <span>Workout logged!</span>
+                   </>
+                 ) : (
+                   <span>{isCompleting ? 'Logging…' : 'Mark Day Complete'}</span>
+                 )}
+               </button>
+             ) : (
+               <p className="text-center text-[10px] text-slate-600 pt-1">Log in to track completed workouts</p>
+             )}
           </div>
         )}
       </div>

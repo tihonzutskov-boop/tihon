@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Map, BrainCircuit, Activity, ArrowRight, MapPin, User, ShieldCheck } from 'lucide-react';
+import { Map, BrainCircuit, Activity, ArrowRight, MapPin, User } from 'lucide-react';
 import { Gym, Language } from '../types';
 import { translations } from '../translations';
 import GymMap from './GymMap';
@@ -8,12 +8,11 @@ import GymMap from './GymMap';
 interface LandingPageProps {
   gyms: Gym[];
   onSelectGym: (gymId: string) => void;
-  onAdminEnter: () => void;
   onLoginClick: () => void;
   lang: Language;
 }
 
-const LandingPage: React.FC<LandingPageProps> = ({ gyms, onSelectGym, onAdminEnter, onLoginClick, lang }) => {
+const LandingPage: React.FC<LandingPageProps> = ({ gyms, onSelectGym, onLoginClick, lang }) => {
   const t = translations[lang];
 
   return (
@@ -89,13 +88,6 @@ const LandingPage: React.FC<LandingPageProps> = ({ gyms, onSelectGym, onAdminEnt
 
        <div className="absolute bottom-6 w-full px-6 flex flex-col items-center justify-center space-y-2 z-20">
          <span className="text-xs text-slate-600 font-medium tracking-widest uppercase">Powered by Google Gemini</span>
-         <button 
-            onClick={onAdminEnter}
-            className="flex items-center text-[10px] text-slate-700 hover:text-lime-500 transition-colors uppercase tracking-widest font-bold"
-         >
-            <ShieldCheck className="w-3 h-3 mr-1" />
-            {t.adminAccess}
-         </button>
        </div>
     </div>
   );

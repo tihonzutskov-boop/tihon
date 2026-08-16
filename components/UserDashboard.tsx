@@ -1,9 +1,10 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { User, Gym, Language } from '../types';
 import { translations, getGymTranslation } from '../translations';
 import { Trophy, Flame, Clock, Calendar, LogOut, ArrowRight, Activity, MapPin, Dumbbell } from 'lucide-react';
 import GymMap from './GymMap';
+import { api } from '../services/api';
 
 interface UserDashboardProps {
   user: User;
@@ -13,9 +14,35 @@ interface UserDashboardProps {
   lang: Language;
 }
 
+interface WorkoutLogEntry {
+  id: number;
+  dayName: string;
+  exerciseCount: number;
+  durationMinutes: number;
+  completedAt: string;
+}
+
+const formatRelativeDate = (iso: string, t: any): string => {
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  if (days <= 0) return t.today || 'Today';
+  return `${days} ${t.daysAgo}`;
+};
+
 const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, onLogout, onEnterGym, lang }) => {
   const t = translations[lang];
-  
+
+  const [stats, setStats] = useState(user.stats || { workoutsCompleted: 0, totalMinutes: 0, streakDays: 0 });
+  const [logs, setLogs] = useState<WorkoutLogEntry[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(true);
+
+  useEffect(() => {
+    api.fetchMyWorkouts().then(({ logs, stats }) => {
+      setLogs(logs);
+      setStats(stats);
+      setLoadingLogs(false);
+    });
+  }, []);
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 animate-in fade-in duration-500">
       
@@ -64,27 +91,27 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, onLogout, onE
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-          <StatCard 
-            icon={Trophy} 
-            value={user.stats?.workoutsCompleted || 0} 
-            label={t.workoutsCompleted} 
+          <StatCard
+            icon={Trophy}
+            value={stats.workoutsCompleted || 0}
+            label={t.workoutsCompleted}
             color="text-yellow-400"
             bg="bg-yellow-950/30"
             borderColor="border-yellow-900/50"
           />
-          <StatCard 
-            icon={Flame} 
-            value={user.stats?.streakDays || 0} 
-            label={t.dayStreak} 
-            color="text-orange-400" 
+          <StatCard
+            icon={Flame}
+            value={stats.streakDays || 0}
+            label={t.dayStreak}
+            color="text-orange-400"
             bg="bg-orange-950/30"
             borderColor="border-orange-900/50"
           />
-          <StatCard 
-            icon={Clock} 
-            value={Math.round((user.stats?.totalMinutes || 0) / 60)} 
-            label={t.totalDuration} 
-            color="text-blue-400" 
+          <StatCard
+            icon={Clock}
+            value={Math.round((stats.totalMinutes || 0) / 60)}
+            label={t.totalDuration}
+            color="text-blue-400"
             bg="bg-blue-950/30"
             borderColor="border-blue-900/50"
             suffix="h"
@@ -122,32 +149,38 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, onLogout, onE
           ))}
         </div>
 
-        {/* Recent Activity Mockup */}
+        {/* Recent Activity */}
         <h2 className="text-xl font-bold text-white mb-6 flex items-center">
            <Activity className="w-5 h-5 mr-2 text-blue-400" />
            {t.recentActivityTitle}
         </h2>
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-           {[1, 2, 3].map((i) => (
-             <div key={i} className="p-4 border-b border-slate-800 last:border-0 flex items-center justify-between hover:bg-slate-800/50 transition-colors">
-                <div className="flex items-center space-x-4">
-                   <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center border border-slate-700 text-slate-400">
-                     <Dumbbell className="w-5 h-5" />
-                   </div>
-                   <div>
-                     <h4 className="font-bold text-slate-200">Full Body Hypertrophy</h4>
-                     <div className="flex items-center text-xs text-slate-500 space-x-2">
-                        <span className="flex items-center"><Calendar className="w-3 h-3 mr-1" /> {i} {t.daysAgo}</span>
-                        <span>•</span>
-                        <span>45 {t.mins}</span>
+           {loadingLogs ? (
+             <div className="p-8 text-center text-sm text-slate-500">Loading…</div>
+           ) : logs.length === 0 ? (
+             <div className="p-8 text-center text-sm text-slate-500">No workouts logged yet — mark a day complete to see it here.</div>
+           ) : (
+             logs.map((log) => (
+               <div key={log.id} className="p-4 border-b border-slate-800 last:border-0 flex items-center justify-between hover:bg-slate-800/50 transition-colors">
+                  <div className="flex items-center space-x-4">
+                     <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center border border-slate-700 text-slate-400">
+                       <Dumbbell className="w-5 h-5" />
                      </div>
-                   </div>
-                </div>
-                <div className="text-right">
-                   <span className="text-sm font-mono text-lime-400">{t.completed}</span>
-                </div>
-             </div>
-           ))}
+                     <div>
+                       <h4 className="font-bold text-slate-200">{log.dayName}</h4>
+                       <div className="flex items-center text-xs text-slate-500 space-x-2">
+                          <span className="flex items-center"><Calendar className="w-3 h-3 mr-1" /> {formatRelativeDate(log.completedAt, t)}</span>
+                          <span>•</span>
+                          <span>{log.durationMinutes} {t.mins}</span>
+                       </div>
+                     </div>
+                  </div>
+                  <div className="text-right">
+                     <span className="text-sm font-mono text-lime-400">{t.completed}</span>
+                  </div>
+               </div>
+             ))
+           )}
         </div>
 
       </main>

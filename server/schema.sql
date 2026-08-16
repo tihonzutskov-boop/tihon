@@ -6,8 +6,13 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(255) UNIQUE NOT NULL,
   password_hash VARCHAR(255),
   role VARCHAR(50) NOT NULL DEFAULT 'user',
-  joined_date TIMESTAMPTZ NOT NULL DEFAULT now()
+  joined_date TIMESTAMPTZ NOT NULL DEFAULT now(),
+  google_id VARCHAR(255),
+  avatar_url VARCHAR(500)
 );
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR(255);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(500);
 
 CREATE TABLE IF NOT EXISTS gyms (
   id VARCHAR(100) PRIMARY KEY,
@@ -63,4 +68,13 @@ CREATE TABLE IF NOT EXISTS exercises (
   equipment_id VARCHAR(100),
   video_url VARCHAR(255),
   image_url VARCHAR(255)
+);
+
+CREATE TABLE IF NOT EXISTS workout_logs (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  day_name VARCHAR(255),
+  exercise_count INTEGER DEFAULT 0,
+  duration_minutes INTEGER DEFAULT 45,
+  completed_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
