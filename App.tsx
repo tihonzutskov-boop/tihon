@@ -447,7 +447,6 @@ const App: React.FC = () => {
               selectedZoneId={selectedZone?.id || null}
               focusedZoneId={focusedZoneId}
               selectedMachineId={selectedMachineId}
-              equipmentList={equipmentList}
               hideSearch={isPlanOpen || isLibraryOpen || isSelectorOpen || isWizardOpen || Boolean(viewingMachine)}
               lang={lang}
             />

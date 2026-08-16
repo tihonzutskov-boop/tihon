@@ -1840,8 +1840,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
                  focusedZoneId={editMode === 'machine' ? selectedZoneId : null}
                  isEditable={true}
                  editMode={editMode}
-                 equipmentList={equipmentList}
-                 onZoneDragStart={handleZoneDragStart} 
+                 onZoneDragStart={handleZoneDragStart}
                  onZoneResizeStart={handleZoneResizeStart} 
                  onMainRoomResizeStart={handleMainRoomResizeStart} 
                  onAnnexDragStart={handleAnnexDragStart} 

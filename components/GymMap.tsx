@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GymZone, EquipmentType, GymDimensions, GymEntrance, GymAnnex, GymMachine, Language, EquipmentItem } from '../types';
+import { GymZone, EquipmentType, GymDimensions, GymEntrance, GymAnnex, GymMachine, Language } from '../types';
 import { translations, getGymTranslation } from '../translations';
 import { isExerciseAvailableInZone } from '../utils/exerciseMatcher';
 import { ZoomOut, Settings, Dumbbell, Activity, Zap, Target, Cpu, Layers, Box, Wind, RotateCcw, ArrowUpRight, MoveDown, Circle, Waves, Timer, ZoomIn, Minus, Plus, Maximize2, Search, X, MapPin, Play, Sparkles, Filter, ChevronRight, Info, Compass, DoorOpen, Lock, Bath, Droplets, ShieldCheck, Sprout, Anchor, Repeat, ChevronsRight } from 'lucide-react';
@@ -167,7 +167,6 @@ interface GymMapProps {
   onMachineDragStart?: (e: React.MouseEvent, machine: GymMachine, zoneId: string) => void;
   onMachineResizeStart?: (e: React.MouseEvent, machine: GymMachine, zoneId: string) => void;
   selectedMachineId?: string | null;
-  equipmentList?: EquipmentItem[];
 
   // Architectural Walls support
   selectedWallId?: string | null;
@@ -209,7 +208,6 @@ const GymMap: React.FC<GymMapProps> = ({
   onMachineDragStart,
   onMachineResizeStart,
   selectedMachineId,
-  equipmentList = [],
 
   selectedWallId = null,
   onWallClick,
@@ -1546,9 +1544,6 @@ const GymMap: React.FC<GymMapProps> = ({
                         {zone.machines.map((machine, mIdx) => {
                           const isMachineSelected = selectedMachineId === machine.id;
                           const MachineIcon = getEquipmentIcon(machine.icon, machine.name, zone.type);
-                          const linkedEquipment = equipmentList.find(eq => eq.id === machine.equipmentId || eq.name.toLowerCase() === machine.name.toLowerCase());
-                          const machineImageUrl = linkedEquipment?.imageUrl;
-                          const clipId = `mach-img-clip-${zone.id}-${machine.id}-${mIdx}`;
 
                           return (
                             <g 
@@ -1573,12 +1568,6 @@ const GymMap: React.FC<GymMapProps> = ({
                                }}
                                className={`${isMachineEdit ? 'cursor-move' : !isEditable ? 'cursor-pointer hover:opacity-80' : ''}`}
                             >
-                              {machineImageUrl && (
-                                <clipPath id={clipId}>
-                                  <rect width={machine.width} height={machine.height} rx="4" />
-                                </clipPath>
-                              )}
-
                               <rect
                                 width={machine.width} height={machine.height}
                                 fill={zoneStyle.stroke} fillOpacity={0.85}
@@ -1588,19 +1577,8 @@ const GymMap: React.FC<GymMapProps> = ({
                                 className={isMachineSelected && !isEditable ? 'machine-pulse' : ''}
                               />
 
-                              {machineImageUrl && (
-                                <image
-                                  href={machineImageUrl}
-                                  width={machine.width}
-                                  height={machine.height}
-                                  preserveAspectRatio="xMidYMid slice"
-                                  clipPath={`url(#${clipId})`}
-                                  className="pointer-events-none"
-                                />
-                              )}
-
                               <g transform={`translate(${machine.width / 2}, ${machine.height / 2})`} className="pointer-events-none">
-                                {machineImageUrl ? null : MachineIcon ? (
+                                {MachineIcon ? (
                                   <g transform={`scale(${Math.min(machine.width, machine.height) / 48}) translate(-12, -12)`}>
                                     <MachineIcon size={24} color="white" />
                                   </g>
