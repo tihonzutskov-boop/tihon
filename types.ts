@@ -163,10 +163,13 @@ export interface LibraryExercise {
   makeEasier?: string;       // Instructions for regressing difficulty (assistance, bands, ROM, load)
 }
 
+export type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+
 export interface WorkoutDay {
   id: string;
   name: string;
   exercises: Exercise[];
+  weekday?: Weekday;
 }
 
 export interface WorkoutPlan {

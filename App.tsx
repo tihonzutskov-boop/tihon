@@ -59,9 +59,17 @@ const App: React.FC = () => {
       if (existingUser) {
         setUser(existingUser);
         setCurrentView(existingUser.role === 'admin' ? 'admin' : 'dashboard');
+        loadMyPlan();
       }
     });
   }, []);
+
+  const loadMyPlan = async () => {
+    const saved = await api.fetchMyPlan();
+    if (saved && saved.days.length > 0) {
+      setWorkoutPlan(prev => ({ ...prev, name: saved.name, days: saved.days }));
+    }
+  };
 
   const activeGym = gyms.find(g => g.id === activeGymId) || gyms[0];
   const zones = activeGym?.zones || [];
@@ -89,6 +97,7 @@ const App: React.FC = () => {
 
   const handleZoneClick = (zone: GymZone) => {
     if (focusedZoneId === zone.id) {
+        if (!requireLogin()) return;
         setSelectedZone(zone);
         setIsSelectorOpen(true);
         setIsLibraryOpen(false);
@@ -142,14 +151,15 @@ const App: React.FC = () => {
   };
 
   const handleWizardFinish = (days: WorkoutDay[]) => {
-    setWorkoutPlan(prev => ({
-      ...prev,
-      days: days
-    }));
+    setWorkoutPlan(prev => {
+      const updated = { ...prev, days };
+      api.savePlan(updated.name, updated.days);
+      return updated;
+    });
     setActiveDayIndex(0);
     setIsWizardOpen(false);
     setIsPlanOpen(true);
-    
+
     const firstDay = days[0];
     if (firstDay && firstDay.exercises.length > 0 && firstDay.exercises[0].equipmentId !== 'manual') {
       setFocusedZoneId(firstDay.exercises[0].equipmentId);
@@ -217,6 +227,18 @@ const App: React.FC = () => {
     setCurrentView('app');
   };
 
+  // Building/using a personal training plan requires login; browsing the
+  // gym map and equipment library does not. Returns false (and prompts the
+  // auth modal) so a caller can bail out of opening the plan-builder UI.
+  const requireLogin = (): boolean => {
+    if (!user) {
+      setAuthMode('login');
+      setShowAuthModal(true);
+      return false;
+    }
+    return true;
+  };
+
   const handleLoginClick = () => {
     setAuthMode('login');
     setShowAuthModal(true);
@@ -234,6 +256,7 @@ const App: React.FC = () => {
     } else {
       setCurrentView('dashboard');
     }
+    loadMyPlan();
   };
 
   const handleLogout = () => {
@@ -274,11 +297,17 @@ const App: React.FC = () => {
 
   if (currentView === 'dashboard' && user) {
      return (
-       <UserDashboard 
+       <UserDashboard
          user={user}
          gyms={gyms}
+         workoutPlan={workoutPlan}
          onLogout={handleLogout}
          onEnterGym={handleGymSelect}
+         onStartWorkout={(dayIndex) => {
+           setActiveDayIndex(dayIndex);
+           setCurrentView('app');
+           setIsPlanOpen(true);
+         }}
          lang={lang}
        />
      );
@@ -354,8 +383,9 @@ const App: React.FC = () => {
              <span className="hidden xs:block">{t.library}</span>
            </button>
 
-           <button 
+           <button
              onClick={() => {
+                if (!isPlanOpen && !requireLogin()) return;
                 setIsPlanOpen(!isPlanOpen);
                 setIsLibraryOpen(false);
              }}
@@ -405,7 +435,18 @@ const App: React.FC = () => {
             onWatchVideo={handleWatchVideo}
             onClose={() => setIsPlanOpen(false)}
             isLoggedIn={!!user}
-            onCompleteWorkout={(dayName, exerciseCount) => api.completeWorkout(dayName, exerciseCount)}
+            onCompleteWorkout={(dayName, exerciseCount, planDayId) => api.completeWorkout(dayName, exerciseCount, planDayId)}
+            onSavePlan={() => api.savePlan(workoutPlan.name, workoutPlan.days)}
+            onSetDayWeekday={(dayId, weekday) => {
+              setWorkoutPlan(prev => {
+                const updated = {
+                  ...prev,
+                  days: prev.days.map(d => d.id === dayId ? { ...d, weekday } : d)
+                };
+                api.savePlan(updated.name, updated.days);
+                return updated;
+              });
+            }}
             lang={lang}
           />
         </div>

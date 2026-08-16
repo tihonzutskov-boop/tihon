@@ -82,5 +82,18 @@ CREATE TABLE IF NOT EXISTS workout_logs (
   day_name VARCHAR(255),
   exercise_count INTEGER DEFAULT 0,
   duration_minutes INTEGER DEFAULT 45,
-  completed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  completed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  plan_day_id VARCHAR(100)
+);
+
+ALTER TABLE workout_logs ADD COLUMN IF NOT EXISTS plan_day_id VARCHAR(100);
+
+-- One persisted training plan per user (id, name, and a weekday-scheduled
+-- WorkoutDay[] blob mirroring the shape already used for zones.machines).
+CREATE TABLE IF NOT EXISTS user_plans (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL DEFAULT 'My Training Plan',
+  days JSONB NOT NULL DEFAULT '[]',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

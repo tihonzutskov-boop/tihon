@@ -1,5 +1,5 @@
 
-import { Gym, User, LibraryExercise, EquipmentItem, GymZone, GymMachine, EquipmentType } from '../types';
+import { Gym, User, LibraryExercise, EquipmentItem, GymZone, GymMachine, EquipmentType, WorkoutDay } from '../types';
 import { DEFAULT_GYM } from '../constants';
 
 // Relative path: works same-origin in production (Express serves the built
@@ -210,11 +210,11 @@ export const api = {
 
   // --- WORKOUT TRACKING ---
 
-  async completeWorkout(dayName: string, exerciseCount: number): Promise<void> {
+  async completeWorkout(dayName: string, exerciseCount: number, planDayId?: string): Promise<void> {
     await fetch(`${API_BASE}/workouts`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dayName, exerciseCount }),
+      body: JSON.stringify({ dayName, exerciseCount, planDayId }),
     });
   },
 
@@ -226,6 +226,27 @@ export const api = {
     } catch {
       return { logs: [], stats: { workoutsCompleted: 0, totalMinutes: 0, streakDays: 0 } };
     }
+  },
+
+  // --- PERSONAL TRAINING PLAN ---
+
+  async fetchMyPlan(): Promise<{ id: number; name: string; days: WorkoutDay[] } | null> {
+    try {
+      const response = await fetch(`${API_BASE}/plans/me`);
+      if (!response.ok) return null;
+      const data = await response.json();
+      return data.plan;
+    } catch {
+      return null;
+    }
+  },
+
+  async savePlan(name: string, days: WorkoutDay[]): Promise<void> {
+    await fetch(`${API_BASE}/plans/me`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, days }),
+    });
   },
 
   // --- GYMS ---

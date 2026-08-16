@@ -150,11 +150,11 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
 // --- Workout Tracking Routes ---
 
 app.post('/api/workouts', requireAuth, async (req, res) => {
-  const { dayName, exerciseCount } = req.body;
+  const { dayName, exerciseCount, planDayId } = req.body;
   try {
     await pool.query(
-      'INSERT INTO workout_logs (user_id, day_name, exercise_count) VALUES ($1, $2, $3)',
-      [req.user.id, dayName || 'Workout', exerciseCount || 0]
+      'INSERT INTO workout_logs (user_id, day_name, exercise_count, plan_day_id) VALUES ($1, $2, $3, $4)',
+      [req.user.id, dayName || 'Workout', exerciseCount || 0, planDayId || null]
     );
     res.json({ success: true });
   } catch (err) {
@@ -178,7 +178,8 @@ app.get('/api/workouts/me', requireAuth, async (req, res) => {
         dayName: row.day_name,
         exerciseCount: row.exercise_count,
         durationMinutes: row.duration_minutes,
-        completedAt: row.completed_at
+        completedAt: row.completed_at,
+        planDayId: row.plan_day_id
       })),
       stats
     });
@@ -187,6 +188,39 @@ app.get('/api/workouts/me', requireAuth, async (req, res) => {
     res.status(500).json({ error: 'Database error fetching workouts' });
   } finally {
     client?.release();
+  }
+});
+
+// --- Personal Training Plan Routes ---
+
+app.get('/api/plans/me', requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM user_plans WHERE user_id = $1', [req.user.id]);
+    if (result.rows.length === 0) {
+      return res.json({ plan: null });
+    }
+    const row = result.rows[0];
+    res.json({ plan: { id: row.id, name: row.name, days: row.days } });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error fetching plan' });
+  }
+});
+
+app.put('/api/plans/me', requireAuth, async (req, res) => {
+  const { name, days } = req.body;
+  try {
+    await pool.query(
+      `INSERT INTO user_plans (user_id, name, days, updated_at)
+       VALUES ($1, $2, $3, now())
+       ON CONFLICT (user_id) DO UPDATE SET
+         name=$2, days=$3, updated_at=now()`,
+      [req.user.id, name || 'My Training Plan', JSON.stringify(days || [])]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error saving plan' });
   }
 });
 

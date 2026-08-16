@@ -1,11 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { WorkoutPlan, Language, Exercise, WorkoutDay } from '../types';
+import { WorkoutPlan, Language, Exercise, WorkoutDay, Weekday } from '../types';
 import { generateProgramAnalysis } from '../services/geminiService';
 import { translations, translateMuscle, translateExerciseName, translateDayName } from '../translations';
 import { Trash2, Dumbbell, BrainCircuit, X, Calendar, Plus, Edit2, Check, Sparkles, ChevronRight, MapPin, Play, Download, Info, PartyPopper } from 'lucide-react';
 import { getEquipmentIcon } from '../utils/equipmentIcons';
 import { exportWorkoutToPdf } from '../utils/pdfExporter';
 import ExerciseDetailModal from './ExerciseDetailModal';
+
+const WEEKDAYS: { key: Weekday; label: string }[] = [
+  { key: 'mon', label: 'M' }, { key: 'tue', label: 'T' }, { key: 'wed', label: 'W' },
+  { key: 'thu', label: 'T' }, { key: 'fri', label: 'F' }, { key: 'sat', label: 'S' }, { key: 'sun', label: 'S' }
+];
 
 interface ProgramListProps {
   workout: WorkoutPlan;
@@ -20,7 +25,9 @@ interface ProgramListProps {
   onWatchVideo: (exercise: Exercise) => void;
   onClose?: () => void;
   isLoggedIn?: boolean;
-  onCompleteWorkout?: (dayName: string, exerciseCount: number) => Promise<void>;
+  onCompleteWorkout?: (dayName: string, exerciseCount: number, planDayId?: string) => Promise<void>;
+  onSavePlan?: () => void;
+  onSetDayWeekday?: (dayId: string, weekday: Weekday | undefined) => void;
   lang: Language;
 }
 
@@ -38,6 +45,8 @@ const ProgramList: React.FC<ProgramListProps> = ({
   onClose,
   isLoggedIn = false,
   onCompleteWorkout,
+  onSavePlan,
+  onSetDayWeekday,
   lang
 }) => {
   const [analysis, setAnalysis] = useState<string | null>(null);
@@ -133,7 +142,7 @@ const ProgramList: React.FC<ProgramListProps> = ({
     if (!onCompleteWorkout || !currentDay || isCompleting) return;
     setIsCompleting(true);
     try {
-      await onCompleteWorkout(currentDay.name, currentDay.exercises.length);
+      await onCompleteWorkout(currentDay.name, currentDay.exercises.length, currentDay.id);
       setIsCompleted(true);
     } finally {
       setIsCompleting(false);
@@ -189,6 +198,27 @@ const ProgramList: React.FC<ProgramListProps> = ({
                 `}
               >
                 {t.day} {idx + 1}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {currentDay && onSetDayWeekday && (
+          <div className="flex items-center gap-1.5 mt-1">
+            <span className="text-[9px] uppercase tracking-widest text-slate-600 font-bold mr-1">{lang === 'et' ? 'Nädalapäev' : lang === 'ru' ? 'День' : 'Day'}</span>
+            {WEEKDAYS.map(w => (
+              <button
+                key={w.key}
+                onClick={() => onSetDayWeekday(currentDay.id, currentDay.weekday === w.key ? undefined : w.key)}
+                title={w.key}
+                className={`
+                  w-6 h-6 rounded-md text-[10px] font-bold transition-all border flex items-center justify-center
+                  ${currentDay.weekday === w.key
+                    ? 'bg-lime-500 border-lime-500 text-slate-950'
+                    : 'bg-slate-800/60 border-slate-700 text-slate-500 hover:border-slate-500'}
+                `}
+              >
+                {w.label}
               </button>
             ))}
           </div>
@@ -441,15 +471,11 @@ const ProgramList: React.FC<ProgramListProps> = ({
                 >
                   {t.clear}
                 </button>
-                <button 
+                <button
                   onClick={() => {
-                    try {
-                      localStorage.setItem('gyde_saved_workout', JSON.stringify(workout));
-                      setIsPlanSaved(true);
-                      setTimeout(() => setIsPlanSaved(false), 2500);
-                    } catch (e) {
-                      console.error('Failed to save workout plan:', e);
-                    }
+                    onSavePlan?.();
+                    setIsPlanSaved(true);
+                    setTimeout(() => setIsPlanSaved(false), 2500);
                   }}
                   className={`flex-1 py-2.5 font-black rounded-xl text-xs transition-all shadow-lg flex items-center justify-center gap-1.5 min-h-[44px] ${
                     isPlanSaved 
