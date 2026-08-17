@@ -326,7 +326,7 @@ const App: React.FC = () => {
   const totalExercises = workoutPlan.days.reduce((acc, d) => acc + d.exercises.length, 0);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200 flex flex-col overflow-hidden animate-in fade-in duration-700">
+    <div className="h-screen bg-slate-950 text-slate-200 flex flex-col overflow-hidden animate-in fade-in duration-700">
       <header className="h-16 border-b border-slate-800 bg-slate-900 flex items-center px-6 justify-between flex-shrink-0 z-40 shadow-sm relative">
         <div className="flex items-center space-x-6">
           <div className="flex items-center space-x-3 cursor-pointer group" onClick={() => setCurrentView(user ? 'dashboard' : 'landing')}>
@@ -415,7 +415,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <main className="flex-1 flex overflow-hidden relative">
+      <main className="flex-1 flex overflow-hidden relative min-h-0">
         <div 
           className={`
             absolute top-0 bottom-0 left-0 w-80 md:w-96 z-30 transform transition-transform duration-300 ease-in-out shadow-2xl
@@ -469,13 +469,13 @@ const App: React.FC = () => {
           />
         </div>
 
-        <div className="flex-1 relative flex items-center justify-center bg-slate-950 overflow-hidden">
-          <div 
+        <div className="flex-1 relative flex items-center justify-center bg-slate-950 overflow-hidden min-h-0">
+          <div
              className={`absolute inset-0 bg-slate-950/50 backdrop-blur-sm z-20 transition-opacity duration-300 pointer-events-none md:hidden
                ${isPlanOpen || isSelectorOpen || isLibraryOpen ? 'opacity-100' : 'opacity-0'}
-             `} 
+             `}
           />
-          <div className="w-full h-full p-4 md:p-6 lg:p-8 max-w-7xl flex items-center justify-center">
+          <div className="w-full h-full p-4 md:p-6 lg:p-8 max-w-7xl flex items-center justify-center min-h-0">
             <GymMap 
               zones={zones}
               dimensions={dimensions}
