@@ -312,6 +312,8 @@ const GymMap: React.FC<GymMapProps> = ({
   } | null>(null);
   const touchSingleRef = React.useRef<{ x: number; y: number; panX: number; panY: number; } | null>(null);
   const wasDraggedRef = React.useRef(false);
+  const [isWheelZooming, setIsWheelZooming] = React.useState(false);
+  const wheelZoomIdleTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Sync zoom/pan state into SessionStorage "while they remain on the page"
   React.useEffect(() => {
@@ -373,15 +375,24 @@ const GymMap: React.FC<GymMapProps> = ({
       e.preventDefault();
       const factor = e.deltaY < 0 ? 1.08 : 1 / 1.08;
       handleZoom(factor, e.clientX, e.clientY);
+
+      // Rapid wheel ticks each restart the transform's CSS transition before
+      // the previous one finishes, which can leave stale composited layers
+      // behind (visible as a ghosting/fanned-duplicate render). Suppress the
+      // transition for as long as wheel events keep arriving, same as touch.
+      setIsWheelZooming(true);
+      if (wheelZoomIdleTimerRef.current) clearTimeout(wheelZoomIdleTimerRef.current);
+      wheelZoomIdleTimerRef.current = setTimeout(() => setIsWheelZooming(false), 150);
     };
 
     container.addEventListener('wheel', handleContainerWheel, { passive: false });
     return () => {
       container.removeEventListener('wheel', handleContainerWheel);
+      if (wheelZoomIdleTimerRef.current) clearTimeout(wheelZoomIdleTimerRef.current);
     };
   }, [handleZoom, isThumbnail]);
 
-  const isUserActiveDrag = isPanning || touchStartRef.current !== null || touchSingleRef.current !== null;
+  const isUserActiveDrag = isPanning || touchStartRef.current !== null || touchSingleRef.current !== null || isWheelZooming;
 
   const handleMouseDownForPan = (e: React.MouseEvent) => {
     if (isThumbnail) return;
