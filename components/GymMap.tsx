@@ -586,13 +586,22 @@ const GymMap: React.FC<GymMapProps> = ({
     offsetY = manualView.offsetY;
   } else if (focusedZone && (!isEditable || editMode === 'machine')) {
     const ZOOM_PADDING = 40;
-    const MIN_VIEW_SIZE = 500; 
+    const MIN_VIEW_SIZE = 500;
     const targetWidth = focusedZone.width + (ZOOM_PADDING * 2);
     const targetHeight = focusedZone.height + (ZOOM_PADDING * 2);
     viewBoxWidth = Math.max(targetWidth, MIN_VIEW_SIZE);
-    viewBoxHeight = Math.max(targetHeight, MIN_VIEW_SIZE);
+
+    // In the non-editable user view, clicking a zone also opens the zone-info
+    // popover card anchored to the bottom of the screen. Reserve extra room
+    // there instead of centering the zone, so the card never renders on top
+    // of it — the zone sits near the top of the view with the popover's
+    // space left empty below, rather than the two overlapping.
+    const POPOVER_RESERVE = !isEditable ? 260 : 0;
+    viewBoxHeight = Math.max(targetHeight, MIN_VIEW_SIZE) + POPOVER_RESERVE;
     offsetX = ((viewBoxWidth - focusedZone.width) / 2) - focusedZone.x;
-    offsetY = ((viewBoxHeight - focusedZone.height) / 2) - focusedZone.y;
+    offsetY = POPOVER_RESERVE > 0
+      ? ZOOM_PADDING - focusedZone.y
+      : ((viewBoxHeight - focusedZone.height) / 2) - focusedZone.y;
   } else {
     const totalBounds = getTotalBounds();
     const PADDING = 150;
