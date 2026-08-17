@@ -833,9 +833,9 @@ const GymMap: React.FC<GymMapProps> = ({
       <div className="w-full flex-1 relative overflow-hidden flex items-center justify-center">
         <svg
           viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
-          className={`w-full h-full select-none ${
-            isPanning ? 'cursor-grabbing' : 
-            isThumbnail ? 'cursor-default' : 
+          className={`w-full h-full select-none ${isThumbnail ? '' : 'touch-none'} ${
+            isPanning ? 'cursor-grabbing' :
+            isThumbnail ? 'cursor-default' :
             'cursor-grab'
           }`}
           preserveAspectRatio="xMidYMid meet"
