@@ -23,7 +23,7 @@ interface EquipmentLibraryProps {
   lang?: Language;
 }
 
-const CATEGORIES = [
+export const CATEGORIES = [
   'All',
   'Free Weights',
   'Machines',
@@ -34,9 +34,9 @@ const CATEGORIES = [
   'Accessories'
 ];
 
-const MUSCLE_GROUPS = ['Chest', 'Back', 'Shoulders', 'Arms', 'Legs', 'Glutes', 'Core', 'Full Body', 'Cardio'];
+export const MUSCLE_GROUPS = ['Chest', 'Back', 'Shoulders', 'Arms', 'Legs', 'Glutes', 'Core', 'Full Body', 'Cardio'];
 
-const ICON_OPTIONS = [
+export const ICON_OPTIONS = [
   { label: 'Dumbbell', value: 'Dumbbell', icon: Dumbbell },
   { label: 'Weight & Barbell', value: 'Weight', icon: Disc },
   { label: 'Power Rack', value: 'Layers', icon: Layers },
@@ -51,7 +51,7 @@ const ICON_OPTIONS = [
 
 // Category stays free text (not a strict enum) so admins can create their own,
 // but the combobox suggests existing ones first to avoid near-duplicate categories.
-const EquipmentCategoryCombo: React.FC<{ value: string; categories: string[]; onChange: (val: string) => void }> = ({ value, categories, onChange }) => {
+export const EquipmentCategoryCombo: React.FC<{ value: string; categories: string[]; onChange: (val: string) => void }> = ({ value, categories, onChange }) => {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const matches = categories.filter(c => c.toLowerCase().includes(query.toLowerCase()));

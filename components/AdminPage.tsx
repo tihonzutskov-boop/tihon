@@ -2720,6 +2720,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
           onClose={() => setIsQuickAddModalOpen(false)}
           targetZone={selectedZone}
           availableZones={gym.zones}
+          equipmentList={equipmentList}
           onEquipmentCreated={handleQuickAddEquipmentCreated}
         />
 

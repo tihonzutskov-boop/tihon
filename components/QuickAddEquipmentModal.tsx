@@ -1,13 +1,15 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { Camera, Upload, X, Check, Image as ImageIcon, MapPin, Sparkles, AlertCircle } from 'lucide-react';
 import { EquipmentItem, GymZone } from '../types';
 import { api } from '../services/api';
+import { CATEGORIES, ICON_OPTIONS, MUSCLE_GROUPS, EquipmentCategoryCombo } from './EquipmentLibrary';
 
 interface QuickAddEquipmentModalProps {
   isOpen: boolean;
   onClose: () => void;
   targetZone?: GymZone | null;
   availableZones?: GymZone[];
+  equipmentList?: EquipmentItem[];
   onEquipmentCreated: (equipment: EquipmentItem, zoneId?: string) => void;
 }
 
@@ -16,15 +18,29 @@ export const QuickAddEquipmentModal: React.FC<QuickAddEquipmentModalProps> = ({
   onClose,
   targetZone,
   availableZones = [],
+  equipmentList = [],
   onEquipmentCreated,
 }) => {
   const [imageUrl, setImageUrl] = useState<string>('');
   const [quickLabel, setQuickLabel] = useState<string>('');
+  const [category, setCategory] = useState<string>('Machines');
+  const [icon, setIcon] = useState<string>('Dumbbell');
+  const [description, setDescription] = useState<string>('');
+  const [muscleGroups, setMuscleGroups] = useState<string[]>([]);
   const [selectedZoneId, setSelectedZoneId] = useState<string>(targetZone?.id || availableZones[0]?.id || '');
   const [isDragOver, setIsDragOver] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
-  
+
+  const allCategories = useMemo(() => {
+    const fromItems = equipmentList.map(item => item.category).filter(Boolean) as string[];
+    return Array.from(new Set([...CATEGORIES.filter(c => c !== 'All'), ...fromItems])).sort();
+  }, [equipmentList]);
+
+  const toggleMuscleGroup = (m: string) => {
+    setMuscleGroups(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]);
+  };
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync target zone when modal opens or changes
@@ -101,10 +117,11 @@ export const QuickAddEquipmentModal: React.FC<QuickAddEquipmentModalProps> = ({
       const newEquipment: EquipmentItem = {
         id: newId,
         name: finalName,
-        category: 'Machines',
-        icon: 'Camera',
+        category,
+        icon,
         imageUrl: imageUrl,
-        description: '',
+        description: description.trim(),
+        muscleGroups,
         defaultFootprint: { width: 40, height: 40 }
       };
 
@@ -117,6 +134,10 @@ export const QuickAddEquipmentModal: React.FC<QuickAddEquipmentModalProps> = ({
       // Reset state and close
       setImageUrl('');
       setQuickLabel('');
+      setCategory('Machines');
+      setIcon('Dumbbell');
+      setDescription('');
+      setMuscleGroups([]);
       setErrorMessage('');
       onClose();
     } catch (err: any) {
@@ -284,6 +305,68 @@ export const QuickAddEquipmentModal: React.FC<QuickAddEquipmentModalProps> = ({
             />
           </div>
 
+          {/* Same fields as the full Equipment Library form — all optional here, can also be finished later */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1.5">
+                Category
+              </label>
+              <EquipmentCategoryCombo value={category} categories={allCategories} onChange={setCategory} />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1.5">
+                Map Icon Badge
+              </label>
+              <select
+                value={icon}
+                onChange={(e) => setIcon(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:ring-2 focus:ring-lime-500/50 focus:border-lime-500 outline-none min-h-[44px]"
+              >
+                {ICON_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold text-slate-400">
+              Muscle Groups Targeted <span className="text-slate-600 font-normal">(Optional)</span>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {MUSCLE_GROUPS.map(m => {
+                const active = muscleGroups.includes(m);
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => toggleMuscleGroup(m)}
+                    className={`px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-colors ${
+                      active
+                        ? 'bg-lime-500/10 border-lime-500 text-lime-400'
+                        : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-200'
+                    }`}
+                  >
+                    {m}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold text-slate-400">
+              Identification & Setup Instructions <span className="text-slate-600 font-normal">(Optional)</span>
+            </label>
+            <textarea
+              rows={2}
+              placeholder="Describe what this equipment looks like and how to set it up..."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:ring-2 focus:ring-lime-500/50 focus:border-lime-500 outline-none resize-none"
+            />
+          </div>
+
           {/* Information Note */}
           <div className="p-3 bg-slate-950/40 rounded-xl border border-slate-800/80 text-[11px] text-slate-400 leading-relaxed space-y-1">
             <p className="flex items-start gap-1.5 text-slate-300">
@@ -293,7 +376,7 @@ export const QuickAddEquipmentModal: React.FC<QuickAddEquipmentModalProps> = ({
               </span>
             </p>
             <p className="text-[10px] text-slate-500 pl-5">
-              Full details (category, dimensions, identification & setup instructions) can be completed anytime in the Equipment Library.
+              Anything left blank here can still be filled in anytime from the Equipment Library.
             </p>
           </div>
 
