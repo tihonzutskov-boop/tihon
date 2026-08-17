@@ -46,6 +46,7 @@ export interface GymMachine {
   icon?: string;
   equipmentId?: string; // Links this placed machine to an EquipmentItem in the Equipment Library
   exerciseId?: string;  // Optional direct link to a LibraryExercise
+  imageUrl?: string;
 }
 
 export interface GymAnnex {

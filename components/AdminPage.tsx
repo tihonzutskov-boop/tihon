@@ -133,6 +133,74 @@ interface DragState {
   viewParams?: { viewBox: string, offsetX: number, offsetY: number, width: number, height: number };
 }
 
+const ZONE_NAME_PRESETS = ['Free Weights', 'Cardio', 'Functional Turf', 'Power Rack Area', 'Cable Station', 'Stretching Zone', 'Reception', 'Lobby', 'Changing Rooms', 'Showers', 'Toilets', 'Sauna', 'Pool', 'Office', 'Storage', 'Café', 'Group Fitness Studio'];
+
+// Free-text zone name with filtered preset suggestions — you can type
+// anything, presets are just a quick-fill shortcut.
+const ZoneNameCombo: React.FC<{ zone: GymZone; onChange: (val: string) => void }> = ({ zone, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const matches = ZONE_NAME_PRESETS.filter(p => p.toLowerCase().includes(zone.name.toLowerCase()));
+  return (
+    <div className="relative">
+      <label className="block text-xs text-slate-500 mb-1.5">Zone Name</label>
+      <input
+        type="text"
+        value={zone.name}
+        onFocus={() => setOpen(true)}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={() => setTimeout(() => setOpen(false), 120)}
+        autoComplete="off"
+        className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none"
+      />
+      {open && matches.length > 0 && (
+        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-lg max-h-40 overflow-y-auto shadow-xl">
+          {matches.map(m => (
+            <button key={m} type="button" onMouseDown={(e) => { e.preventDefault(); onChange(m); setOpen(false); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white">
+              {m}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Zone type stays strictly constrained to EquipmentType — it drives which
+// equipment/exercises match this zone, so free text isn't safe here.
+const ZoneTypeCombo: React.FC<{ zone: GymZone; onChange: (val: string) => void }> = ({ zone, onChange }) => {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const allTypes = Object.values(EquipmentType);
+  const matches = allTypes.filter(t => t.toLowerCase().includes(query.toLowerCase()));
+  return (
+    <div className="relative">
+      <label className="block text-xs text-slate-500 mb-1.5">Category / Room Type</label>
+      <input
+        type="text"
+        value={open ? query : zone.type}
+        onFocus={() => { setQuery(''); setOpen(true); }}
+        onChange={(e) => setQuery(e.target.value)}
+        onBlur={() => setTimeout(() => setOpen(false), 120)}
+        placeholder="Search zone type..."
+        autoComplete="off"
+        className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none cursor-pointer"
+      />
+      {open && (
+        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-lg max-h-40 overflow-y-auto shadow-xl">
+          {matches.length === 0 ? (
+            <div className="px-3 py-2 text-xs text-slate-500">No matching zone type</div>
+          ) : matches.map(t => (
+            <button key={t} type="button" onMouseDown={(e) => { e.preventDefault(); onChange(t); setOpen(false); }} className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-800 hover:text-white ${t === zone.type ? 'text-lime-400 font-semibold' : 'text-slate-300'}`}>
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
+      <p className="text-[10px] text-slate-500 mt-1">Determines which equipment and exercises can match this zone.</p>
+    </div>
+  );
+};
+
 const ToolButton = ({ active, onClick, icon: Icon, label, description, disabled = false, variant = 'default' }: { active?: boolean, onClick: () => void, icon: any, label: string, description?: string, disabled?: boolean, variant?: 'default' | 'action' | 'highlight' }) => {
   return (
     <button onClick={onClick} disabled={disabled} className={`w-full flex items-center p-3 rounded-xl transition-all duration-200 border text-left group mb-2 ${active ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-900/20' : variant === 'highlight' ? 'bg-lime-500/10 border-lime-500/20 text-lime-400 hover:bg-lime-500/20' : variant === 'action' ? 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700 hover:border-slate-600' : 'bg-transparent border-transparent text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}>
@@ -154,7 +222,8 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
   const annexes = gym.annexes || [];
 
   const [editMode, setEditMode] = useState<'layout' | 'room' | 'machine'>('layout');
-  const [selectedWorkspaceOption, setSelectedWorkspaceOption] = useState<'layout' | 'room' | null>(null);
+  const [zoneTab, setZoneTab] = useState<'details' | 'equipment' | 'exercises'>('details');
+  const [roomTab, setRoomTab] = useState<'dimensions' | 'annexes' | 'walls' | 'entrance'>('dimensions');
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
   const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null);
   const [selectedAnnexId, setSelectedAnnexId] = useState<string | null>(null);
@@ -275,7 +344,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
 
         // Instantly focus on floor plan editor so the user can review and edit
         setEditMode('room');
-        setSelectedWorkspaceOption('room');
+        setRoomTab('dimensions');
         setSelectedZoneId(null);
 
         setIsImporting(false);
@@ -523,6 +592,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
     update({ ...gym, zones: newZones }, true);
     setSelectedZoneId(targetId);
     setSelectedMachineId(newMachine.id);
+    setEditMode('machine');
 
     setQuickAddFeedback(`Placed "${newEq.name}" in ${targetZoneObj.name} and registered to Equipment Library!`);
     setTimeout(() => setQuickAddFeedback(null), 4000);
@@ -1294,16 +1364,10 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
     <div className="flex flex-col h-screen bg-slate-950 text-slate-200 animate-in slide-in-from-right duration-300">
       <header className="h-16 border-b border-slate-800 bg-slate-900 flex items-center justify-between px-6 flex-shrink-0 z-20">
         <div className="flex items-center space-x-6">
-          <button 
-            onClick={() => {
-              if (selectedWorkspaceOption !== null) {
-                setSelectedWorkspaceOption(null);
-              } else {
-                onBack();
-              }
-            }} 
+          <button
+            onClick={onBack}
             className="p-2 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors flex-shrink-0"
-            title={selectedWorkspaceOption !== null ? "Back to Task Selection" : "Back to Gym List"}
+            title="Back to Gym List"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
@@ -1328,7 +1392,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
               }`}
             >
               <LayoutTemplate className="w-3.5 h-3.5" />
-              Floor Plan & Layout
+              Floor Plan
             </button>
             <button 
               onClick={() => setActiveTab('equipment')}
@@ -1359,7 +1423,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
         </div>
 
         <div className="flex items-center space-x-3">
-          {activeTab === 'layout' && selectedWorkspaceOption !== null && (
+          {activeTab === 'layout' && (
             <>
               <div className="flex items-center space-x-1 mr-2 border-r border-slate-800 pr-4">
                 <button onClick={undo} disabled={!canUndo} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-colors" title="Undo (Ctrl+Z)"><Undo2 className="w-4 h-4" /></button>
@@ -1442,162 +1506,21 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
         )}
 
         {activeTab === 'layout' ? (
-          selectedWorkspaceOption === null ? (
-            <div className="flex-1 bg-slate-950 flex flex-col items-center justify-center p-8 overflow-y-auto animate-in fade-in duration-300">
-              <div className="max-w-5xl w-full space-y-8 text-center py-12">
-                <div className="space-y-3">
-                  <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-lime-500/10 text-lime-400 border border-lime-500/20">
-                     <Sparkles className="w-3.5 h-3.5 mr-1.5 text-lime-400 animate-pulse" />
-                     Setup Assistant
-                  </div>
-                  <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
-                     What would you like to build today?
-                  </h1>
-                  <p className="text-slate-400 text-sm max-w-lg mx-auto leading-relaxed">
-                     Select a core task below to begin customizing <span className="font-semibold text-lime-400">{gym.name}</span>. You can easily switch between views at any time.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5 pt-4">
-                  {/* Option 1: Zones and Layout */}
-                  <button
-                    onClick={() => {
-                      setEditMode('layout');
-                      setSelectedWorkspaceOption('layout');
-                      setSelectedZoneId(null);
-                    }}
-                    className="group relative bg-slate-900 hover:bg-slate-900/80 border border-slate-800 hover:border-blue-500/50 rounded-2xl p-5 text-left transition-all duration-300 hover:shadow-2xl hover:shadow-blue-500/5 hover:-translate-y-1 flex flex-col h-full cursor-pointer focus:outline-none"
-                  >
-                    <div className="p-3 bg-blue-500/10 group-hover:bg-blue-500/20 text-blue-400 rounded-xl w-12 h-12 flex items-center justify-center mb-4 transition-all group-hover:scale-110">
-                      <Grid className="w-6 h-6" />
-                    </div>
-                    <h3 className="text-base font-bold text-white group-hover:text-blue-400 transition-colors mb-2 flex items-center">
-                      Zones & Layout
-                      <ArrowRightLeft className="w-4 h-4 ml-2 opacity-0 group-hover:opacity-100 transition-all transform translate-x-[-10px] group-hover:translate-x-0 text-blue-400 animate-pulse" />
-                    </h3>
-                    <p className="text-xs text-slate-400 leading-relaxed mb-5">
-                      Create workout sectors (cardio, free weights, strength). Arrange machines and equipment within zones.
-                    </p>
-                    <div className="mt-auto pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] font-bold text-slate-500 group-hover:text-blue-400 transition-colors">
-                      <span>MANAGE ZONES</span>
-                      <span className="text-[10px] bg-slate-950 px-2 py-0.5 rounded border border-slate-850 group-hover:border-blue-900/50">OPEN</span>
-                    </div>
-                  </button>
-
-                  {/* Option 2: Equipment Library */}
-                  <button
-                    onClick={() => {
-                      setActiveTab('equipment');
-                      setSelectedWorkspaceOption('layout');
-                    }}
-                    className="group relative bg-slate-900 hover:bg-slate-900/80 border border-slate-800 hover:border-lime-500/50 rounded-2xl p-5 text-left transition-all duration-300 hover:shadow-2xl hover:shadow-lime-500/5 hover:-translate-y-1 flex flex-col h-full cursor-pointer focus:outline-none"
-                  >
-                    <div className="p-3 bg-lime-500/10 group-hover:bg-lime-500/20 text-lime-400 rounded-xl w-12 h-12 flex items-center justify-center mb-4 transition-all group-hover:scale-110">
-                      <Layers className="w-6 h-6" />
-                    </div>
-                    <h3 className="text-base font-bold text-white group-hover:text-lime-400 transition-colors mb-2 flex items-center">
-                      Equipment Library
-                      <ArrowRightLeft className="w-4 h-4 ml-2 opacity-0 group-hover:opacity-100 transition-all transform translate-x-[-10px] group-hover:translate-x-0 text-lime-400 animate-pulse" />
-                    </h3>
-                    <p className="text-xs text-slate-400 leading-relaxed mb-5">
-                      Manage physical gear catalog (dumbbells, barbells, benches, rigs, cardio). Link to zones & exercises.
-                    </p>
-                    <div className="mt-auto pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] font-bold text-slate-500 group-hover:text-lime-400 transition-colors">
-                      <span>EQUIPMENT CATALOG</span>
-                      <span className="text-[10px] bg-slate-950 px-2 py-0.5 rounded border border-slate-850 group-hover:border-lime-900/50">OPEN</span>
-                    </div>
-                  </button>
-
-                  {/* Option 3: Floor Plan */}
-                  <button
-                    onClick={() => {
-                      setEditMode('room');
-                      setSelectedWorkspaceOption('room');
-                      setSelectedZoneId(null);
-                    }}
-                    className="group relative bg-slate-900 hover:bg-slate-900/80 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-5 text-left transition-all duration-300 hover:shadow-2xl hover:shadow-emerald-500/5 hover:-translate-y-1 flex flex-col h-full cursor-pointer focus:outline-none"
-                  >
-                    <div className="p-3 bg-emerald-500/10 group-hover:bg-emerald-500/20 text-emerald-400 rounded-xl w-12 h-12 flex items-center justify-center mb-4 transition-all group-hover:scale-110">
-                      <Scaling className="w-6 h-6" />
-                    </div>
-                    <h3 className="text-base font-bold text-white group-hover:text-emerald-400 transition-colors mb-2 flex items-center">
-                      Floor Plan & Size
-                      <ArrowRightLeft className="w-4 h-4 ml-2 opacity-0 group-hover:opacity-100 transition-all transform translate-x-[-10px] group-hover:translate-x-0 text-emerald-400 animate-pulse" />
-                    </h3>
-                    <p className="text-xs text-slate-400 leading-relaxed mb-5">
-                      Adjust boundary dimensions, draw room extensions (L-shape wings), floor colors, and main entrance.
-                    </p>
-                    <div className="mt-auto pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] font-bold text-slate-500 group-hover:text-emerald-400 transition-colors">
-                      <span>ROOM METRICS</span>
-                      <span className="text-[10px] bg-slate-950 px-2 py-0.5 rounded border border-slate-850 group-hover:border-emerald-900/50">OPEN</span>
-                    </div>
-                  </button>
-
-                  {/* Option 4: Import Floor Plan with AI */}
-                  <div
-                    onClick={triggerImportFlow}
-                    onDragEnter={handleDrag}
-                    onDragOver={handleDrag}
-                    onDragLeave={handleDrag}
-                    onDrop={handleDrop}
-                    className={`group relative bg-slate-900 border rounded-2xl p-5 text-left transition-all duration-300 hover:shadow-2xl flex flex-col h-full cursor-pointer focus:outline-none ${
-                      isDragActive 
-                        ? 'border-purple-500 bg-purple-950/20 shadow-lg shadow-purple-500/10 scale-[1.02]' 
-                        : 'border-slate-800 hover:border-purple-500/50 hover:shadow-purple-500/5 hover:-translate-y-1'
-                    }`}
-                  >
-                    <div className={`p-3 rounded-xl w-12 h-12 flex items-center justify-center mb-4 transition-all group-hover:scale-110 ${
-                      isDragActive ? 'bg-purple-500/30 text-purple-300' : 'bg-purple-500/10 text-purple-400 group-hover:bg-purple-500/20'
-                    }`}>
-                      <Sparkles className="w-6 h-6 animate-pulse" />
-                    </div>
-                    <h3 className="text-base font-bold text-white group-hover:text-purple-400 transition-colors mb-2 flex items-center">
-                      Import Floor Plan (AI)
-                      <ArrowRightLeft className="w-4 h-4 ml-2 opacity-0 group-hover:opacity-100 transition-all transform translate-x-[-10px] group-hover:translate-x-0 text-purple-400" />
-                    </h3>
-                    <p className="text-xs text-slate-400 leading-relaxed mb-5">
-                      Upload PDF or image floor plans. AI auto-detects walls, room shapes, doors, and equipment automatically.
-                    </p>
-                    <div className="mt-auto pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] font-bold text-slate-500 group-hover:text-purple-400 transition-colors">
-                      <span>AUTO-CONVERT</span>
-                      <span className="text-[10px] bg-slate-950 px-2 py-0.5 rounded border border-slate-850 group-hover:border-purple-900/50">UPLOAD</span>
-                    </div>
-                  </div>
-
-                  {/* Option 5: Exercise & Video Library (Admin Only) */}
-                  <button
-                    onClick={() => {
-                      setActiveTab('exercises');
-                      setSelectedWorkspaceOption('layout');
-                    }}
-                    className="group relative bg-slate-900 hover:bg-slate-900/80 border border-slate-800 hover:border-amber-500/50 rounded-2xl p-5 text-left transition-all duration-300 hover:shadow-2xl hover:shadow-amber-500/5 hover:-translate-y-1 flex flex-col h-full cursor-pointer focus:outline-none"
-                  >
-                    <div className="p-3 bg-amber-500/10 group-hover:bg-amber-500/20 text-amber-400 rounded-xl w-12 h-12 flex items-center justify-center mb-4 transition-all group-hover:scale-110">
-                      <Dumbbell className="w-6 h-6" />
-                    </div>
-                    <h3 className="text-base font-bold text-white group-hover:text-amber-400 transition-colors mb-2 flex items-center">
-                      Exercise Library
-                      <ArrowRightLeft className="w-4 h-4 ml-2 opacity-0 group-hover:opacity-100 transition-all transform translate-x-[-10px] group-hover:translate-x-0 text-amber-400 animate-pulse" />
-                    </h3>
-                    <p className="text-xs text-slate-400 leading-relaxed mb-5">
-                      Manage movement patterns, required equipment, step-by-step instructions, and YouTube demonstration videos.
-                    </p>
-                    <div className="mt-auto pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] font-bold text-slate-500 group-hover:text-amber-400 transition-colors">
-                      <span>EXERCISE DATABASE</span>
-                      <span className="text-[10px] bg-slate-950 px-2 py-0.5 rounded border border-slate-850 group-hover:border-amber-900/50">OPEN</span>
-                    </div>
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
             <>
               <aside className="w-72 bg-slate-900 border-r border-slate-800 flex flex-col z-10 flex-shrink-0 shadow-xl overflow-y-auto">
               <div className="p-4 border-b border-slate-800/50">
-                  <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Editor Modes</h3>
+                  <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Floor Plan Sections</h3>
                   <div className="space-y-2">
-                       <ToolButton active={editMode === 'layout'} onClick={() => { setEditMode('layout'); setSelectedWorkspaceOption('layout'); setSelectedZoneId(null); }} icon={Grid} label="Zones & Layout" description="Move and edit zones" />
-                       <ToolButton active={editMode === 'room'} onClick={() => { setEditMode('room'); setSelectedWorkspaceOption('room'); setSelectedZoneId(null); }} icon={Scaling} label="Floor Plan" description="Adjust room shape" />
+                       <ToolButton active={editMode === 'layout'} onClick={() => { setEditMode('layout'); setSelectedZoneId(null); }} icon={Grid} label="Zones & Layout" description="Move and edit zones" />
+                       <ToolButton
+                         active={editMode === 'machine'}
+                         onClick={() => { setEditMode('machine'); if (!selectedZoneId && zones[0]) setSelectedZoneId(zones[0].id); }}
+                         icon={Dumbbell}
+                         label="Machines"
+                         description={selectedZone ? `Placing equipment in ${selectedZone.name}` : 'Select a zone to place equipment'}
+                       />
+                       <ToolButton active={editMode === 'room'} onClick={() => { setEditMode('room'); setRoomTab('dimensions'); setSelectedZoneId(null); }} icon={Scaling} label="Room & Walls" description="Boundary, wings, and walls" />
+                       <ToolButton active={false} onClick={triggerImportFlow} icon={Sparkles} label="Import from Photo" description="Auto-generate zones with AI" />
                   </div>
               </div>
             <div className="p-4 flex-1">
@@ -1634,99 +1557,20 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
                         </div>
                     ) : editMode === 'room' ? (
                         <div className="space-y-4 animate-in fade-in duration-300">
-                           <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800 space-y-2.5">
-                             <div className="flex items-center gap-1.5 text-[10px] font-extrabold text-lime-400 uppercase tracking-wider">
-                               <Compass className="w-3.5 h-3.5" />
-                               Add Room Extension
-                             </div>
-                             <p className="text-[10px] text-slate-400 leading-relaxed">
-                               Expand the gym floor plan with side wings, alcoves, and custom annexes:
-                             </p>
-
-                             {/* Cardinal Direction Wings */}
-                             <div className="grid grid-cols-2 gap-1.5">
-                               <button
-                                 onClick={() => addAnnex('right')}
-                                 className="flex items-center gap-1.5 p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-lime-500/50 rounded-lg text-xs font-semibold text-slate-200 hover:text-white transition-all text-left"
-                                 title="Add wing to the right / East wall"
-                               >
-                                 <ArrowRight className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
-                                 <span className="truncate">Right (East)</span>
-                               </button>
-
-                               <button
-                                 onClick={() => addAnnex('left')}
-                                 className="flex items-center gap-1.5 p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-lime-500/50 rounded-lg text-xs font-semibold text-slate-200 hover:text-white transition-all text-left"
-                                 title="Add wing to the left / West wall"
-                               >
-                                 <ArrowLeft className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
-                                 <span className="truncate">Left (West)</span>
-                               </button>
-
-                               <button
-                                 onClick={() => addAnnex('top')}
-                                 className="flex items-center gap-1.5 p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-lime-500/50 rounded-lg text-xs font-semibold text-slate-200 hover:text-white transition-all text-left"
-                                 title="Add wing to the top / North wall"
-                               >
-                                 <ArrowUp className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
-                                 <span className="truncate">Top (North)</span>
-                               </button>
-
-                               <button
-                                 onClick={() => addAnnex('bottom')}
-                                 className="flex items-center gap-1.5 p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-lime-500/50 rounded-lg text-xs font-semibold text-slate-200 hover:text-white transition-all text-left"
-                                 title="Add wing to the bottom / South wall"
-                               >
-                                 <ArrowDown className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
-                                 <span className="truncate">Bottom (South)</span>
-                               </button>
-                             </div>
-
-                             {/* Corner Placements */}
-                             <div className="grid grid-cols-2 gap-1.5 pt-1">
-                               <button
-                                 onClick={() => addAnnex('top-right')}
-                                 className="flex items-center gap-1.5 p-2 bg-slate-900/60 hover:bg-slate-800 border border-slate-800/80 hover:border-lime-500/40 rounded-lg text-[11px] font-medium text-slate-300 hover:text-white transition-all text-left"
-                               >
-                                 <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                                 <span className="truncate">Top-Right</span>
-                               </button>
-
-                               <button
-                                 onClick={() => addAnnex('top-left')}
-                                 className="flex items-center gap-1.5 p-2 bg-slate-900/60 hover:bg-slate-800 border border-slate-800/80 hover:border-lime-500/40 rounded-lg text-[11px] font-medium text-slate-300 hover:text-white transition-all text-left"
-                               >
-                                 <ArrowUpLeft className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                                 <span className="truncate">Top-Left</span>
-                               </button>
-
-                               <button
-                                 onClick={() => addAnnex('bottom-right')}
-                                 className="flex items-center gap-1.5 p-2 bg-slate-900/60 hover:bg-slate-800 border border-slate-800/80 hover:border-lime-500/40 rounded-lg text-[11px] font-medium text-slate-300 hover:text-white transition-all text-left"
-                               >
-                                 <ArrowDownRight className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                                 <span className="truncate">Bottom-Right</span>
-                               </button>
-
-                               <button
-                                 onClick={() => addAnnex('bottom-left')}
-                                 className="flex items-center gap-1.5 p-2 bg-slate-900/60 hover:bg-slate-800 border border-slate-800/80 hover:border-lime-500/40 rounded-lg text-[11px] font-medium text-slate-300 hover:text-white transition-all text-left"
-                               >
-                                 <ArrowDownLeft className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                                 <span className="truncate">Bottom-Left</span>
-                               </button>
-                             </div>
-
-                             <button
-                               onClick={() => addAnnex('custom')}
-                               className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-lime-500/10 hover:bg-lime-500/20 border border-lime-500/30 text-lime-400 rounded-lg text-xs font-bold transition-all mt-1"
-                             >
-                               <Plus className="w-3.5 h-3.5" />
-                               <span>+ Custom Extension</span>
-                             </button>
+                           <div className="p-3 rounded-xl border border-dashed border-slate-800 text-center">
+                             <p className="text-[10px] text-slate-500">Dimensions, annexes, walls, and the entrance are all in the panel on the right — use its tabs to switch between them.</p>
                            </div>
-
                            <ToolButton onClick={triggerImportFlow} icon={Sparkles} label="Import Floor Plan" description="Upload image/PDF to auto-detect" variant="highlight" />
+                        </div>
+                    ) : !selectedZone ? (
+                        <div className="space-y-2">
+                          {zones.length === 0 ? (
+                            <div className="p-3 rounded-xl border border-dashed border-slate-800 text-center"><p className="text-[10px] text-slate-500">Add a zone first (in Zones & Layout) before placing machines.</p></div>
+                          ) : zones.map((z: GymZone) => (
+                            <React.Fragment key={z.id}>
+                              <ToolButton onClick={() => { setSelectedZoneId(z.id); }} icon={Dumbbell} label={z.name} description={`${(z.machines || []).length} machines placed`} />
+                            </React.Fragment>
+                          ))}
                         </div>
                     ) : (
                         <div className="space-y-3">
@@ -1871,30 +1715,28 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
           {editMode === 'layout' && selectedZone && (
             <div className="p-6 space-y-6 animate-in slide-in-from-right-10 fade-in duration-300">
               <div className="flex justify-between items-start"><h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Zone Properties</h2></div>
-              <div className="space-y-4">
-                <div><label className="block text-xs text-slate-500 mb-1.5">Zone Name</label><input type="text" value={selectedZone.name} onFocus={() => snapshot()} onChange={(e) => updateZone('name', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none" /></div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1.5">Category / Room Type</label>
-                  <select
-                    value={selectedZone.type}
-                    onFocus={() => snapshot()}
-                    onChange={(e) => updateZone('type', e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none cursor-pointer"
+              <div className="flex items-center gap-1 bg-slate-950/70 p-1 rounded-lg border border-slate-800/80">
+                {(['details', 'equipment', 'exercises'] as const).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setZoneTab(t)}
+                    className={`flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold capitalize transition-all ${zoneTab === t ? 'bg-slate-800 text-white shadow-md' : 'text-slate-400 hover:text-slate-300'}`}
                   >
-                    {Object.entries(EquipmentType).map(([key, value]) => (
-                      <option key={key} value={value}>
-                        {value}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    {t}{t === 'equipment' && (selectedZone.machines?.length ? ` (${selectedZone.machines.length})` : '')}
+                  </button>
+                ))}
+              </div>
+              <div className="space-y-4">
+                {zoneTab === 'details' && (<>
+                <ZoneNameCombo zone={selectedZone} onChange={(val) => { snapshot(); updateZone('name', val); }} />
+                <ZoneTypeCombo zone={selectedZone} onChange={(val) => { snapshot(); updateZone('type', val); }} />
                 <div><label className="block text-xs text-slate-500 mb-1.5">Description</label><textarea value={selectedZone.description || ''} onFocus={() => snapshot()} onChange={(e) => updateZone('description', e.target.value)} rows={3} className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none resize-none" /></div>
-                
+
                 <div className="h-px bg-slate-800 my-2" />
                 <div><label className="block text-xs text-slate-500 mb-1.5">Color Code</label><div className="flex items-center space-x-2"><input type="color" value={selectedZone.color} onFocus={() => snapshot()} onChange={(e) => updateZone('color', e.target.value)} className="h-9 w-9 bg-transparent border-0 cursor-pointer rounded" /><input type="text" value={selectedZone.color} onFocus={() => snapshot()} onChange={(e) => updateZone('color', e.target.value)} className="flex-1 bg-slate-950 border border-slate-700 rounded p-2 text-sm text-mono text-white focus:border-blue-500 focus:outline-none" /></div></div>
+                </>)}
 
-                {/* Section: Zone Equipment Inventory */}
-                <div className="h-px bg-slate-800 my-2" />
+                {zoneTab === 'equipment' && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
@@ -2007,10 +1849,14 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
                           setIsQuickAddModalOpen(true);
                           return;
                         }
-                        snapshot();
-                        const currentIds = selectedZone.equipmentIds || [];
-                        if (!currentIds.includes(chosenId)) {
-                          updateZone('equipmentIds', [...currentIds, chosenId]);
+                        // Adding equipment places it as a machine in the same
+                        // move, then hands off into Machines mode (which
+                        // GymMap auto-zooms into) so the exact place and size
+                        // can be chosen right away by dragging/resizing it.
+                        const item = equipmentList.find(eq => eq.id === chosenId);
+                        if (item) {
+                          addMachineFromEquipment(item);
+                          setEditMode('machine');
                         }
                       }}
                       className="w-full bg-slate-950 border border-slate-700 hover:border-slate-600 rounded p-2 text-xs text-slate-200 focus:border-lime-500 focus:outline-none cursor-pointer"
@@ -2052,10 +1898,9 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
                     </p>
                   </div>
                 </div>
+                )}
 
-                {/* Section: Zone Available Exercises Live Matcher */}
-                <div className="h-px bg-slate-800 my-2" />
-                {(() => {
+                {zoneTab === 'exercises' && (() => {
                   const evaluation = evaluateZoneExercises(selectedZone, libraryExercises, equipmentList);
                   return (
                     <div className="space-y-3 bg-slate-950/40 p-3 rounded-lg border border-slate-800/80">
@@ -2390,7 +2235,19 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
           {editMode === 'room' && (
              <div className="p-6 space-y-6 animate-in slide-in-from-right-10 fade-in duration-300">
                 <div className="flex justify-between items-start"><h2 className="text-sm font-bold text-lime-400 uppercase tracking-wider flex items-center"><LayoutTemplate className="w-4 h-4 mr-2" />Room Configuration</h2></div>
+                <div className="flex items-center gap-1 bg-slate-950/70 p-1 rounded-lg border border-slate-800/80">
+                  {(['dimensions', 'annexes', 'walls', 'entrance'] as const).map(t => (
+                    <button
+                      key={t}
+                      onClick={() => setRoomTab(t)}
+                      className={`flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold capitalize transition-all ${roomTab === t ? 'bg-slate-800 text-white shadow-md' : 'text-slate-400 hover:text-slate-300'}`}
+                    >
+                      {t}{t === 'annexes' && annexes.length ? ` (${annexes.length})` : ''}{t === 'walls' && (dimensions.walls || []).length ? ` (${(dimensions.walls || []).length})` : ''}
+                    </button>
+                  ))}
+                </div>
                 <div className="space-y-4">
+                  {roomTab === 'dimensions' && (<>
                   <div className="bg-slate-950/50 p-3 rounded border border-slate-800">
                      <h3 className="text-xs font-bold text-white mb-2">Main Hall Dimensions (m)</h3>
                      <div className="grid grid-cols-2 gap-3">
@@ -2424,7 +2281,9 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
                         </div>
                      </div>
                   </div>
-                  {/* Room Extensions (Annexes) Section */}
+                  </>)}
+
+                  {roomTab === 'annexes' && (
                   <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-800 space-y-4">
                     <div className="flex items-center justify-between">
                       <h3 className="text-xs font-bold text-white flex items-center">
@@ -2683,8 +2542,9 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
                       );
                     })()}
                   </div>
+                  )}
 
-                  {/* Walls & Open Barriers Config Section */}
+                  {roomTab === 'walls' && (
                   <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-800 space-y-4">
                     <div className="flex items-center justify-between">
                       <h3 className="text-xs font-bold text-white flex items-center">
@@ -2826,16 +2686,19 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
                       </div>
                     )}
                   </div>
+                  )}
 
+                  {roomTab === 'dimensions' && (
                   <div><h3 className="text-xs font-bold text-white mb-3 flex items-center"><Palette className="w-4 h-4 mr-1.5" />Styles</h3><div><label className="block text-[10px] text-slate-500 mb-1 uppercase">Floor Color</label><div className="flex items-center space-x-2"><input type="color" value={floorColor} onFocus={() => snapshot()} onChange={(e) => update({ ...gym, floorColor: e.target.value }, false)} className="h-9 w-9 bg-transparent border-0 cursor-pointer rounded" /><input type="text" value={floorColor} onFocus={() => snapshot()} onChange={(e) => update({ ...gym, floorColor: e.target.value }, false)} className="flex-1 bg-slate-950 border border-slate-700 rounded p-2 text-sm text-mono text-white focus:border-blue-500 focus:outline-none" /></div></div></div>
-                  <hr className="border-slate-800" />
+                  )}
+                  {roomTab === 'entrance' && (
                   <div><h3 className="text-xs font-bold text-white mb-3 flex items-center"><DoorOpen className="w-4 h-4 mr-1.5" />Main Entrance</h3><div className="space-y-3"><div><label className="block text-[10px] text-slate-500 mb-1 uppercase">Side</label><div className="grid grid-cols-4 gap-2">{['top', 'bottom', 'left', 'right'].map((side) => ( <button key={side} onClick={() => update({ ...gym, entrance: { ...entrance, side: side as any } }, true)} className={`text-xs py-1.5 rounded capitalize border transition-all ${entrance.side === side ? 'bg-blue-600 text-white border-blue-500' : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-600'}`}>{side}</button> ))}</div></div><div><div className="flex justify-between mb-1"><label className="block text-[10px] text-slate-500 uppercase">Position</label><span className="text-[10px] text-blue-400">{entrance.offset}%</span></div><input type="range" min="0" max="100" value={entrance.offset} onFocus={() => snapshot()} onChange={(e) => update({ ...gym, entrance: { ...entrance, offset: parseInt(e.target.value) } }, false)} className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full" /></div></div></div>
+                  )}
                 </div>
               </div>
           )}
         </div>
         </>
-          )
         ) : activeTab === 'equipment' ? (
           <EquipmentLibrary
             gym={gym}
