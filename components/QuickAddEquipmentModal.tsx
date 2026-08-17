@@ -152,12 +152,12 @@ export const QuickAddEquipmentModal: React.FC<QuickAddEquipmentModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div 
-        className="relative w-full max-w-lg bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
+      <div
+        className="relative w-full max-w-lg bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90dvh] animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-5 py-4 border-b border-slate-800 bg-slate-900/90 flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-slate-800 bg-slate-900/90 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-lime-500/10 border border-lime-500/20 text-lime-400">
               <Camera className="w-5 h-5" />
@@ -185,7 +185,7 @@ export const QuickAddEquipmentModal: React.FC<QuickAddEquipmentModalProps> = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+        <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto flex-1">
           
           {/* Target Zone Placement Indicator */}
           {currentActiveZone ? (
