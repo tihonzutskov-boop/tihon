@@ -312,8 +312,6 @@ const GymMap: React.FC<GymMapProps> = ({
   } | null>(null);
   const touchSingleRef = React.useRef<{ x: number; y: number; panX: number; panY: number; } | null>(null);
   const wasDraggedRef = React.useRef(false);
-  const [isWheelZooming, setIsWheelZooming] = React.useState(false);
-  const wheelZoomIdleTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Sync zoom/pan state into SessionStorage "while they remain on the page"
   React.useEffect(() => {
@@ -375,24 +373,13 @@ const GymMap: React.FC<GymMapProps> = ({
       e.preventDefault();
       const factor = e.deltaY < 0 ? 1.08 : 1 / 1.08;
       handleZoom(factor, e.clientX, e.clientY);
-
-      // Rapid wheel ticks each restart the transform's CSS transition before
-      // the previous one finishes, which can leave stale composited layers
-      // behind (visible as a ghosting/fanned-duplicate render). Suppress the
-      // transition for as long as wheel events keep arriving, same as touch.
-      setIsWheelZooming(true);
-      if (wheelZoomIdleTimerRef.current) clearTimeout(wheelZoomIdleTimerRef.current);
-      wheelZoomIdleTimerRef.current = setTimeout(() => setIsWheelZooming(false), 150);
     };
 
     container.addEventListener('wheel', handleContainerWheel, { passive: false });
     return () => {
       container.removeEventListener('wheel', handleContainerWheel);
-      if (wheelZoomIdleTimerRef.current) clearTimeout(wheelZoomIdleTimerRef.current);
     };
   }, [handleZoom, isThumbnail]);
-
-  const isUserActiveDrag = isPanning || touchStartRef.current !== null || touchSingleRef.current !== null || isWheelZooming;
 
   const handleMouseDownForPan = (e: React.MouseEvent) => {
     if (isThumbnail) return;
@@ -895,9 +882,9 @@ const GymMap: React.FC<GymMapProps> = ({
               <rect width={viewBoxWidth} height={viewBoxHeight} fill={isMachineEdit ? "url(#smallGrid)" : "url(#grid)"} className="pointer-events-none opacity-30" />
           )}
 
-          <g 
-            transform={isThumbnail ? `translate(${offsetX}, ${offsetY})` : `translate(${panX}, ${panY}) scale(${zoomScale}) translate(${offsetX}, ${offsetY})`} 
-            className={isThumbnail ? "transition-transform duration-700 ease-in-out" : (isUserActiveDrag ? 'transition-none' : 'transition-transform duration-300 ease-out')}
+          <g
+            transform={isThumbnail ? `translate(${offsetX}, ${offsetY})` : `translate(${panX}, ${panY}) scale(${zoomScale}) translate(${offsetX}, ${offsetY})`}
+            className={isThumbnail ? "transition-transform duration-700 ease-in-out" : "transition-none"}
           >
             {/* 1. Dark Blueprint Floor Base & Outer Room Boundary matching picture */}
             {(() => {
