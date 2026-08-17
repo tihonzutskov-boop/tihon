@@ -37,7 +37,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ gyms, onSelectGym, onLoginCli
        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-lime-500/10 rounded-full blur-[128px] pointer-events-none" />
        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-[128px] pointer-events-none" />
 
-       <div className="z-10 max-w-5xl px-6 text-center mt-10 md:mt-0 w-full flex flex-col items-center">
+       <div className="z-10 max-w-5xl px-6 text-center mt-24 md:mt-0 w-full flex flex-col items-center">
          <div className="mb-8 inline-flex items-center justify-center p-1.5 px-4 bg-slate-900/80 rounded-full border border-slate-800 backdrop-blur-sm shadow-xl">
            <span className="flex h-2 w-2 relative mr-3">
              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75"></span>
