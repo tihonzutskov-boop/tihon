@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { GymZone, EquipmentType, GymDimensions, GymEntrance, GymAnnex, GymMachine, Language } from '../types';
 import { translations, getGymTranslation } from '../translations';
 import { isExerciseAvailableInZone } from '../utils/exerciseMatcher';
-import { ZoomOut, Settings, Dumbbell, Activity, Zap, Target, Cpu, Layers, Box, Wind, RotateCcw, ArrowUpRight, MoveDown, Circle, Waves, Timer, ZoomIn, Minus, Plus, Maximize2, Search, X, MapPin, Play, Sparkles, Filter, ChevronRight, Info, Compass, DoorOpen, Lock, Bath, Droplets, ShieldCheck, Sprout, Anchor, Repeat, ChevronsRight } from 'lucide-react';
+import { ZoomOut, Settings, Dumbbell, Activity, Zap, Target, Cpu, Layers, Box, Wind, RotateCcw, ArrowUpRight, MoveDown, Circle, Waves, Timer, ZoomIn, Minus, Plus, Maximize2, Search, X, MapPin, Play, Sparkles, Filter, ChevronRight, DoorOpen, Lock, Bath, Droplets, ShieldCheck, Sprout, Anchor, Repeat, ChevronsRight } from 'lucide-react';
 import { ICON_MAP, getEquipmentIcon, getTaxonomyColor, isBeginnerFriendly, isAmenityZone, getAmenityStyleConfig, getZoneVisualCategory, VISUAL_CATEGORY_STYLES, ZoneVisualCategory, getZoneThemeStyle } from '../utils/equipmentIcons';
 
 function renderStaircase(x1: number, y1: number, x2: number, y2: number, thickness: number, strokeColor: string) {
@@ -224,7 +224,6 @@ const GymMap: React.FC<GymMapProps> = ({
   const [mapSearchQuery, setMapSearchQuery] = React.useState('');
   const [selectedMuscleFilter, setSelectedMuscleFilter] = React.useState('All');
   const [activePopoverZone, setActivePopoverZone] = React.useState<GymZone | null>(null);
-  const [showLegend, setShowLegend] = React.useState(false);
 
   // Clear search state when hideSearch or other windows open
   React.useEffect(() => {
@@ -698,133 +697,6 @@ const GymMap: React.FC<GymMapProps> = ({
              </div>
           )}
 
-          {/* Top of Screen Legend & Information Bar */}
-          {!isEditable && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center select-none pointer-events-auto">
-              <div className="flex items-center gap-2.5 sm:gap-4 bg-slate-950/90 backdrop-blur-md border border-slate-800/90 px-3.5 py-1.5 rounded-xl shadow-2xl text-xs">
-                {/* Dashed Workout Indicator */}
-                <div className="flex items-center gap-2">
-                  <div className="w-5 h-4 rounded bg-sky-950/80 border border-sky-500/80 flex items-center justify-center shrink-0">
-                    <div className="w-3.5 h-2.5 border border-dashed border-sky-300 rounded-[2px]" />
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="font-bold text-white text-[11px] sm:text-xs">Dashed</span>
-                    <span className="text-slate-400 text-[11px] sm:text-xs">Workout</span>
-                  </div>
-                </div>
-
-                <span className="h-4 w-px bg-slate-800" />
-
-                {/* Solid Amenities Indicator */}
-                <div className="flex items-center gap-2">
-                  <div className="w-5 h-4 rounded bg-slate-800/90 border border-slate-600 flex items-center justify-center shrink-0">
-                    <div className="w-3.5 h-2.5 bg-slate-700/80 border border-slate-500 rounded-[2px]" />
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="font-bold text-slate-200 text-[11px] sm:text-xs">Solid</span>
-                    <span className="text-slate-400 text-[11px] sm:text-xs">Amenities</span>
-                  </div>
-                </div>
-
-                <span className="h-4 w-px bg-slate-800" />
-
-                {/* Information & Legend Guide Toggle */}
-                <button
-                  onClick={() => setShowLegend(!showLegend)}
-                  className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] font-bold transition-all border ${
-                    showLegend 
-                      ? 'bg-lime-500 text-slate-950 border-lime-400 shadow-sm' 
-                      : 'bg-slate-900 text-lime-400 border-slate-700/80 hover:bg-slate-800 hover:text-lime-300'
-                  }`}
-                  title="Toggle Map Information & Legend"
-                >
-                  <Info className="w-3.5 h-3.5" />
-                  <span>Info</span>
-                  {showLegend ? <X className="w-3 h-3 ml-0.5" /> : null}
-                </button>
-              </div>
-
-              {/* Expanded Dropdown Information Modal / Card at Top */}
-              {showLegend && (
-                <div className="mt-2 bg-slate-950/95 border border-slate-700/90 p-4 rounded-2xl shadow-2xl backdrop-blur-md w-84 max-w-[92vw] animate-in fade-in slide-in-from-top-2 duration-200 text-xs">
-                  <div className="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-800">
-                    <div className="flex items-center gap-1.5">
-                      <Compass className="w-4 h-4 text-lime-400" />
-                      <h5 className="text-xs font-bold text-white uppercase tracking-wider">Map Legend & Info</h5>
-                    </div>
-                    <button 
-                      onClick={() => setShowLegend(false)}
-                      className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  <div className="space-y-3">
-                    {/* Visual Distinction: Workout vs Amenities */}
-                    <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 space-y-2">
-                      <div className="flex items-center gap-2.5 bg-slate-950/80 p-2 rounded-lg border border-slate-800">
-                        <div className="w-6 h-6 rounded bg-sky-950/80 border border-sky-500 shrink-0 flex items-center justify-center">
-                          <div className="w-4 h-4 border border-dashed border-sky-300 rounded-[2px]" />
-                        </div>
-                        <div>
-                          <div className="text-[11px] font-bold text-white flex items-center gap-1.5">
-                            <span>Workout Zones</span>
-                            <span className="text-[9px] px-1.5 py-0.2 bg-sky-500/20 text-sky-400 rounded-full font-bold">Dashed</span>
-                          </div>
-                          <span className="text-[10px] text-slate-400 leading-tight block">Cardio, Turf, Racks, Machines & Weights</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2.5 bg-slate-950/80 p-2 rounded-lg border border-slate-800">
-                        <div className="w-6 h-6 rounded bg-slate-800 border border-slate-600 shrink-0 flex items-center justify-center">
-                          <div className="w-4 h-4 bg-slate-700/80 border border-slate-500 rounded-[2px]" />
-                        </div>
-                        <div>
-                          <div className="text-[11px] font-bold text-white flex items-center gap-1.5">
-                            <span>Amenities & Facilities</span>
-                            <span className="text-[9px] px-1.5 py-0.2 bg-purple-500/20 text-purple-300 rounded-full font-bold">Solid</span>
-                          </div>
-                          <span className="text-[10px] text-slate-400 leading-tight block">Front Desk, Lockers, Restrooms & Water Stations</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Color Taxonomy Breakdown */}
-                    <div>
-                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Zone Colors</div>
-                      <div className="grid grid-cols-2 gap-1.5">
-                        <div className="flex items-center gap-2 bg-slate-900/80 p-1.5 rounded-lg border border-slate-800">
-                          <span className="w-3 h-3 rounded-full bg-[#1c456b] border border-[#0284c7] shrink-0" />
-                          <span className="text-slate-200 text-[11px] font-medium">Cardio</span>
-                        </div>
-                        <div className="flex items-center gap-2 bg-slate-900/80 p-1.5 rounded-lg border border-slate-800">
-                          <span className="w-3 h-3 rounded-full bg-[#3f6136] border border-[#65a30d] shrink-0" />
-                          <span className="text-slate-200 text-[11px] font-medium">Functional Turf</span>
-                        </div>
-                        <div className="flex items-center gap-2 bg-slate-900/80 p-1.5 rounded-lg border border-slate-800">
-                          <span className="w-3 h-3 rounded-full bg-[#69333d] border border-[#e11d48] shrink-0" />
-                          <span className="text-slate-200 text-[11px] font-medium">Squat Racks</span>
-                        </div>
-                        <div className="flex items-center gap-2 bg-slate-900/80 p-1.5 rounded-lg border border-slate-800">
-                          <span className="w-3 h-3 rounded-full bg-[#6b562a] border border-[#ca8a04] shrink-0" />
-                          <span className="text-slate-200 text-[11px] font-medium">Free Weights</span>
-                        </div>
-                        <div className="flex items-center gap-2 bg-slate-900/80 p-1.5 rounded-lg border border-slate-800">
-                          <span className="w-3 h-3 rounded-full bg-[#493169] border border-[#9333ea] shrink-0" />
-                          <span className="text-slate-200 text-[11px] font-medium">Strength Machines</span>
-                        </div>
-                        <div className="flex items-center gap-2 bg-slate-900/80 p-1.5 rounded-lg border border-slate-800">
-                          <span className="w-3 h-3 rounded-full bg-[#243447] border border-[#64748b] shrink-0" />
-                          <span className="text-slate-200 text-[11px] font-medium">Amenities</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
         </>
       )}
       
