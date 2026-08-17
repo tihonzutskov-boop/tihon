@@ -318,7 +318,7 @@ const App: React.FC = () => {
       <AdminPage 
         gyms={gyms} 
         setGyms={setGyms} 
-        onExit={() => setCurrentView('landing')} 
+        onExit={() => setCurrentView(user ? 'dashboard' : 'landing')}
       />
     );
   }
