@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS exercises (
 -- before this change.
 ALTER TABLE equipment ALTER COLUMN image_url TYPE TEXT;
 ALTER TABLE exercises ALTER COLUMN image_url TYPE TEXT;
+ALTER TABLE equipment ADD COLUMN IF NOT EXISTS muscle_groups JSONB DEFAULT '[]';
 
 CREATE TABLE IF NOT EXISTS workout_logs (
   id SERIAL PRIMARY KEY,

@@ -14,6 +14,7 @@ export const DEFAULT_EQUIPMENT: EquipmentItem[] = [
     category: 'Free Weights',
     icon: 'Dumbbell',
     description: 'Fixed and adjustable dumbbells from 2kg to 50kg for upper and lower body resistance training.',
+    muscleGroups: ['Chest', 'Back', 'Shoulders', 'Arms'],
     defaultFootprint: { width: 60, height: 30 }
   },
   {
@@ -22,6 +23,7 @@ export const DEFAULT_EQUIPMENT: EquipmentItem[] = [
     category: 'Free Weights',
     icon: 'Weight',
     description: 'Standard 20kg Olympic barbells with rotating sleeves and Olympic bumper plates.',
+    muscleGroups: ['Legs', 'Back', 'Full Body'],
     defaultFootprint: { width: 70, height: 40 }
   },
   {
@@ -30,6 +32,7 @@ export const DEFAULT_EQUIPMENT: EquipmentItem[] = [
     category: 'Benches & Racks',
     icon: 'Layers',
     description: 'Heavy duty structural power cage with safety spotter arms, J-hooks, and pull-up bar.',
+    muscleGroups: ['Legs', 'Back', 'Full Body'],
     defaultFootprint: { width: 70, height: 70 }
   },
   {
@@ -38,6 +41,7 @@ export const DEFAULT_EQUIPMENT: EquipmentItem[] = [
     category: 'Benches & Racks',
     icon: 'Box',
     description: 'Multi-position utility bench adjusting from flat (0°) to 30°, 45°, and 75° angles.',
+    muscleGroups: ['Chest', 'Shoulders', 'Arms'],
     defaultFootprint: { width: 40, height: 80 }
   },
   {
@@ -46,6 +50,7 @@ export const DEFAULT_EQUIPMENT: EquipmentItem[] = [
     category: 'Cables',
     icon: 'Sliders',
     description: 'Dual adjustable-height selectorized weight stacks with multi-grip handles.',
+    muscleGroups: ['Chest', 'Back', 'Shoulders', 'Arms', 'Core'],
     defaultFootprint: { width: 180, height: 60 }
   },
   {
@@ -54,6 +59,7 @@ export const DEFAULT_EQUIPMENT: EquipmentItem[] = [
     category: 'Cables',
     icon: 'Sliders',
     description: 'High and low pulley station for back vertical pulldowns and horizontal rows.',
+    muscleGroups: ['Back', 'Arms'],
     defaultFootprint: { width: 80, height: 60 }
   },
   {
@@ -62,6 +68,7 @@ export const DEFAULT_EQUIPMENT: EquipmentItem[] = [
     category: 'Machines',
     icon: 'Disc',
     description: 'Linear 45-degree angle sled leg press with dual safety lockout levers.',
+    muscleGroups: ['Legs', 'Glutes'],
     defaultFootprint: { width: 80, height: 65 }
   },
   {
@@ -70,6 +77,7 @@ export const DEFAULT_EQUIPMENT: EquipmentItem[] = [
     category: 'Machines',
     icon: 'Disc',
     description: 'Isolated quadriceps knee extension and seated/lying hamstring flexion station.',
+    muscleGroups: ['Legs'],
     defaultFootprint: { width: 75, height: 65 }
   },
   {
@@ -78,6 +86,7 @@ export const DEFAULT_EQUIPMENT: EquipmentItem[] = [
     category: 'Cardio',
     icon: 'Activity',
     description: 'Cardio running deck with digital speed and incline adjustment up to 15%.',
+    muscleGroups: ['Cardio', 'Legs'],
     defaultFootprint: { width: 35, height: 60 }
   },
   {
@@ -86,6 +95,7 @@ export const DEFAULT_EQUIPMENT: EquipmentItem[] = [
     category: 'Cardio',
     icon: 'Waves',
     description: 'Flywheel air-resistance rowing ergometer for total body conditioning intervals.',
+    muscleGroups: ['Cardio', 'Back', 'Full Body'],
     defaultFootprint: { width: 55, height: 35 }
   },
   {
@@ -94,6 +104,7 @@ export const DEFAULT_EQUIPMENT: EquipmentItem[] = [
     category: 'Cardio',
     icon: 'Activity',
     description: 'Heavy duty fan air bike for high intensity sprint intervals.',
+    muscleGroups: ['Cardio', 'Full Body'],
     defaultFootprint: { width: 40, height: 50 }
   },
   {
@@ -102,7 +113,7 @@ export const DEFAULT_EQUIPMENT: EquipmentItem[] = [
     category: 'Functional & Floor',
     icon: 'Sparkles',
     description: 'Open floor space with turf or shock-absorbent rubber mats for bodyweight and core exercises.',
-    isFloorSpace: true,
+    muscleGroups: ['Core', 'Full Body'],
     defaultFootprint: { width: 100, height: 100 }
   },
   {
@@ -111,6 +122,7 @@ export const DEFAULT_EQUIPMENT: EquipmentItem[] = [
     category: 'Functional & Floor',
     icon: 'Layers',
     description: 'Multi-grip overhead pull-up and chin-up station.',
+    muscleGroups: ['Back', 'Arms'],
     defaultFootprint: { width: 60, height: 30 }
   },
   {
@@ -119,6 +131,7 @@ export const DEFAULT_EQUIPMENT: EquipmentItem[] = [
     category: 'Free Weights',
     icon: 'Dumbbell',
     description: 'Cast iron kettlebells from 8kg to 32kg for ballistic power and swings.',
+    muscleGroups: ['Full Body', 'Core'],
     defaultFootprint: { width: 50, height: 30 }
   },
   {
@@ -127,6 +140,7 @@ export const DEFAULT_EQUIPMENT: EquipmentItem[] = [
     category: 'Accessories',
     icon: 'Box',
     description: 'Three variable jump heights (20", 24", 30") for box jumps, step-ups, and depth drops.',
+    muscleGroups: ['Legs', 'Cardio'],
     defaultFootprint: { width: 40, height: 40 }
   },
   {
@@ -135,6 +149,7 @@ export const DEFAULT_EQUIPMENT: EquipmentItem[] = [
     category: 'Accessories',
     icon: 'Wind',
     description: 'Elastic power loops, activation bands, and 50ft battle conditioning ropes.',
+    muscleGroups: ['Full Body', 'Arms', 'Shoulders'],
     defaultFootprint: { width: 30, height: 30 }
   }
 ];

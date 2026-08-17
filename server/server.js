@@ -390,7 +390,7 @@ app.get('/api/equipment', async (req, res) => {
       icon: row.icon || '',
       imageUrl: row.image_url || '',
       defaultFootprint: row.default_footprint || undefined,
-      isFloorSpace: row.is_floor_space || false
+      muscleGroups: row.muscle_groups || []
     }));
     res.json(equipment);
   } catch (err) {
@@ -403,13 +403,13 @@ app.get('/api/equipment', async (req, res) => {
 
 // POST Create Equipment
 app.post('/api/equipment', requireAdmin, async (req, res) => {
-  const { id, name, category, description, icon, imageUrl, defaultFootprint, isFloorSpace } = req.body;
+  const { id, name, category, description, icon, imageUrl, defaultFootprint, muscleGroups } = req.body;
   let client;
   try {
     client = await pool.connect();
     await client.query(
-      'INSERT INTO equipment (id, name, category, description, icon, image_url, default_footprint, is_floor_space) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-      [id, name, category || '', description || '', icon || '', imageUrl || '', JSON.stringify(defaultFootprint || null), !!isFloorSpace]
+      'INSERT INTO equipment (id, name, category, description, icon, image_url, default_footprint, muscle_groups) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [id, name, category || '', description || '', icon || '', imageUrl || '', JSON.stringify(defaultFootprint || null), JSON.stringify(muscleGroups || [])]
     );
     res.json({ success: true, id });
   } catch (err) {
@@ -423,18 +423,18 @@ app.post('/api/equipment', requireAdmin, async (req, res) => {
 // PUT Update Equipment
 app.put('/api/equipment/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
-  const { name, category, description, icon, imageUrl, defaultFootprint, isFloorSpace } = req.body;
+  const { name, category, description, icon, imageUrl, defaultFootprint, muscleGroups } = req.body;
   let client;
   try {
     client = await pool.connect();
     // Upsert: the item being "updated" may be one of the client-side default
     // items that was never actually inserted into the database yet.
     await client.query(
-      `INSERT INTO equipment (id, name, category, description, icon, image_url, default_footprint, is_floor_space)
+      `INSERT INTO equipment (id, name, category, description, icon, image_url, default_footprint, muscle_groups)
        VALUES ($8, $1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (id) DO UPDATE SET
-         name=$1, category=$2, description=$3, icon=$4, image_url=$5, default_footprint=$6, is_floor_space=$7`,
-      [name, category || '', description || '', icon || '', imageUrl || '', JSON.stringify(defaultFootprint || null), !!isFloorSpace, id]
+         name=$1, category=$2, description=$3, icon=$4, image_url=$5, default_footprint=$6, muscle_groups=$7`,
+      [name, category || '', description || '', icon || '', imageUrl || '', JSON.stringify(defaultFootprint || null), JSON.stringify(muscleGroups || []), id]
     );
     res.json({ success: true });
   } catch (err) {

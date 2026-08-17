@@ -34,6 +34,8 @@ const CATEGORIES = [
   'Accessories'
 ];
 
+const MUSCLE_GROUPS = ['Chest', 'Back', 'Shoulders', 'Arms', 'Legs', 'Glutes', 'Core', 'Full Body', 'Cardio'];
+
 const ICON_OPTIONS = [
   { label: 'Dumbbell', value: 'Dumbbell', icon: Dumbbell },
   { label: 'Weight & Barbell', value: 'Weight', icon: Disc },
@@ -46,6 +48,56 @@ const ICON_OPTIONS = [
   { label: 'Floor Space / Mat', value: 'Sparkles', icon: Sparkles },
   { label: 'Bands / Wind', value: 'Wind', icon: Wind }
 ];
+
+// Category stays free text (not a strict enum) so admins can create their own,
+// but the combobox suggests existing ones first to avoid near-duplicate categories.
+const EquipmentCategoryCombo: React.FC<{ value: string; categories: string[]; onChange: (val: string) => void }> = ({ value, categories, onChange }) => {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const matches = categories.filter(c => c.toLowerCase().includes(query.toLowerCase()));
+  const exactMatch = categories.some(c => c.toLowerCase() === query.trim().toLowerCase());
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={open ? query : value}
+        onFocus={() => { setQuery(''); setOpen(true); }}
+        onChange={(e) => setQuery(e.target.value)}
+        onBlur={() => setTimeout(() => setOpen(false), 120)}
+        placeholder="Type to search or create..."
+        autoComplete="off"
+        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:ring-2 focus:ring-lime-500/50 focus:border-lime-500 outline-none min-h-[44px]"
+      />
+      {open && (
+        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-lg max-h-40 overflow-y-auto shadow-xl">
+          {matches.map(c => (
+            <button
+              key={c}
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); onChange(c); setOpen(false); }}
+              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-800 hover:text-white ${c === value ? 'text-lime-400 font-semibold' : 'text-slate-300'}`}
+            >
+              {c}
+            </button>
+          ))}
+          {query.trim() && !exactMatch && (
+            <button
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); onChange(query.trim()); setOpen(false); }}
+              className="w-full text-left px-3 py-1.5 text-xs text-lime-400 font-semibold hover:bg-slate-800 border-t border-slate-800"
+            >
+              + Create category &ldquo;{query.trim()}&rdquo;
+            </button>
+          )}
+          {matches.length === 0 && !query.trim() && (
+            <div className="px-3 py-2 text-xs text-slate-500">No categories yet</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const getEquipmentIconComponent = (iconName?: string) => {
   switch (iconName?.toLowerCase()) {
@@ -89,6 +141,7 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [sortMode, setSortMode] = useState<'category' | 'name' | 'unused'>('category');
   const [editingItem, setEditingItem] = useState<EquipmentItem | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [previewItem, setPreviewItem] = useState<EquipmentItem | null>(null);
@@ -101,7 +154,7 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
   const [formIcon, setFormIcon] = useState('Dumbbell');
   const [formDescription, setFormDescription] = useState('');
   const [formImageUrl, setFormImageUrl] = useState('');
-  const [formIsFloorSpace, setFormIsFloorSpace] = useState(false);
+  const [formMuscleGroups, setFormMuscleGroups] = useState<string[]>([]);
   const [formFootprintW, setFormFootprintW] = useState('40');
   const [formFootprintH, setFormFootprintH] = useState('40');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -116,6 +169,10 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  const toggleMuscleGroup = (m: string) => {
+    setFormMuscleGroups(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]);
   };
 
   // Compute map of which zones contain each equipment item
@@ -148,6 +205,48 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
     });
   }, [safeEquipmentList, selectedCategory, searchTerm]);
 
+  // All category names to show as filter pills / combobox suggestions: the
+  // built-in presets plus any custom category admins have created on items.
+  const allCategories = useMemo(() => {
+    const fromItems = safeEquipmentList.map(item => item.category).filter(Boolean) as string[];
+    return Array.from(new Set([...CATEGORIES.filter(c => c !== 'All'), ...fromItems])).sort();
+  }, [safeEquipmentList]);
+
+  // Equipment enriched with the stats used for sorting/grouping/"Unused" badge
+  const enrichedEquipment = useMemo(() => {
+    return filteredEquipment.map(item => ({
+      item,
+      exerciseCount: getEquipmentExerciseCount(item.id, safeExercises, safeEquipmentList),
+      zoneCount: (equipmentZonePlacements.get(item.id) || []).length
+    }));
+  }, [filteredEquipment, safeExercises, safeEquipmentList, equipmentZonePlacements]);
+
+  // Grouped-by-category (for sortMode 'category') or flat sorted list
+  const displayGroups = useMemo(() => {
+    if (sortMode === 'name') {
+      return [{ category: null, entries: [...enrichedEquipment].sort((a, b) => a.item.name.localeCompare(b.item.name)) }];
+    }
+    if (sortMode === 'unused') {
+      return [{
+        category: null,
+        entries: [...enrichedEquipment].sort((a, b) => {
+          const aUnused = a.exerciseCount === 0 && a.zoneCount === 0;
+          const bUnused = b.exerciseCount === 0 && b.zoneCount === 0;
+          if (aUnused !== bUnused) return aUnused ? -1 : 1;
+          return a.item.name.localeCompare(b.item.name);
+        })
+      }];
+    }
+    const groups = new Map<string, typeof enrichedEquipment>();
+    enrichedEquipment.forEach(entry => {
+      const cat = entry.item.category || 'Uncategorized';
+      groups.set(cat, [...(groups.get(cat) || []), entry]);
+    });
+    return Array.from(groups.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([category, entries]) => ({ category, entries }));
+  }, [enrichedEquipment, sortMode]);
+
   // Open modal to create a new equipment item
   const handleOpenCreateModal = () => {
     setEditingItem(null);
@@ -156,7 +255,7 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
     setFormIcon('Dumbbell');
     setFormDescription('');
     setFormImageUrl('');
-    setFormIsFloorSpace(false);
+    setFormMuscleGroups([]);
     setFormFootprintW('40');
     setFormFootprintH('40');
     setIsCreatingNew(true);
@@ -170,7 +269,7 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
     setFormIcon(item.icon || 'Dumbbell');
     setFormDescription(item.description || '');
     setFormImageUrl(item.imageUrl || '');
-    setFormIsFloorSpace(Boolean(item.isFloorSpace));
+    setFormMuscleGroups(item.muscleGroups || []);
     setFormFootprintW(item.defaultFootprint?.width?.toString() || '40');
     setFormFootprintH(item.defaultFootprint?.height?.toString() || '40');
     setIsCreatingNew(true);
@@ -192,7 +291,7 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
         icon: formIcon,
         description: formDescription.trim(),
         imageUrl: formImageUrl.trim() || undefined,
-        isFloorSpace: formIsFloorSpace,
+        muscleGroups: formMuscleGroups,
         defaultFootprint: { width: w, height: h }
       };
       await api.saveEquipment(updated);
@@ -206,7 +305,7 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
         icon: formIcon,
         description: formDescription.trim(),
         imageUrl: formImageUrl.trim() || undefined,
-        isFloorSpace: formIsFloorSpace,
+        muscleGroups: formMuscleGroups,
         defaultFootprint: { width: w, height: h }
       };
       await api.createEquipment(created);
@@ -323,31 +422,42 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
 
       {/* Search & Category Filter Bar */}
       <div className="px-4 md:px-6 py-3 md:py-4 border-b border-slate-800/60 bg-slate-900/30 flex flex-col gap-3">
-        {/* Search Field */}
-        <div className="relative flex-1">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-          <input
-            type="text"
-            placeholder="Search equipment by name or category..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-700 rounded-xl py-2 pl-10 pr-4 text-xs text-white placeholder-slate-500 focus:ring-2 focus:ring-lime-500/40 focus:border-lime-500 outline-none transition-all"
-          />
-          {searchTerm && (
-            <button
-              onClick={() => setSearchTerm('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
+        {/* Search Field + Sort */}
+        <div className="flex items-center gap-2.5">
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+            <input
+              type="text"
+              placeholder="Search equipment by name or category..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-700 rounded-xl py-2 pl-10 pr-4 text-xs text-white placeholder-slate-500 focus:ring-2 focus:ring-lime-500/40 focus:border-lime-500 outline-none transition-all"
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <select
+            value={sortMode}
+            onChange={(e) => setSortMode(e.target.value as 'category' | 'name' | 'unused')}
+            className="bg-slate-900 border border-slate-700 rounded-xl py-2 px-2.5 text-[11px] font-medium text-slate-300 focus:ring-2 focus:ring-lime-500/40 focus:border-lime-500 outline-none flex-shrink-0"
+          >
+            <option value="category">Group: category</option>
+            <option value="name">Sort: name A-Z</option>
+            <option value="unused">Sort: unused first</option>
+          </select>
         </div>
 
         {/* Category Pills */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
-          {CATEGORIES.map(cat => {
-            const count = cat === 'All' 
-              ? safeEquipmentList.length 
+          {['All', ...allCategories].map(cat => {
+            const count = cat === 'All'
+              ? safeEquipmentList.length
               : safeEquipmentList.filter(e => e.category === cat).length;
             const active = selectedCategory === cat;
 
@@ -396,19 +506,30 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
             )}
           </div>
         ) : (
-          <div className={`grid gap-4 ${
-            isDrawerMode ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4'
-          }`}>
-            {filteredEquipment.map(item => {
-              const IconComp = getEquipmentIconComponent(item.icon);
-              const placedZones = equipmentZonePlacements.get(item.id) || [];
-              const unlockedExercisesCount = getEquipmentExerciseCount(item.id, safeExercises, safeEquipmentList);
+          <div className="space-y-8">
+            {displayGroups.map(group => (
+              <div key={group.category || 'flat'}>
+                {group.category && (
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">{group.category}</h2>
+                    <span className="text-[10px] text-slate-600 font-mono">{group.entries.length}</span>
+                    <div className="flex-1 h-px bg-slate-800/80" />
+                  </div>
+                )}
+                <div className={`grid gap-4 ${
+                  isDrawerMode ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4'
+                }`}>
+                  {group.entries.map(({ item, exerciseCount, zoneCount }) => {
+                    const IconComp = getEquipmentIconComponent(item.icon);
+                    const placedZones = equipmentZonePlacements.get(item.id) || [];
+                    const unlockedExercisesCount = exerciseCount;
+                    const isUnused = exerciseCount === 0 && zoneCount === 0;
 
-              return (
-                <div
-                  key={item.id}
-                  className="group relative bg-slate-900/80 border border-slate-800 hover:border-lime-500/40 rounded-2xl overflow-hidden flex flex-col transition-all duration-200 hover:shadow-xl hover:shadow-lime-500/5 hover:-translate-y-0.5"
-                >
+                    return (
+                      <div
+                        key={item.id}
+                        className="group relative bg-slate-900/80 border border-slate-800 hover:border-lime-500/40 rounded-2xl overflow-hidden flex flex-col transition-all duration-200 hover:shadow-xl hover:shadow-lime-500/5 hover:-translate-y-0.5"
+                      >
                   {/* Optional Equipment Picture / Visual Identification Header */}
                   {item.imageUrl ? (
                     <div 
@@ -444,18 +565,25 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
                           <IconComp className="w-5 h-5" />
                         </div>
                         <div className="min-w-0">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-0.5 truncate">
-                            {item.category || 'General'}
-                          </span>
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 truncate">
+                              {item.category || 'General'}
+                            </span>
+                            {isUnused && (
+                              <span className="text-[9px] font-bold uppercase tracking-wider text-orange-400 bg-orange-500/10 px-1.5 py-0.5 rounded border border-orange-500/20 flex-shrink-0">
+                                Unused
+                              </span>
+                            )}
+                          </div>
                           <h3 className="text-sm font-bold text-white group-hover:text-lime-400 transition-colors line-clamp-1">
                             {item.name}
                           </h3>
                         </div>
                       </div>
 
-                      {/* Action buttons (only in Admin mode) */}
+                      {/* Action buttons (only in Admin mode) — hidden until card hover */}
                       {!isDrawerMode && (
-                        <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                           <button
                             onClick={() => handleOpenEditModal(item)}
                             className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
@@ -484,9 +612,20 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
                         <span>Identification & Setup</span>
                       </div>
                       <p className="text-xs text-slate-300 leading-relaxed line-clamp-3 min-h-[36px]">
-                        {item.description || (item.isFloorSpace ? 'Open turf/mat zone for core and bodyweight movements.' : 'Standard gym workout station. Adjust seat height and safety pins to suit posture.')}
+                        {item.description || 'Standard gym workout station. Adjust seat height and safety pins to suit posture.'}
                       </p>
                     </div>
+
+                    {/* Muscle Group Tags */}
+                    {item.muscleGroups && item.muscleGroups.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mb-3">
+                        {item.muscleGroups.map(m => (
+                          <span key={m} className="text-[9px] font-bold uppercase tracking-wide text-slate-400 bg-slate-800/80 border border-slate-700/60 rounded px-1.5 py-0.5">
+                            {m}
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
                     {/* Badges: Unlocks X Exercises + Placed in Y Zones */}
                     <div className="mt-auto pt-3 border-t border-slate-800/80 flex flex-col gap-2">
@@ -560,8 +699,11 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
                     </div>
                   </div>
                 </div>
-              );
-            })}
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -610,15 +752,7 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
                   <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                     Category
                   </label>
-                  <select
-                    value={formCategory}
-                    onChange={(e) => setFormCategory(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:ring-2 focus:ring-lime-500/50 focus:border-lime-500 outline-none min-h-[44px]"
-                  >
-                    {CATEGORIES.filter(c => c !== 'All').map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
+                  <EquipmentCategoryCombo value={formCategory} categories={allCategories} onChange={setFormCategory} />
                 </div>
 
                 <div>
@@ -690,19 +824,8 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
                   ref={fileInputRef} 
                   onChange={handleImageFileUpload} 
                   accept="image/*" 
-                  className="hidden" 
+                  className="hidden"
                 />
-
-                <div className="pt-1">
-                  <span className="text-[10px] text-slate-400 font-semibold block mb-1">Or paste direct image URL:</span>
-                  <input
-                    type="url"
-                    placeholder="https://example.com/equipment-photo.jpg"
-                    value={formImageUrl}
-                    onChange={(e) => setFormImageUrl(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:ring-2 focus:ring-lime-500/50 focus:border-lime-500 outline-none"
-                  />
-                </div>
               </div>
 
               {/* Text instructions describing what it looks like / how to identify or set it up */}
@@ -723,23 +846,30 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
                 </p>
               </div>
 
-              {/* Tag for open floor space */}
-              <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800 flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  id="chk-floor-space"
-                  checked={formIsFloorSpace}
-                  onChange={(e) => setFormIsFloorSpace(e.target.checked)}
-                  className="mt-0.5 rounded border-slate-700 text-lime-500 focus:ring-lime-500 h-4 w-4 bg-slate-900"
-                />
-                <label htmlFor="chk-floor-space" className="cursor-pointer">
-                  <span className="block text-xs font-bold text-white">
-                    Designates Open Floor / Mat Area
-                  </span>
-                  <span className="block text-[11px] text-slate-400 mt-0.5">
-                    Enables bodyweight and floor exercises (push-ups, planks, stretches) in any zone where this is placed.
-                  </span>
+              {/* Muscle groups this equipment targets — matched against exercise targetMuscle */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Muscle Groups Targeted
                 </label>
+                <div className="flex flex-wrap gap-2">
+                  {MUSCLE_GROUPS.map(m => {
+                    const active = formMuscleGroups.includes(m);
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => toggleMuscleGroup(m)}
+                        className={`px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-colors ${
+                          active
+                            ? 'bg-lime-500/10 border-lime-500 text-lime-400'
+                            : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-200'
+                        }`}
+                      >
+                        {m}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800 flex-shrink-0">
@@ -773,15 +903,15 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
                   {React.createElement(getEquipmentIconComponent(previewItem.icon), { className: 'w-5 h-5' })}
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-lime-400 bg-lime-500/10 px-2 py-0.5 rounded border border-lime-500/20">
                       {previewItem.category}
                     </span>
-                    {previewItem.isFloorSpace && (
-                      <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                        Open Floor Space
+                    {(previewItem.muscleGroups || []).map(m => (
+                      <span key={m} className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700/60">
+                        {m}
                       </span>
-                    )}
+                    ))}
                   </div>
                   <h3 className="text-base font-bold text-white mt-0.5">
                     {previewItem.name}

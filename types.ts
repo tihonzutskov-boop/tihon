@@ -30,7 +30,7 @@ export interface EquipmentItem {
   icon?: string;
   imageUrl?: string; // Uploaded picture of the physical equipment
   defaultFootprint?: { width: number; height: number };
-  isFloorSpace?: boolean; // Tag indicating open floor / mat area for bodyweight exercises
+  muscleGroups?: string[]; // Target muscle groups, matched against LibraryExercise.targetMuscle
 }
 
 export interface GymMachine {
