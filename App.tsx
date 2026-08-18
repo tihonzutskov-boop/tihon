@@ -120,6 +120,7 @@ const App: React.FC = () => {
 
   const handleMachineClick = (machine: GymMachine) => {
     setViewingMachine(machine);
+    setSelectedMachineId(machine.id);
   };
 
   const handleLibrarySelect = (machine: GymMachine, zoneId: string) => {
