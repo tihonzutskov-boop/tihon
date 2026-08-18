@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { GymZone, EquipmentType, GymDimensions, GymEntrance, GymAnnex, GymMachine, Language } from '../types';
 import { translations, getGymTranslation } from '../translations';
 import { isExerciseAvailableInZone } from '../utils/exerciseMatcher';
-import { ZoomOut, Settings, Dumbbell, Activity, Zap, Target, Cpu, Layers, Box, Wind, RotateCcw, ArrowUpRight, MoveDown, Circle, Waves, Timer, ZoomIn, Minus, Plus, Maximize2, Search, X, MapPin, Play, Sparkles, Filter, ChevronRight, DoorOpen, Lock, Bath, Droplets, ShieldCheck, Sprout, Anchor, Repeat, ChevronsRight } from 'lucide-react';
+import { ZoomOut, Settings, Dumbbell, Activity, Zap, Target, Cpu, Layers, Box, Wind, RotateCcw, ArrowUpRight, MoveDown, Circle, Waves, Timer, ZoomIn, Minus, Plus, Maximize2, Search, X, MapPin, Play, Sparkles, Filter, ChevronRight, ChevronLeft, DoorOpen, Lock, Bath, Droplets, ShieldCheck, Sprout, Anchor, Repeat, ChevronsRight } from 'lucide-react';
 import { ICON_MAP, getEquipmentIcon, getTaxonomyColor, isBeginnerFriendly, isAmenityZone, getAmenityStyleConfig, getZoneVisualCategory, VISUAL_CATEGORY_STYLES, ZoneVisualCategory, getZoneThemeStyle } from '../utils/equipmentIcons';
 
 function renderStaircase(x1: number, y1: number, x2: number, y2: number, thickness: number, strokeColor: string) {
@@ -226,6 +226,9 @@ const GymMap: React.FC<GymMapProps> = ({
   const [mapSearchQuery, setMapSearchQuery] = React.useState('');
   const [selectedMuscleFilter, setSelectedMuscleFilter] = React.useState('All');
   const [activePopoverZone, setActivePopoverZone] = React.useState<GymZone | null>(null);
+  // Machine the user is currently hovering/tapping in the focused-zone view —
+  // drives the name tooltip + glow highlight independent of selectedMachineId.
+  const [hoveredMachineId, setHoveredMachineId] = React.useState<string | null>(null);
 
   // Clear search state when hideSearch or other windows open
   React.useEffect(() => {
@@ -691,6 +694,14 @@ const GymMap: React.FC<GymMapProps> = ({
         .machine-pulse {
           animation: machinePulse 1.5s infinite;
           stroke: #3b82f6 !important;
+        }
+        @keyframes machineGlowWhite {
+          0%, 100% { filter: drop-shadow(0 0 3px rgba(255,255,255,0.6)); }
+          50% { filter: drop-shadow(0 0 9px rgba(255,255,255,0.95)); }
+        }
+        .machine-glow-white {
+          animation: machineGlowWhite 1.4s ease-in-out infinite;
+          stroke: #ffffff !important;
         }
       `}</style>
 
@@ -1382,6 +1393,27 @@ const GymMap: React.FC<GymMapProps> = ({
                       className="pointer-events-none"
                     />
 
+                    {/* Soft blurred machine footprints — real position & size within
+                        the zone, previewed before zooming in. Hidden once this zone
+                        is the one being focused/zoomed, since the real machines take
+                        over rendering at that point. */}
+                    {!isFocused && !isThumbnail && zone.machines && zone.machines.length > 0 && (
+                      <g style={{ pointerEvents: 'none' }}>
+                        {zone.machines.map((machine, mIdx) => (
+                          <rect
+                            key={`preview-${zone.id}-${machine.id}-${mIdx}`}
+                            x={zone.x + machine.x}
+                            y={zone.y + machine.y}
+                            width={machine.width}
+                            height={machine.height}
+                            rx="4"
+                            fill="rgba(255,255,255,0.16)"
+                            style={{ filter: 'blur(3px)' }}
+                          />
+                        ))}
+                      </g>
+                    )}
+
                     {/* Centered White Zone Name matching screenshot */}
                     <text
                       x={zone.x + zone.width / 2}
@@ -1424,11 +1456,14 @@ const GymMap: React.FC<GymMapProps> = ({
                       <g className="animate-in fade-in zoom-in duration-300">
                         {zone.machines.map((machine, mIdx) => {
                           const isMachineSelected = selectedMachineId === machine.id;
+                          const isHovered = hoveredMachineId === machine.id;
+                          const showAdminSelected = isEditable && isMachineSelected;
+                          const showUserGlow = !isEditable && (isMachineSelected || isHovered);
                           const MachineIcon = getEquipmentIcon(machine.icon, machine.name, zone.type);
 
                           return (
-                            <g 
-                               key={`mach-${zone.id}-${machine.id}-${mIdx}`} 
+                            <g
+                               key={`mach-${zone.id}-${machine.id}-${mIdx}`}
                                transform={`translate(${zone.x + machine.x}, ${zone.y + machine.y})`}
                                onMouseDown={(e) => {
                                  if (isMachineEdit && onMachineDragStart) {
@@ -1436,6 +1471,8 @@ const GymMap: React.FC<GymMapProps> = ({
                                    onMachineDragStart(e, machine, zone.id);
                                  }
                                }}
+                               onMouseEnter={() => { if (!isEditable) setHoveredMachineId(machine.id); }}
+                               onMouseLeave={() => { if (!isEditable) setHoveredMachineId(null); }}
                                onClick={(e) => {
                                  if (wasDraggedRef.current) {
                                    wasDraggedRef.current = false;
@@ -1444,6 +1481,7 @@ const GymMap: React.FC<GymMapProps> = ({
                                  }
                                  if (!isEditable && onMachineClick) {
                                      e.stopPropagation();
+                                     setHoveredMachineId(machine.id);
                                      onMachineClick(machine);
                                  }
                                }}
@@ -1452,10 +1490,10 @@ const GymMap: React.FC<GymMapProps> = ({
                               <rect
                                 width={machine.width} height={machine.height}
                                 fill={zoneStyle.stroke} fillOpacity={0.85}
-                                stroke={isMachineSelected ? "#3b82f6" : "#ffffff"}
-                                strokeWidth={isMachineSelected ? 2 : 1}
+                                stroke={showAdminSelected ? "#3b82f6" : "#ffffff"}
+                                strokeWidth={(showAdminSelected || showUserGlow) ? 2 : 1}
                                 rx="4"
-                                className={isMachineSelected && !isEditable ? 'machine-pulse' : ''}
+                                className={showAdminSelected ? 'machine-pulse' : showUserGlow ? 'machine-glow-white' : ''}
                               />
 
                               <g transform={`translate(${machine.width / 2}, ${machine.height / 2})`} className="pointer-events-none">
@@ -1475,6 +1513,23 @@ const GymMap: React.FC<GymMapProps> = ({
                                   )
                                 )}
                               </g>
+
+                              {showUserGlow && (
+                                <g transform={`translate(${machine.width / 2}, -8)`} className="pointer-events-none animate-in fade-in duration-150">
+                                  {(() => {
+                                    const label = getGymTranslation(machine.name, lang);
+                                    const tipWidth = Math.max(40, label.length * 6.5 + 16);
+                                    return (
+                                      <g transform={`translate(${-tipWidth / 2}, ${-20})`}>
+                                        <rect width={tipWidth} height="20" rx="6" fill="#131f38" stroke="#1e293b" />
+                                        <text x={tipWidth / 2} y="14" textAnchor="middle" fontSize="10" fontWeight="700" fill="#ffffff">
+                                          {label}
+                                        </text>
+                                      </g>
+                                    );
+                                  })()}
+                                </g>
+                              )}
 
                               {isMachineEdit && isMachineSelected && (
                                 <rect
@@ -1511,32 +1566,21 @@ const GymMap: React.FC<GymMapProps> = ({
 
       {/* Map Header Status Overlay */}
       {!isThumbnail && !isEditable && (
-        <div className="absolute top-3 left-3 right-3 sm:top-4 sm:left-4 sm:right-4 z-10 flex items-start justify-end pointer-events-none">
-          {/* Locating Exercise Status Banner */}
+        <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-10 flex items-start pointer-events-none">
+          {/* Back-to-map pill, shown whenever a zone is focused/zoomed in */}
           {focusedZoneId && (
-            <div className="pointer-events-auto flex items-center space-x-2 bg-slate-950/90 border border-lime-500/50 px-3.5 py-2 rounded-2xl shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-2">
-              <div className="flex items-center space-x-2">
-                <span className="relative flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-lime-500"></span>
-                </span>
-                <span className="text-xs font-bold text-lime-400 whitespace-nowrap">
-                  Locating: {focusedZone ? getGymTranslation(focusedZone.name, lang) : 'Exercise Location'}
-                </span>
-              </div>
-              <button 
-                onClick={(e) => { 
-                  e.stopPropagation(); 
-                  onMapClick(); 
-                  setMapSearchQuery('');
-                  setSelectedMuscleFilter('All');
-                }}
-                className="ml-2 flex items-center space-x-1 bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1 rounded-lg text-xs font-bold border border-slate-700 transition-colors whitespace-nowrap"
-              >
-                <X className="w-3.5 h-3.5" />
-                <span>Clear</span>
-              </button>
-            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onMapClick();
+                setMapSearchQuery('');
+                setSelectedMuscleFilter('All');
+              }}
+              className="pointer-events-auto flex items-center gap-2 bg-slate-950/92 hover:border-lime-500/60 border border-slate-700 px-4 py-2 rounded-full shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-2 text-xs font-bold text-white transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4 text-lime-400" />
+              <span>Back to map</span>
+            </button>
           )}
         </div>
       )}
