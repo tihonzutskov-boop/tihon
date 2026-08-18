@@ -696,11 +696,11 @@ const GymMap: React.FC<GymMapProps> = ({
           stroke: #3b82f6 !important;
         }
         @keyframes machineGlowWhite {
-          0%, 100% { filter: drop-shadow(0 0 3px rgba(255,255,255,0.6)); }
-          50% { filter: drop-shadow(0 0 9px rgba(255,255,255,0.95)); }
+          0%, 100% { stroke-width: 2px; stroke-opacity: 0.7; filter: drop-shadow(0 0 3px rgba(255,255,255,0.6)); }
+          50% { stroke-width: 4px; stroke-opacity: 1; filter: drop-shadow(0 0 10px rgba(255,255,255,1)); }
         }
         .machine-glow-white {
-          animation: machineGlowWhite 1.4s ease-in-out infinite;
+          animation: machineGlowWhite 1.3s ease-in-out infinite;
           stroke: #ffffff !important;
         }
       `}</style>
