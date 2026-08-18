@@ -147,7 +147,8 @@ interface GymMapProps {
   
   onZoneClick?: (zone: GymZone) => void;
   onMapClick?: () => void;
-  onMachineClick?: (machine: GymMachine) => void; 
+  onMachineClick?: (machine: GymMachine) => void;
+  onHighlightMachine?: (machine: GymMachine) => void;
 
   selectedZoneId?: string | null;
   focusedZoneId?: string | null; 
@@ -186,9 +187,10 @@ const GymMap: React.FC<GymMapProps> = ({
   floorColor = '#1e293b',
   annexes = [],
   
-  onZoneClick = (_: GymZone) => {}, 
+  onZoneClick = (_: GymZone) => {},
   onMapClick = () => {},
   onMachineClick,
+  onHighlightMachine,
 
   selectedZoneId = null,
   focusedZoneId = null,
@@ -1575,7 +1577,7 @@ const GymMap: React.FC<GymMapProps> = ({
                 {activePopoverZone.machines.map((m, mIdx) => (
                   <button
                     key={`pop-${m.id}-${mIdx}`}
-                    onClick={() => onMachineClick?.(m)}
+                    onClick={() => onHighlightMachine?.(m)}
                     className="text-[11px] bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-800 px-2 py-1 rounded-lg flex items-center gap-1 transition-colors"
                   >
                     <span>{getGymTranslation(m.name, lang)}</span>

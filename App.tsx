@@ -123,6 +123,10 @@ const App: React.FC = () => {
     setSelectedMachineId(machine.id);
   };
 
+  const handleHighlightMachine = (machine: GymMachine) => {
+    setSelectedMachineId(machine.id);
+  };
+
   const handleLibrarySelect = (machine: GymMachine, zoneId: string) => {
     const targetZone = zones.find(z => z.id === zoneId);
     if (targetZone) {
@@ -486,6 +490,7 @@ const App: React.FC = () => {
               onZoneClick={handleZoneClick}
               onMapClick={handleMapClick}
               onMachineClick={handleMachineClick}
+              onHighlightMachine={handleHighlightMachine}
               selectedZoneId={selectedZone?.id || null}
               focusedZoneId={focusedZoneId}
               selectedMachineId={selectedMachineId}
