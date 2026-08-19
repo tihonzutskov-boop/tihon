@@ -160,6 +160,7 @@ export interface LibraryExercise {
   instructions: string;      // Clear movement execution & form instructions
   equipmentId?: string;      // Optional mapped zone/location ID on the gym map
   videoUrl?: string;         // Uploaded video URL demonstrating how to perform the movement
+  imageUrl?: string;         // Uploaded GIF demonstrating the movement
   makeHarder?: string;       // Instructions for increasing difficulty (tempo, load, ROM, stance)
   makeEasier?: string;       // Instructions for regressing difficulty (assistance, bands, ROM, load)
 }
