@@ -227,7 +227,7 @@ const SearchCombo: React.FC<{ value: string; options: string[]; onChange: (val: 
         onBlur={() => setTimeout(() => setOpen(false), 120)}
         placeholder="Type to search or create..."
         autoComplete="off"
-        className={`w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-indigo-500/50 transition-colors min-h-[44px] ${colored ? 'pl-7' : ''}`}
+        className={`w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-lime-500/50 transition-colors min-h-[44px] ${colored ? 'pl-7' : ''}`}
       />
       {open && (
         <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-lg max-h-40 overflow-y-auto shadow-xl">
@@ -246,7 +246,7 @@ const SearchCombo: React.FC<{ value: string; options: string[]; onChange: (val: 
             <button
               type="button"
               onMouseDown={(e) => { e.preventDefault(); onChange(query.trim()); setOpen(false); }}
-              className="w-full text-left px-3 py-1.5 text-xs text-indigo-400 font-semibold hover:bg-slate-800 border-t border-slate-800"
+              className="w-full text-left px-3 py-1.5 text-xs text-lime-400 font-semibold hover:bg-slate-800 border-t border-slate-800"
             >
               + Create &ldquo;{query.trim()}&rdquo;
             </button>
@@ -461,7 +461,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
       
       {/* Intro Header info */}
       <div className="mb-6 bg-slate-900/50 border border-slate-800 rounded-2xl p-4 flex items-start gap-4">
-        <div className="w-10 h-10 bg-indigo-950 border border-indigo-500/30 text-indigo-400 rounded-xl flex items-center justify-center flex-shrink-0 animate-pulse">
+        <div className="w-10 h-10 bg-lime-500/10 border border-lime-500/30 text-lime-400 rounded-xl flex items-center justify-center flex-shrink-0 animate-pulse">
           <Sparkles className="w-5 h-5" />
         </div>
         <div className="space-y-1">
@@ -481,7 +481,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
             value={exercisesSearchQuery}
             onChange={(e) => setExercisesSearchQuery(e.target.value)}
             placeholder={t.searchPlace}
-            className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 transition-colors"
+            className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-lime-500/50 transition-colors"
           />
         </div>
         <select
@@ -495,7 +495,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
         </select>
         <button
           onClick={handleOpenCreateModal}
-          className="flex items-center justify-center px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-950/50 flex-shrink-0"
+          className="flex items-center justify-center px-4 py-2.5 bg-lime-500 hover:bg-lime-400 text-slate-950 rounded-xl text-xs font-bold transition-all shadow-md shadow-lime-500/10 flex-shrink-0"
         >
           <Plus className="w-4 h-4 mr-1" /> {t.addExBtn}
         </button>
@@ -514,7 +514,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
               style={active && m !== 'All' ? { backgroundColor: color, borderColor: color } : undefined}
               className={`whitespace-nowrap px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all flex items-center gap-1.5 border ${
                 active
-                  ? m === 'All' ? 'bg-indigo-600 text-white border-indigo-600' : 'text-slate-950'
+                  ? m === 'All' ? 'bg-lime-500 text-slate-950 border-lime-500 font-bold' : 'text-slate-950'
                   : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-slate-200'
               }`}
             >
@@ -561,7 +561,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
       {/* Grid Container */}
       {isLoadingExercises ? (
         <div className="flex-1 flex flex-col items-center justify-center text-slate-500 gap-3 py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+          <Loader2 className="w-8 h-8 animate-spin text-lime-500" />
           <p className="text-xs">{t.loading}</p>
         </div>
       ) : filteredExercises.length === 0 ? (
@@ -571,7 +571,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
           <p className="text-xs text-slate-500 max-w-xs leading-relaxed mb-6">{t.noFoundDesc}</p>
           <button
             onClick={handleOpenCreateModal}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition-all"
+            className="px-4 py-2 bg-lime-500 hover:bg-lime-400 text-slate-950 font-bold text-xs rounded-xl transition-all"
           >
             {t.createFirstBtn}
           </button>
@@ -669,7 +669,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                           {isMapped ? <><MapPin className="w-2.5 h-2.5" /> {t.mapAlign}</> : '⚠️ Needs review'}
                         </span>
                         {ex.videoUrl && (
-                          <span className="w-5 h-5 rounded-full bg-indigo-950/60 text-indigo-400 flex items-center justify-center">
+                          <span className="w-5 h-5 rounded-full bg-lime-500/10 text-lime-400 flex items-center justify-center">
                             <Play className="w-2.5 h-2.5 fill-current" />
                           </span>
                         )}
@@ -791,9 +791,9 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                 {ex.videoUrl && (
                   <button
                     onClick={() => setPlayingVideoUrl(ex.videoUrl!)}
-                    className="w-full py-3 bg-slate-950/80 hover:bg-slate-900 border border-slate-800 rounded-xl text-indigo-400 hover:text-indigo-300 text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                    className="w-full py-3 bg-slate-950/80 hover:bg-slate-900 border border-slate-800 rounded-xl text-lime-400 hover:text-lime-300 text-xs font-bold transition-all flex items-center justify-center gap-1.5"
                   >
-                    <Play className="w-4 h-4 fill-indigo-400 text-indigo-400" />
+                    <Play className="w-4 h-4 fill-lime-400 text-lime-400" />
                     {t.watchGuide}
                   </button>
                 )}
@@ -807,7 +807,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
               <div className="px-6 py-3 border-t border-slate-800 bg-slate-900 flex-shrink-0">
                 <button
                   onClick={() => { setPreviewExercise(null); handleOpenEditModal(ex); }}
-                  className="w-full px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors flex items-center justify-center gap-1.5 min-h-[44px]"
+                  className="w-full px-4 py-2.5 rounded-xl text-xs font-bold text-slate-950 bg-lime-500 hover:bg-lime-400 transition-colors flex items-center justify-center gap-1.5 min-h-[44px]"
                 >
                   <Edit3 className="w-3.5 h-3.5" /> Edit Exercise
                 </button>
@@ -824,7 +824,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
           <div className="relative bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col max-h-[90dvh] my-auto animate-in zoom-in-95 duration-200">
              <div className="flex justify-between items-center px-6 py-4 border-b border-slate-800 bg-slate-900/90 flex-shrink-0">
                 <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                  <Dumbbell className="w-4 h-4 text-indigo-400" />
+                  <Dumbbell className="w-4 h-4 text-lime-400" />
                   <span>{editingExercise ? t.modalEditTitle : t.modalAddTitle}</span>
                 </h3>
                 <button 
@@ -880,7 +880,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                 <div className="p-6 space-y-4 overflow-y-auto flex-1">
                   <div>
                     <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">{t.exNameLabel} <span className="text-red-500">*</span></label>
-                    <input required name="name" type="text" defaultValue={editingExercise?.name || ''} placeholder="e.g., Incline Dumbbell Bench Press" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 transition-colors min-h-[44px]" />
+                    <input required name="name" type="text" defaultValue={editingExercise?.name || ''} placeholder="e.g., Incline Dumbbell Bench Press" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-lime-500/50 transition-colors min-h-[44px]" />
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -936,7 +936,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
 
                   <div>
                     <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">{t.gymZoneLabel} <span className="text-red-500">*</span></label>
-                    <select required name="equipmentId" defaultValue={editingExercise?.equipmentId || 'auto'} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-indigo-500/50 transition-colors cursor-pointer min-h-[44px]">
+                    <select required name="equipmentId" defaultValue={editingExercise?.equipmentId || 'auto'} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-lime-500/50 transition-colors cursor-pointer min-h-[44px]">
                       <option value="auto" className="bg-slate-950 text-white">{t.unassignedOpt}</option>
                       {gym?.zones?.map(z => (
                         <option key={z.id} value={z.id} className="bg-slate-950 text-white">{z.name}</option>
@@ -962,9 +962,9 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                     ) : (
                       <div
                         onClick={() => gifFileInputRef.current?.click()}
-                        className="border-2 border-dashed border-slate-700 hover:border-indigo-500/60 rounded-xl p-4 text-center cursor-pointer bg-slate-950/40 hover:bg-slate-950/80 transition-all group"
+                        className="border-2 border-dashed border-slate-700 hover:border-lime-500/60 rounded-xl p-4 text-center cursor-pointer bg-slate-950/40 hover:bg-slate-950/80 transition-all group"
                       >
-                        <div className="w-10 h-10 rounded-full bg-slate-800 group-hover:bg-indigo-500/20 text-slate-400 group-hover:text-indigo-400 mx-auto flex items-center justify-center mb-2 transition-colors">
+                        <div className="w-10 h-10 rounded-full bg-slate-800 group-hover:bg-lime-500/20 text-slate-400 group-hover:text-lime-400 mx-auto flex items-center justify-center mb-2 transition-colors">
                           <Image className="w-5 h-5" />
                         </div>
                         <p className="text-xs font-semibold text-slate-300 group-hover:text-white">Click to upload a GIF</p>
@@ -977,14 +977,14 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                   {/* Video URL for movement demonstration */}
                   <div>
                     <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">{t.ytLinkLabel} <span className="text-red-500">*</span></label>
-                    <input required name="videoUrl" type="url" defaultValue={editingExercise?.videoUrl || ''} placeholder="e.g. https://www.youtube.com/watch?v=ultWZbUMPL8" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-700 focus:outline-none focus:border-indigo-500/50 transition-colors min-h-[44px]" />
+                    <input required name="videoUrl" type="url" defaultValue={editingExercise?.videoUrl || ''} placeholder="e.g. https://www.youtube.com/watch?v=ultWZbUMPL8" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-700 focus:outline-none focus:border-lime-500/50 transition-colors min-h-[44px]" />
                     <p className="text-[9px] text-slate-500 leading-relaxed mt-1">{t.ytLinkHelp}</p>
                   </div>
 
                   {/* Step-by-Step Movement Instructions */}
                   <div>
                     <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">{t.stepInstructionsLabel} <span className="text-red-500">*</span></label>
-                    <textarea required name="instructions" rows={3} defaultValue={editingExercise?.instructions || ''} placeholder={t.instructionsPlace} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-indigo-500/50 transition-colors resize-none" />
+                    <textarea required name="instructions" rows={3} defaultValue={editingExercise?.instructions || ''} placeholder={t.instructionsPlace} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-lime-500/50 transition-colors resize-none" />
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1032,7 +1032,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
 
                 <div className="p-4 border-t border-slate-800 bg-slate-900 flex justify-end space-x-3 flex-shrink-0">
                    <button type="button" onClick={() => setIsExerciseModalOpen(false)} className="px-5 py-2.5 bg-slate-950 hover:bg-slate-800 rounded-xl text-xs font-bold text-slate-400 border border-slate-800 transition-colors min-h-[44px]">{t.discardBtn}</button>
-                   <button type="submit" className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-xs font-bold text-white shadow-md shadow-indigo-900/10 min-h-[44px]">
+                   <button type="submit" className="px-5 py-2.5 bg-lime-500 hover:bg-lime-400 rounded-xl text-xs font-bold text-slate-950 shadow-md shadow-lime-500/20 min-h-[44px]">
                      {editingExercise ? t.saveBtn : t.publishBtn}
                    </button>
                 </div>
