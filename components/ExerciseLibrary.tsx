@@ -457,8 +457,10 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
   }, [libraryExercises]);
 
   return (
-    <div className="flex-1 flex flex-col p-6 overflow-y-auto bg-slate-950 text-slate-200">
-      
+    <div className="flex-1 flex flex-col overflow-hidden bg-slate-950 text-slate-200">
+      {/* Fixed header: intro, search, group-by, muscle pills, secondary
+          filters — stays reachable while the exercise grid below scrolls. */}
+      <div className="p-6 pb-0 flex-shrink-0">
       {/* Intro Header info */}
       <div className="mb-6 bg-slate-900/50 border border-slate-800 rounded-2xl p-4 flex items-start gap-4">
         <div className="w-10 h-10 bg-lime-500/10 border border-lime-500/30 text-lime-400 rounded-xl flex items-center justify-center flex-shrink-0 animate-pulse">
@@ -557,7 +559,10 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
           <option value="unmapped" className="bg-slate-950 text-white">Needs review</option>
         </select>
       </div>
+      </div>
 
+      {/* Scrollable exercise grid — the only part of this view that scrolls */}
+      <div className="flex-1 overflow-y-auto px-6 pb-6">
       {/* Grid Container */}
       {isLoadingExercises ? (
         <div className="flex-1 flex flex-col items-center justify-center text-slate-500 gap-3 py-12">
@@ -682,6 +687,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
           ))}
         </div>
       )}
+      </div>
 
       {/* EXERCISE DETAIL / PREVIEW MODAL */}
       {previewExercise && (() => {
