@@ -286,6 +286,7 @@ const App: React.FC = () => {
           gyms={gyms}
           onSelectGym= {handleGymSelect}
           onLoginClick={handleLoginClick}
+          onSignupClick={handleSignupClick}
           lang={lang}
         />
         {showAuthModal && (
