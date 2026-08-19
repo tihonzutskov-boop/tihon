@@ -226,9 +226,19 @@ const GymMap: React.FC<GymMapProps> = ({
   const [mapSearchQuery, setMapSearchQuery] = React.useState('');
   const [selectedMuscleFilter, setSelectedMuscleFilter] = React.useState('All');
   const [activePopoverZone, setActivePopoverZone] = React.useState<GymZone | null>(null);
+  // Zone popover starts compact (name + count) and expands to the full
+  // equipment card only once the user explicitly asks for it.
+  const [popoverExpanded, setPopoverExpanded] = React.useState(false);
   // Machine the user is currently hovering/tapping in the focused-zone view —
   // drives the name tooltip + glow highlight independent of selectedMachineId.
   const [hoveredMachineId, setHoveredMachineId] = React.useState<string | null>(null);
+
+  // Fully exits the focused-zone view: closes the popover and zooms back out.
+  const handleExitZone = React.useCallback(() => {
+    setActivePopoverZone(null);
+    setPopoverExpanded(false);
+    onMapClick();
+  }, [onMapClick]);
 
   // Clear search state when hideSearch or other windows open
   React.useEffect(() => {
@@ -236,6 +246,7 @@ const GymMap: React.FC<GymMapProps> = ({
       setMapSearchQuery('');
       setSelectedMuscleFilter('All');
       setActivePopoverZone(null);
+      setPopoverExpanded(false);
     }
   }, [hideSearch]);
 
@@ -745,7 +756,7 @@ const GymMap: React.FC<GymMapProps> = ({
               e.stopPropagation();
               return;
             }
-            onMapClick();
+            handleExitZone();
           }}
         >
           <defs>
@@ -1346,7 +1357,10 @@ const GymMap: React.FC<GymMapProps> = ({
                           setPanY(0);
                           setZoomScale(1);
                           onZoneClick(zone);
-                          if (!isEditable) setActivePopoverZone(zone);
+                          if (!isEditable) {
+                            setActivePopoverZone(zone);
+                            setPopoverExpanded(false);
+                          }
                         }
                       }
                     }}
@@ -1585,13 +1599,33 @@ const GymMap: React.FC<GymMapProps> = ({
         </div>
       )}
 
-      {/* Interactive Popover Card when Clicking Zone or Machine */}
-      {activePopoverZone && !isEditable && !isThumbnail && !hideSearch && (
+      {/* Zone Popover: starts as a compact strip, expands to the full card
+          only when the user explicitly asks for it via "Explore this area" */}
+      {activePopoverZone && !isEditable && !isThumbnail && !hideSearch && !popoverExpanded && (
+        <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-10 w-11/12 max-w-sm bg-slate-950/95 border border-slate-700 p-3 rounded-2xl shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-5 flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <h4 className="text-sm font-black text-white truncate">
+              {getGymTranslation(activePopoverZone.name, lang)}
+            </h4>
+            <p className="text-[11px] text-slate-400">
+              {(activePopoverZone.machines || []).length} equipment item{(activePopoverZone.machines || []).length === 1 ? '' : 's'}
+            </p>
+          </div>
+          <button
+            onClick={() => setPopoverExpanded(true)}
+            className="flex-shrink-0 bg-lime-500 hover:bg-lime-400 text-slate-950 font-bold py-2.5 px-3.5 rounded-xl text-xs whitespace-nowrap transition-colors active:scale-95"
+          >
+            Explore this area
+          </button>
+        </div>
+      )}
+
+      {activePopoverZone && !isEditable && !isThumbnail && !hideSearch && popoverExpanded && (
         <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-10 w-11/12 max-w-sm bg-slate-950/95 border border-slate-700 p-4 rounded-2xl shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-5">
           <div className="flex items-start justify-between mb-2">
             <div>
               <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                <span 
+                <span
                   className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full text-slate-950 shadow-sm"
                   style={{ backgroundColor: getTaxonomyColor(activePopoverZone.type, activePopoverZone.color) }}
                 >
@@ -1607,8 +1641,12 @@ const GymMap: React.FC<GymMapProps> = ({
                 {getGymTranslation(activePopoverZone.name, lang)}
               </h4>
             </div>
-            <button onClick={() => setActivePopoverZone(null)} className="text-slate-400 hover:text-white p-1">
-              <X className="w-4 h-4" />
+            <button
+              onClick={handleExitZone}
+              title="Close and return to the full gym map"
+              className="flex-shrink-0 w-9 h-9 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition-colors"
+            >
+              <X className="w-5 h-5" />
             </button>
           </div>
           {activePopoverZone.description && (
@@ -1635,11 +1673,18 @@ const GymMap: React.FC<GymMapProps> = ({
             onClick={() => {
               onZoneClick(activePopoverZone);
               setActivePopoverZone(null);
+              setPopoverExpanded(false);
             }}
             className="w-full bg-lime-500 hover:bg-lime-400 text-slate-950 font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all shadow-md active:scale-95"
           >
             <Plus className="w-4 h-4" />
             <span>Explore Exercises for this Area</span>
+          </button>
+          <button
+            onClick={() => setPopoverExpanded(false)}
+            className="w-full mt-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 font-bold py-2 rounded-xl text-xs transition-colors"
+          >
+            Close
           </button>
         </div>
       )}
