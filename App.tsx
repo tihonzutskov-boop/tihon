@@ -14,7 +14,7 @@ import { GymZone, WorkoutPlan, Exercise, Gym, GymMachine, User, Language, Workou
 import { DEFAULT_GYM } from './constants';
 import { api, DEFAULT_EQUIPMENT } from './services/api';
 import { translations, getGymTranslation } from './translations';
-import { ChevronDown, MapPin, Loader2, ClipboardList, ArrowLeft, BookOpen, Globe, Search, X } from 'lucide-react';
+import { ChevronDown, MapPin, Loader2, ClipboardList, ArrowLeft, BookOpen, Globe, Search, X, Settings } from 'lucide-react';
 
 type ViewState = 'landing' | 'app' | 'admin' | 'dashboard';
 
@@ -320,10 +320,11 @@ const App: React.FC = () => {
 
   if (currentView === 'admin') {
     return (
-      <AdminPage 
-        gyms={gyms} 
-        setGyms={setGyms} 
+      <AdminPage
+        gyms={gyms}
+        setGyms={setGyms}
         onExit={() => setCurrentView(user ? 'dashboard' : 'landing')}
+        onPreviewAsUser={handleGymSelect}
       />
     );
   }
@@ -363,12 +364,23 @@ const App: React.FC = () => {
 
         <div className="flex items-center space-x-2 sm:space-x-4">
            {user && (
-             <button 
+             <button
                 onClick={() => setCurrentView('dashboard')}
                 className="hidden md:flex items-center text-xs font-bold text-slate-400 hover:text-white mr-2"
              >
                 <ArrowLeft className="w-3 h-3 mr-1" />
                 {t.dashboard}
+             </button>
+           )}
+
+           {user?.role === 'admin' && (
+             <button
+                onClick={() => setCurrentView('admin')}
+                title="Switch to the admin editor"
+                className="hidden md:flex items-center gap-1.5 text-xs font-bold text-lime-400 hover:text-lime-300 bg-lime-500/10 hover:bg-lime-500/20 border border-lime-500/30 px-3 py-1.5 rounded-lg mr-2 transition-colors"
+             >
+                <Settings className="w-3.5 h-3.5" />
+                Admin View
              </button>
            )}
 

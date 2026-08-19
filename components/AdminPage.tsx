@@ -16,6 +16,7 @@ interface AdminPageProps {
   gyms: Gym[];
   setGyms: React.Dispatch<React.SetStateAction<Gym[]>>;
   onExit: () => void;
+  onPreviewAsUser: (gymId: string) => void;
 }
 
 const useGymHistory = (initialGym: Gym) => {
@@ -58,12 +59,13 @@ const useGymHistory = (initialGym: Gym) => {
 };
 
 const GymDashboard: React.FC<{ 
-  gyms: Gym[], 
-  onCreate: () => void, 
+  gyms: Gym[],
+  onCreate: () => void,
   onEdit: (id: string) => void,
   onDelete: (id: string) => void,
-  onExit: () => void 
-}> = ({ gyms, onCreate, onEdit, onDelete, onExit }) => {
+  onExit: () => void,
+  onPreviewAsUser: (gymId: string) => void
+}> = ({ gyms, onCreate, onEdit, onDelete, onExit, onPreviewAsUser }) => {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 flex flex-col animate-in fade-in duration-500">
       <header className="h-20 border-b border-slate-800 bg-slate-900/50 backdrop-blur flex items-center justify-between px-8">
@@ -95,6 +97,7 @@ const GymDashboard: React.FC<{
                  <div className="flex justify-between items-start mb-4">
                    <h3 className="text-xl font-bold text-white leading-tight">{gym.name}</h3>
                    <div className="flex space-x-1">
+                      <button onClick={() => onPreviewAsUser(gym.id)} className="p-1.5 text-slate-400 hover:text-lime-400 hover:bg-slate-800 rounded-lg transition-colors" title="View as User"><Eye className="w-4 h-4" /></button>
                       <button onClick={() => onEdit(gym.id)} className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"><Edit3 className="w-4 h-4" /></button>
                       <button onClick={() => onDelete(gym.id)} className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-950/30 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
                    </div>
@@ -119,7 +122,7 @@ const GymDashboard: React.FC<{
   );
 };
 
-interface GymLayoutEditorProps { initialGym: Gym; onSave: (updatedGym: Gym) => Promise<void>; onBack: () => void; }
+interface GymLayoutEditorProps { initialGym: Gym; onSave: (updatedGym: Gym) => Promise<void>; onBack: () => void; onPreviewAsUser: (gymId: string) => void; }
 
 interface DragState {
   mode: 'move-zone' | 'resize-zone' | 'resize-room' | 'move-annex' | 'resize-annex' | 'move-machine' | 'resize-machine' | 'move-wall' | 'resize-wall-p1' | 'resize-wall-p2' | 'adjust-wall-curve';
@@ -213,7 +216,7 @@ const ToolButton = ({ active, onClick, icon: Icon, label, description, disabled 
   );
 };
 
-const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, onBack }) => {
+const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, onBack, onPreviewAsUser }) => {
   const { gym, update, snapshot, undo, redo, canUndo, canRedo } = useGymHistory(initialGym);
   const zones = gym.zones;
   const dimensions = gym.dimensions || { width: 780, height: 580 };
@@ -1435,6 +1438,14 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
               </button>
             </>
           )}
+          <button
+            onClick={() => onPreviewAsUser(gym.id)}
+            className="flex items-center px-4 py-2 rounded-lg text-sm font-medium bg-lime-500/10 hover:bg-lime-500/20 text-lime-400 border border-lime-500/30 transition-colors"
+            title="See this gym exactly as a regular user would"
+          >
+            <Eye className="w-4 h-4 mr-2" />
+            View as User
+          </button>
         </div>
       </header>
       <div className="flex flex-1 overflow-hidden relative">
@@ -2736,13 +2747,13 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
   );
 };
 
-const AdminPage: React.FC<AdminPageProps> = ({ gyms, setGyms, onExit }) => {
+const AdminPage: React.FC<AdminPageProps> = ({ gyms, setGyms, onExit, onPreviewAsUser }) => {
   const [editingGymId, setEditingGymId] = useState<string | null>(null);
   const handleCreateGym = async () => { const newGym: Gym = { id: `gym-${Date.now()}`, name: 'New Location', zones: [], dimensions: { width: 780, height: 580 }, entrance: { side: 'bottom', offset: 50, width: 80 }, floorColor: '#1e293b', annexes: [] }; await api.createGym(newGym); setGyms(prev => [...prev, newGym]); };
   const handleDeleteGym = async (id: string) => { if (window.confirm('Are you sure you want to delete this gym location?')) { await api.deleteGym(id); setGyms(prev => prev.filter(g => g.id !== id)); if (editingGymId === id) setEditingGymId(null); } };
   const saveGymChanges = async (updatedGym: Gym) => { await api.saveGym(updatedGym); setGyms(prev => prev.map(g => g.id === updatedGym.id ? updatedGym : g)); };
-  if (editingGymId) { const gym = gyms.find(g => g.id === editingGymId); if (!gym) { setEditingGymId(null); return null; } return ( <GymLayoutEditor initialGym={gym} onSave={saveGymChanges} onBack={() => setEditingGymId(null)} /> ); }
-  return ( <GymDashboard gyms={gyms} onCreate={handleCreateGym} onEdit={setEditingGymId} onDelete={handleDeleteGym} onExit={onExit} /> );
+  if (editingGymId) { const gym = gyms.find(g => g.id === editingGymId); if (!gym) { setEditingGymId(null); return null; } return ( <GymLayoutEditor initialGym={gym} onSave={saveGymChanges} onBack={() => setEditingGymId(null)} onPreviewAsUser={onPreviewAsUser} /> ); }
+  return ( <GymDashboard gyms={gyms} onCreate={handleCreateGym} onEdit={setEditingGymId} onDelete={handleDeleteGym} onExit={onExit} onPreviewAsUser={onPreviewAsUser} /> );
 };
 
 export default AdminPage;
