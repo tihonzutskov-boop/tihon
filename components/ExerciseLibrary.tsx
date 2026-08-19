@@ -285,6 +285,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
   const [formCategory, setFormCategory] = useState('Compound (Strength)');
   const [formGifUrl, setFormGifUrl] = useState('');
   const [formError, setFormError] = useState('');
+  const [equipmentPickerSearch, setEquipmentPickerSearch] = useState('');
   const gifFileInputRef = React.useRef<HTMLInputElement>(null);
 
   const [playingVideoUrl, setPlayingVideoUrl] = useState<string | null>(null);
@@ -321,6 +322,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     setFormCategory(ex.category);
     setFormGifUrl(ex.imageUrl || '');
     setFormError('');
+    setEquipmentPickerSearch('');
     setIsExerciseModalOpen(true);
   };
 
@@ -331,6 +333,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     setFormCategory('Compound (Strength)');
     setFormGifUrl('');
     setFormError('');
+    setEquipmentPickerSearch('');
     setIsExerciseModalOpen(true);
   };
 
@@ -909,8 +912,29 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                       <span className="text-[10px] text-slate-500">Tap to select equipment required for this exercise</span>
                     </div>
 
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={equipmentPickerSearch}
+                        onChange={(e) => setEquipmentPickerSearch(e.target.value)}
+                        placeholder="Search equipment by name or category..."
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-lime-500/50 transition-colors"
+                      />
+                    </div>
+
                     <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl max-h-48 overflow-y-auto space-y-1.5">
-                      {equipmentList.map(eq => {
+                      {(() => {
+                        const q = equipmentPickerSearch.trim().toLowerCase();
+                        const visible = q
+                          ? equipmentList.filter(eq => eq.name.toLowerCase().includes(q) || (eq.category || '').toLowerCase().includes(q))
+                          : equipmentList;
+
+                        if (visible.length === 0) {
+                          return <p className="text-xs text-slate-500 text-center py-3">No equipment matches "{equipmentPickerSearch}"</p>;
+                        }
+
+                        return visible.map(eq => {
                         const isSelected = selectedEquipmentIds.includes(eq.id);
                         const IconComp = getEquipmentIconComponent(eq.icon);
 
@@ -936,7 +960,8 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                             </div>
                           </div>
                         );
-                      })}
+                        });
+                      })()}
                     </div>
                   </div>
 
