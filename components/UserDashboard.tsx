@@ -69,6 +69,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, workoutPlan, 
   });
 
   const selectedEntry = scheduleByWeekday.find(s => s.key === selectedWeekday) || scheduleByWeekday.find(s => s.key === todayKey)!;
+  const todayEntry = scheduleByWeekday.find(s => s.key === todayKey);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 animate-in fade-in duration-500">
@@ -110,37 +111,59 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, workoutPlan, 
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-        {/* Welcome Section */}
-        <div className="mb-10">
-          <h1 className="text-3xl font-bold text-white mb-2">{t.welcomeBack}, {user.name.split(' ')[0]} 👋</h1>
-          <p className="text-slate-400">{t.readyToCrush}</p>
+        {/* Hero */}
+        <div className="relative rounded-3xl overflow-hidden border border-slate-800 bg-slate-900 p-7 sm:p-8 mb-8">
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              background:
+                'radial-gradient(ellipse 420px 260px at 15% 20%, rgba(163,230,53,0.16), transparent 60%), radial-gradient(ellipse 380px 260px at 90% 90%, rgba(56,189,248,0.10), transparent 60%)',
+            }}
+          />
+          <div className="relative flex items-end justify-between flex-wrap gap-4">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-black text-white mb-1.5 tracking-tight">{t.welcomeBack}, {user.name.split(' ')[0]} 👋</h1>
+              <p className="text-sm text-slate-400">
+                {todayEntry?.day
+                  ? todayEntry.status === 'done'
+                    ? `Nice work — you've completed today's session (${translateDayName(todayEntry.day.name, todayEntry.dayIndex, lang)}).`
+                    : `You have a coaching session scheduled for today — ${translateDayName(todayEntry.day.name, todayEntry.dayIndex, lang)}.`
+                  : t.readyToCrush}
+              </p>
+            </div>
+            {todayEntry?.day && todayEntry.status === 'today' && (
+              <button
+                onClick={() => onStartWorkout(todayEntry.dayIndex)}
+                className="flex-shrink-0 bg-lime-500 hover:bg-lime-400 text-slate-950 font-bold text-xs sm:text-sm px-5 py-3 rounded-xl transition-colors whitespace-nowrap"
+              >
+                Start today's session
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
           <StatCard
             icon={Trophy}
             value={stats.workoutsCompleted || 0}
             label={t.workoutsCompleted}
-            color="text-yellow-400"
-            bg="bg-yellow-950/30"
-            borderColor="border-yellow-900/50"
+            iconBg="bg-amber-500/10"
+            iconColor="text-amber-400"
           />
           <StatCard
             icon={Flame}
             value={stats.streakDays || 0}
             label={t.dayStreak}
-            color="text-orange-400"
-            bg="bg-orange-950/30"
-            borderColor="border-orange-900/50"
+            iconBg="bg-orange-500/10"
+            iconColor="text-orange-400"
           />
           <StatCard
             icon={Clock}
             value={Math.round((stats.totalMinutes || 0) / 60)}
             label={t.totalDuration}
-            color="text-blue-400"
-            bg="bg-blue-950/30"
-            borderColor="border-blue-900/50"
+            iconBg="bg-sky-500/10"
+            iconColor="text-sky-400"
             suffix="h"
           />
         </div>
@@ -251,7 +274,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, workoutPlan, 
             <button
               key={gym.id}
               onClick={() => onEnterGym(gym.id)}
-              className="group bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden hover:border-lime-500/50 hover:shadow-[0_0_20px_-5px_rgba(132,204,22,0.15)] transition-all flex flex-col text-left"
+              className="group bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden hover:border-lime-500/50 hover:-translate-y-0.5 hover:shadow-[0_0_20px_-5px_rgba(132,204,22,0.15)] transition-all flex flex-col text-left"
             >
               <div className="h-40 bg-slate-950 relative w-full border-b border-slate-800 overflow-hidden">
                 <div className="absolute inset-0 p-4 opacity-60 group-hover:opacity-100 transition-opacity duration-500">
@@ -274,14 +297,14 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, workoutPlan, 
   );
 };
 
-const StatCard = ({ icon: Icon, value, label, color, bg, borderColor, suffix = '' }: any) => (
-  <div className={`p-6 rounded-2xl border ${borderColor} ${bg} flex items-center space-x-4`}>
-     <div className={`p-3 rounded-xl bg-slate-950/50 ${color}`}>
-       <Icon className="w-6 h-6" />
+const StatCard = ({ icon: Icon, value, label, iconBg, iconColor, suffix = '' }: any) => (
+  <div className="p-4 sm:p-5 rounded-2xl border border-slate-800 bg-slate-900 flex items-center gap-4">
+     <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg} ${iconColor}`}>
+       <Icon className="w-5 h-5" />
      </div>
      <div>
-       <div className="text-3xl font-black text-white tracking-tight">{value}{suffix}</div>
-       <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{label}</div>
+       <div className="text-2xl font-black text-white tracking-tight leading-none">{value}{suffix}</div>
+       <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-1.5">{label}</div>
      </div>
   </div>
 );
