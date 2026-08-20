@@ -1,5 +1,5 @@
 
-import { Gym, User, LibraryExercise, EquipmentItem, GymZone, GymMachine, EquipmentType, WorkoutDay } from '../types';
+import { Gym, User, LibraryExercise, EquipmentItem, GymZone, GymMachine, EquipmentType, WorkoutDay, QuestionnaireAnswers } from '../types';
 import { DEFAULT_GYM } from '../constants';
 
 // Relative path: works same-origin in production (Express serves the built
@@ -261,6 +261,27 @@ export const api = {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, days }),
+    });
+  },
+
+  // --- TRAINING QUESTIONNAIRE ---
+
+  async fetchMyQuestionnaire(): Promise<QuestionnaireAnswers | null> {
+    try {
+      const response = await fetch(`${API_BASE}/questionnaire/me`);
+      if (!response.ok) return null;
+      const data = await response.json();
+      return data.answers;
+    } catch {
+      return null;
+    }
+  },
+
+  async saveQuestionnaire(answers: QuestionnaireAnswers): Promise<void> {
+    await fetch(`${API_BASE}/questionnaire/me`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answers }),
     });
   },
 

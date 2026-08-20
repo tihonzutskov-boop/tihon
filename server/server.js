@@ -218,6 +218,34 @@ app.put('/api/plans/me', requireAuth, async (req, res) => {
   }
 });
 
+// --- Training Questionnaire Routes ---
+
+app.get('/api/questionnaire/me', requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT answers FROM training_questionnaires WHERE user_id = $1', [req.user.id]);
+    res.json({ answers: result.rows[0]?.answers || null });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error fetching questionnaire' });
+  }
+});
+
+app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
+  const { answers } = req.body;
+  try {
+    await pool.query(
+      `INSERT INTO training_questionnaires (user_id, answers, submitted_at)
+       VALUES ($1, $2, now())
+       ON CONFLICT (user_id) DO UPDATE SET answers=$2, submitted_at=now()`,
+      [req.user.id, JSON.stringify(answers)]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error saving questionnaire' });
+  }
+});
+
 // --- Gym Routes ---
 
 // GET All Gyms (with nested zones/annexes)

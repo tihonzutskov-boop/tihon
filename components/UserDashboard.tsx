@@ -1,9 +1,10 @@
 
 import React, { useEffect, useState } from 'react';
-import { User, Gym, Language, WorkoutPlan, Weekday } from '../types';
+import { User, Gym, Language, WorkoutPlan, Weekday, QuestionnaireAnswers } from '../types';
 import { translations, getGymTranslation, translateDayName } from '../translations';
 import { Trophy, Flame, Clock, LogOut, ArrowRight, MapPin, Check, Play, Minus } from 'lucide-react';
 import GymMap from './GymMap';
+import TrainingQuestionnaire from './TrainingQuestionnaire';
 import { api } from '../services/api';
 
 interface UserDashboardProps {
@@ -13,6 +14,8 @@ interface UserDashboardProps {
   onLogout: () => void;
   onEnterGym: (gymId: string) => void;
   onStartWorkout: (dayIndex: number) => void;
+  questionnaire: QuestionnaireAnswers | null;
+  onSubmitQuestionnaire: (answers: QuestionnaireAnswers) => void;
   lang: Language;
 }
 
@@ -39,7 +42,7 @@ const startOfThisWeek = (): Date => {
   return monday;
 };
 
-const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, workoutPlan, onLogout, onEnterGym, onStartWorkout, lang }) => {
+const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, workoutPlan, onLogout, onEnterGym, onStartWorkout, questionnaire, onSubmitQuestionnaire, lang }) => {
   const t = translations[lang];
 
   const [stats, setStats] = useState(user.stats || { workoutsCompleted: 0, totalMinutes: 0, streakDays: 0 });
@@ -184,10 +187,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, workoutPlan, 
         {loadingLogs ? (
           <div className="p-8 text-center text-sm text-slate-500 bg-slate-900 border border-slate-800 rounded-2xl mb-16">Loading…</div>
         ) : workoutPlan.days.every(d => !d.weekday) ? (
-          <div className="p-8 text-center bg-slate-900 border border-slate-800 rounded-2xl mb-16">
-            <p className="text-sm font-medium text-slate-400 mb-1">No weekly schedule yet</p>
-            <p className="text-xs text-slate-600">Assign weekdays to your plan's days from the training plan panel to see them here.</p>
-          </div>
+          <TrainingQuestionnaire existing={questionnaire} userName={user.name.split(' ')[0]} onSubmit={onSubmitQuestionnaire} />
         ) : (
           <>
             <div className="grid grid-cols-7 gap-2 mb-4">

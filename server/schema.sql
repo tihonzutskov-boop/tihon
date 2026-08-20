@@ -98,3 +98,12 @@ CREATE TABLE IF NOT EXISTS user_plans (
   days JSONB NOT NULL DEFAULT '[]',
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- One persisted intake questionnaire per user, captured before a coach
+-- builds their plan. Free-form JSONB since the field set is still evolving.
+CREATE TABLE IF NOT EXISTS training_questionnaires (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  answers JSONB NOT NULL,
+  submitted_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

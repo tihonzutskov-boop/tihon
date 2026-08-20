@@ -182,6 +182,23 @@ export interface WorkoutPlan {
   totalDurationMinutes: number;
 }
 
+export interface QuestionnaireAnswers {
+  age: number;
+  heightCm: number;
+  weightKg: number;
+  sex: string;
+  goals: string[];           // multi-select
+  level: string;              // only 'Beginner' selectable for now
+  daysPerWeek: string;        // '1'..'4'
+  minutesPerSession: string;  // '30 min'..'90 min'
+  equipment: string;
+  avoidExercises?: string;
+  injuryAreas: string[];      // multi-select common areas
+  injuryNotes?: string;
+  medicalClearance?: string;  // only present if injuries disclosed
+  consent?: boolean;          // only present if injuries disclosed
+}
+
 export interface User {
   id: string;
   name: string;

@@ -10,7 +10,7 @@ import MachineDetailModal from './components/MachineDetailModal';
 import EquipmentLibrary from './components/EquipmentLibrary';
 import ExerciseLibrary from './components/ExerciseLibrary';
 import GuidedSession from './components/GuidedSession';
-import { GymZone, WorkoutPlan, Exercise, Gym, GymMachine, User, Language, WorkoutDay, EquipmentItem, LibraryExercise } from './types';
+import { GymZone, WorkoutPlan, Exercise, Gym, GymMachine, User, Language, WorkoutDay, EquipmentItem, LibraryExercise, QuestionnaireAnswers } from './types';
 import { DEFAULT_GYM } from './constants';
 import { api, DEFAULT_EQUIPMENT } from './services/api';
 import { translations, getGymTranslation } from './translations';
@@ -32,7 +32,8 @@ const App: React.FC = () => {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [activeGymId, setActiveGymId] = useState<string>('default-gym');
-  
+  const [questionnaire, setQuestionnaire] = useState<QuestionnaireAnswers | null>(null);
+
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true);
@@ -60,9 +61,15 @@ const App: React.FC = () => {
         setUser(existingUser);
         setCurrentView(existingUser.role === 'admin' ? 'admin' : 'dashboard');
         loadMyPlan();
+        loadMyQuestionnaire();
       }
     });
   }, []);
+
+  const loadMyQuestionnaire = async () => {
+    const saved = await api.fetchMyQuestionnaire();
+    setQuestionnaire(saved);
+  };
 
   const loadMyPlan = async () => {
     const saved = await api.fetchMyPlan();
@@ -245,6 +252,7 @@ const App: React.FC = () => {
       setCurrentView('dashboard');
     }
     loadMyPlan();
+    loadMyQuestionnaire();
   };
 
   const handleLogout = () => {
@@ -296,6 +304,11 @@ const App: React.FC = () => {
            onStartWorkout={(dayIndex) => {
              setActiveDayIndex(dayIndex);
              setGuidedSessionOpen(true);
+           }}
+           questionnaire={questionnaire}
+           onSubmitQuestionnaire={async (answers) => {
+             await api.saveQuestionnaire(answers);
+             setQuestionnaire(answers);
            }}
            lang={lang}
          />
