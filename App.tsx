@@ -14,7 +14,7 @@ import { GymZone, WorkoutPlan, Exercise, Gym, GymMachine, User, Language, Workou
 import { DEFAULT_GYM } from './constants';
 import { api, DEFAULT_EQUIPMENT } from './services/api';
 import { translations, getGymTranslation } from './translations';
-import { ChevronDown, MapPin, Loader2, ClipboardList, ArrowLeft, BookOpen, Globe, Search, X, Settings } from 'lucide-react';
+import { ChevronDown, MapPin, Loader2, ClipboardList, BookOpen, Globe, Search, X, Settings } from 'lucide-react';
 
 type ViewState = 'landing' | 'app' | 'admin' | 'dashboard';
 
@@ -362,16 +362,6 @@ const App: React.FC = () => {
         </div>
 
         <div className="flex items-center space-x-2 sm:space-x-4">
-           {user && (
-             <button
-                onClick={() => setCurrentView('dashboard')}
-                className="hidden md:flex items-center text-xs font-bold text-slate-400 hover:text-white mr-2"
-             >
-                <ArrowLeft className="w-3 h-3 mr-1" />
-                {t.dashboard}
-             </button>
-           )}
-
            {user?.role === 'admin' && (
              <button
                 onClick={() => setCurrentView('admin')}
@@ -428,6 +418,22 @@ const App: React.FC = () => {
                </span>
              )}
            </button>
+
+           {user && (
+             <button
+                onClick={() => setCurrentView('dashboard')}
+                title="Go to your dashboard"
+                className="w-9 h-9 rounded-full overflow-hidden border-2 border-slate-700 hover:border-lime-500 transition-colors flex-shrink-0 ml-1"
+             >
+                {user.avatarUrl ? (
+                  <img src={user.avatarUrl} alt={user.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                ) : (
+                  <div className="w-full h-full bg-lime-500/20 text-lime-400 flex items-center justify-center text-xs font-bold">
+                    {user.name?.charAt(0).toUpperCase() || 'U'}
+                  </div>
+                )}
+             </button>
+           )}
         </div>
       </header>
 
