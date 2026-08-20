@@ -90,6 +90,7 @@ const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({
       videoUrl: ex.videoUrl,
       makeHarder: ex.makeHarder,
       makeEasier: ex.makeEasier,
+      libraryExerciseId: ex.id,
     };
     onAddExercise(newEx);
     setAddedIds(prev => new Set([...prev, ex.id]));

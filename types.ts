@@ -148,6 +148,7 @@ export interface Exercise {
   videoUrl?: string; // Specific video for this exercise
   makeHarder?: string; // How to make it harder variation instructions
   makeEasier?: string; // How to make it easier variation instructions
+  libraryExerciseId?: string; // Optional link back to the LibraryExercise this was added from
 }
 
 export interface LibraryExercise {

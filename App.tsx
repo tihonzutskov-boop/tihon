@@ -10,6 +10,7 @@ import MachineDetailModal from './components/MachineDetailModal';
 import EquipmentLibrary from './components/EquipmentLibrary';
 import ExerciseLibrary from './components/ExerciseLibrary';
 import PlanWizard from './components/PlanWizard';
+import GuidedSession from './components/GuidedSession';
 import { GymZone, WorkoutPlan, Exercise, Gym, GymMachine, User, Language, WorkoutDay, EquipmentItem, LibraryExercise } from './types';
 import { DEFAULT_GYM } from './constants';
 import { api, DEFAULT_EQUIPMENT } from './services/api';
@@ -86,6 +87,7 @@ const App: React.FC = () => {
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [viewingMachine, setViewingMachine] = useState<GymMachine | null>(null);
+  const [guidedSessionOpen, setGuidedSessionOpen] = useState(false);
   
   const [activeDayIndex, setActiveDayIndex] = useState(0);
   const [workoutPlan, setWorkoutPlan] = useState<WorkoutPlan>({
@@ -303,19 +305,34 @@ const App: React.FC = () => {
 
   if (currentView === 'dashboard' && user) {
      return (
-       <UserDashboard
-         user={user}
-         gyms={gyms}
-         workoutPlan={workoutPlan}
-         onLogout={handleLogout}
-         onEnterGym={handleGymSelect}
-         onStartWorkout={(dayIndex) => {
-           setActiveDayIndex(dayIndex);
-           setCurrentView('app');
-           setIsPlanOpen(true);
-         }}
-         lang={lang}
-       />
+       <>
+         <UserDashboard
+           user={user}
+           gyms={gyms}
+           workoutPlan={workoutPlan}
+           onLogout={handleLogout}
+           onEnterGym={handleGymSelect}
+           onStartWorkout={(dayIndex) => {
+             setActiveDayIndex(dayIndex);
+             setGuidedSessionOpen(true);
+           }}
+           lang={lang}
+         />
+         {guidedSessionOpen && activeGym && workoutPlan.days[activeDayIndex] && (
+           <GuidedSession
+             day={workoutPlan.days[activeDayIndex]}
+             gym={activeGym}
+             equipmentList={equipmentList}
+             libraryExercises={libraryExercises}
+             onClose={() => setGuidedSessionOpen(false)}
+             onFinish={() => {
+               const d = workoutPlan.days[activeDayIndex];
+               api.completeWorkout(d.name, d.exercises.length, d.id);
+               setGuidedSessionOpen(false);
+             }}
+           />
+         )}
+       </>
      );
   }
 
