@@ -209,6 +209,14 @@ export interface CoachingClient {
   plan: { name: string; days: WorkoutDay[] } | null;
 }
 
+export interface PlanTemplate {
+  id: string;
+  name: string;
+  goal: string;          // one of QUESTIONNAIRE_GOALS
+  daysPerWeek: string;    // '1'..'4'
+  days: WorkoutDay[];     // authored with no weekday set
+}
+
 export interface User {
   id: string;
   name: string;

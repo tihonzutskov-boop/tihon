@@ -184,7 +184,7 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
           </div>
           <h3 className="text-base font-extrabold text-white mb-2">Thanks, {userName}!</h3>
           <p className="text-xs text-slate-400 leading-relaxed max-w-sm mx-auto mb-5">
-            We've got your goals. A coach will build your personal training plan from here — it'll show up right in this spot once it's ready.
+            We've got your goals. Your plan will appear here as soon as a matching training plan is ready.
           </p>
           <div className="flex flex-wrap gap-1.5 justify-center mb-5">
             {chips.map(c => (

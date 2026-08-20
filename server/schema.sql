@@ -107,3 +107,15 @@ CREATE TABLE IF NOT EXISTS training_questionnaires (
   answers JSONB NOT NULL,
   submitted_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Reusable plan templates, categorized by goal + days/week. On questionnaire
+-- submission the server matches one of these and copies it into user_plans
+-- with weekdays assigned — no per-user hand-building.
+CREATE TABLE IF NOT EXISTS plan_templates (
+  id VARCHAR(100) PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  goal VARCHAR(100) NOT NULL,
+  days_per_week VARCHAR(10) NOT NULL,
+  days JSONB NOT NULL DEFAULT '[]',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

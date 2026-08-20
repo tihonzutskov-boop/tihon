@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { WorkoutPlan, Language, Exercise, WorkoutDay, Weekday } from '../types';
+import { WorkoutPlan, Language, Exercise, WorkoutDay, Weekday, LibraryExercise } from '../types';
 import { translations, translateMuscle, translateExerciseName, translateDayName } from '../translations';
 import { Trash2, Dumbbell, X, Calendar, Plus, Edit2, Check, ChevronRight, MapPin, Play, Download, Info, PartyPopper } from 'lucide-react';
 import { getEquipmentIcon } from '../utils/equipmentIcons';
@@ -28,6 +28,8 @@ interface ProgramListProps {
   onSetDayWeekday?: (dayId: string, weekday: Weekday | undefined) => void;
   onAddDay?: () => void;
   onRemoveDay?: (dayId: string) => void;
+  libraryExercises?: LibraryExercise[];
+  onCreateLibraryExercise?: () => void;
   lang: Language;
 }
 
@@ -48,9 +50,13 @@ const ProgramList: React.FC<ProgramListProps> = ({
   onSetDayWeekday,
   onAddDay,
   onRemoveDay,
+  libraryExercises,
+  onCreateLibraryExercise,
   lang
 }) => {
   const [isAdding, setIsAdding] = useState(false);
+  const [showLibraryPicker, setShowLibraryPicker] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedDetailExercise, setSelectedDetailExercise] = useState<Exercise | null>(null);
   const [isPlanSaved, setIsPlanSaved] = useState(false);
@@ -81,6 +87,24 @@ const ProgramList: React.FC<ProgramListProps> = ({
 
     resetForm();
     setIsAdding(false);
+  };
+
+  const addFromLibrary = (le: LibraryExercise) => {
+    onAddExercise({
+      id: `ex-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      name: le.name,
+      sets: 3,
+      reps: '8-12',
+      targetMuscle: le.targetMuscle || 'Full Body',
+      notes: le.instructions ? le.instructions.substring(0, 100) : '3 sets of 8-12 reps',
+      equipmentId: 'manual',
+      videoUrl: le.videoUrl,
+      makeHarder: le.makeHarder,
+      makeEasier: le.makeEasier,
+      libraryExerciseId: le.id,
+    });
+    setShowLibraryPicker(false);
+    setPickerSearch('');
   };
 
   const startEditing = (ex: Exercise) => {
@@ -231,14 +255,65 @@ const ProgramList: React.FC<ProgramListProps> = ({
           </div>
         )}
 
-        {!isAdding && !editingId ? (
-          <button 
-            onClick={() => { resetForm(); setIsAdding(true); }}
+        {!isAdding && !editingId && !showLibraryPicker ? (
+          <button
+            onClick={() => { libraryExercises ? setShowLibraryPicker(true) : (resetForm(), setIsAdding(true)); }}
             className="w-full py-2 border border-dashed border-slate-700 rounded-lg text-slate-500 hover:text-lime-400 hover:border-lime-500/50 transition-all text-xs font-bold flex items-center justify-center bg-slate-950/30"
           >
             <Plus className="w-3 h-3 mr-2" />
             {t.addExerciseManually}
           </button>
+        ) : showLibraryPicker ? (
+          <div className="bg-slate-800 border border-lime-500/30 rounded-lg p-3 space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
+            <input
+              autoFocus
+              type="text"
+              value={pickerSearch}
+              onChange={(e) => setPickerSearch(e.target.value)}
+              placeholder="Search exercises..."
+              className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm text-white outline-none focus:border-lime-500 transition-colors"
+            />
+            <div className="max-h-56 overflow-y-auto space-y-1.5">
+              {(libraryExercises || [])
+                .filter(le => {
+                  const q = pickerSearch.trim().toLowerCase();
+                  if (!q) return true;
+                  return le.name.toLowerCase().includes(q) || le.targetMuscle.toLowerCase().includes(q) || le.category.toLowerCase().includes(q);
+                })
+                .map(le => (
+                  <button
+                    key={le.id}
+                    type="button"
+                    onClick={() => addFromLibrary(le)}
+                    className="w-full text-left p-2 rounded-lg bg-slate-950 border border-slate-700 hover:border-lime-500/50 transition-colors"
+                  >
+                    <div className="text-xs font-bold text-white">{le.name}</div>
+                    <div className="text-[10px] text-slate-500">{le.targetMuscle} · {le.category}</div>
+                  </button>
+                ))}
+              {(libraryExercises || []).length === 0 && (
+                <p className="text-[11px] text-slate-500 text-center py-3">No exercises in the library yet.</p>
+              )}
+            </div>
+            <div className="flex space-x-2 pt-1">
+              <button
+                type="button"
+                onClick={() => { setShowLibraryPicker(false); setPickerSearch(''); }}
+                className="flex-1 py-2 text-[10px] font-bold text-slate-400 hover:text-white transition-colors uppercase tracking-wider"
+              >
+                {t.cancel}
+              </button>
+              {onCreateLibraryExercise && (
+                <button
+                  type="button"
+                  onClick={onCreateLibraryExercise}
+                  className="flex-1 py-2 bg-lime-500 text-slate-900 rounded text-[10px] font-bold uppercase tracking-wider hover:bg-lime-400 transition-colors"
+                >
+                  + New Exercise
+                </button>
+              )}
+            </div>
+          </div>
         ) : isAdding ? (
           <form onSubmit={handleManualAdd} className="bg-slate-800 border border-lime-500/30 rounded-lg p-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
             <div className="space-y-1">
@@ -301,7 +376,7 @@ const ProgramList: React.FC<ProgramListProps> = ({
           </form>
         ) : null}
 
-        {(!currentDay || currentDay.exercises.length === 0) && !isAdding ? (
+        {(!currentDay || currentDay.exercises.length === 0) && !isAdding && !showLibraryPicker ? (
           <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-4 pt-10">
             <div className="w-16 h-16 border-2 border-dashed border-slate-800 rounded-full flex items-center justify-center">
               <Dumbbell className="w-8 h-8 opacity-20" />

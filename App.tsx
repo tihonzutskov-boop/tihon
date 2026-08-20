@@ -307,8 +307,9 @@ const App: React.FC = () => {
            }}
            questionnaire={questionnaire}
            onSubmitQuestionnaire={async (answers) => {
-             await api.saveQuestionnaire(answers);
+             const { assignedPlan } = await api.saveQuestionnaire(answers);
              setQuestionnaire(answers);
+             if (assignedPlan) await loadMyPlan();
            }}
            lang={lang}
          />

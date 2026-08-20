@@ -230,6 +230,13 @@ app.get('/api/questionnaire/me', requireAuth, async (req, res) => {
   }
 });
 
+const WEEKDAY_SPREADS = {
+  '1': ['wed'],
+  '2': ['tue', 'thu'],
+  '3': ['mon', 'wed', 'fri'],
+  '4': ['mon', 'tue', 'thu', 'fri'],
+};
+
 app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
   const { answers } = req.body;
   try {
@@ -239,7 +246,37 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
        ON CONFLICT (user_id) DO UPDATE SET answers=$2, submitted_at=now()`,
       [req.user.id, JSON.stringify(answers)]
     );
-    res.json({ success: true });
+
+    // Auto-assign a matching plan template, if one exists, so the user
+    // sees a real weekly schedule immediately rather than waiting on an
+    // admin to hand-build one.
+    let assignedPlan = false;
+    const goals = answers.goals || [];
+    if (goals.length > 0) {
+      const candidates = await pool.query(
+        'SELECT * FROM plan_templates WHERE goal = ANY($1::text[])',
+        [goals]
+      );
+      let match = null;
+      for (const goal of goals) {
+        match = candidates.rows.find(t => t.goal === goal && t.days_per_week === answers.daysPerWeek)
+             || candidates.rows.find(t => t.goal === goal);
+        if (match) break;
+      }
+      if (match) {
+        const spread = WEEKDAY_SPREADS[answers.daysPerWeek] || [];
+        const days = match.days.map((d, i) => ({ ...d, id: `day-${Date.now()}-${i}`, weekday: spread[i] }));
+        await pool.query(
+          `INSERT INTO user_plans (user_id, name, days, updated_at)
+           VALUES ($1, $2, $3, now())
+           ON CONFLICT (user_id) DO UPDATE SET name=$2, days=$3, updated_at=now()`,
+          [req.user.id, match.name, JSON.stringify(days)]
+        );
+        assignedPlan = true;
+      }
+    }
+
+    res.json({ success: true, assignedPlan });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error saving questionnaire' });
@@ -276,21 +313,59 @@ app.get('/api/coaching/clients', requireAdmin, async (req, res) => {
   }
 });
 
-app.put('/api/plans/:userId', requireAdmin, async (req, res) => {
-  const { name, days } = req.body;
-  const userId = parseInt(req.params.userId, 10);
+// --- Plan Template Catalog Routes ---
+
+app.get('/api/plan-templates', requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM plan_templates ORDER BY created_at DESC');
+    res.json({
+      templates: result.rows.map(r => ({
+        id: r.id, name: r.name, goal: r.goal, daysPerWeek: r.days_per_week, days: r.days,
+      })),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error fetching plan templates' });
+  }
+});
+
+app.post('/api/plan-templates', requireAdmin, async (req, res) => {
+  const { id, name, goal, daysPerWeek, days } = req.body;
   try {
     await pool.query(
-      `INSERT INTO user_plans (user_id, name, days, updated_at)
-       VALUES ($1, $2, $3, now())
-       ON CONFLICT (user_id) DO UPDATE SET
-         name=$2, days=$3, updated_at=now()`,
-      [userId, name || 'My Training Plan', JSON.stringify(days || [])]
+      'INSERT INTO plan_templates (id, name, goal, days_per_week, days) VALUES ($1, $2, $3, $4, $5)',
+      [id, name, goal, daysPerWeek, JSON.stringify(days || [])]
     );
     res.json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Database error saving plan' });
+    res.status(500).json({ error: 'Database error creating plan template' });
+  }
+});
+
+app.put('/api/plan-templates/:id', requireAdmin, async (req, res) => {
+  const { name, goal, daysPerWeek, days } = req.body;
+  try {
+    await pool.query(
+      `INSERT INTO plan_templates (id, name, goal, days_per_week, days)
+       VALUES ($5, $1, $2, $3, $4)
+       ON CONFLICT (id) DO UPDATE SET name=$1, goal=$2, days_per_week=$3, days=$4`,
+      [name, goal, daysPerWeek, JSON.stringify(days || []), req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error saving plan template' });
+  }
+});
+
+app.delete('/api/plan-templates/:id', requireAdmin, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM plan_templates WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error deleting plan template' });
   }
 });
 

@@ -1,5 +1,5 @@
 
-import { Gym, User, LibraryExercise, EquipmentItem, GymZone, GymMachine, EquipmentType, WorkoutDay, QuestionnaireAnswers, CoachingClient } from '../types';
+import { Gym, User, LibraryExercise, EquipmentItem, GymZone, GymMachine, EquipmentType, WorkoutDay, QuestionnaireAnswers, CoachingClient, PlanTemplate } from '../types';
 import { DEFAULT_GYM } from '../constants';
 
 // Relative path: works same-origin in production (Express serves the built
@@ -277,12 +277,19 @@ export const api = {
     }
   },
 
-  async saveQuestionnaire(answers: QuestionnaireAnswers): Promise<void> {
-    await fetch(`${API_BASE}/questionnaire/me`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ answers }),
-    });
+  async saveQuestionnaire(answers: QuestionnaireAnswers): Promise<{ assignedPlan: boolean }> {
+    try {
+      const response = await fetch(`${API_BASE}/questionnaire/me`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers }),
+      });
+      if (!response.ok) return { assignedPlan: false };
+      const data = await response.json();
+      return { assignedPlan: !!data.assignedPlan };
+    } catch {
+      return { assignedPlan: false };
+    }
   },
 
   // --- ADMIN COACHING ---
@@ -298,12 +305,37 @@ export const api = {
     }
   },
 
-  async saveUserPlan(userId: number, name: string, days: WorkoutDay[]): Promise<void> {
-    await fetch(`${API_BASE}/plans/${userId}`, {
+  // --- PLAN TEMPLATE CATALOG ---
+
+  async fetchPlanTemplates(): Promise<PlanTemplate[]> {
+    try {
+      const response = await fetch(`${API_BASE}/plan-templates`);
+      if (!response.ok) return [];
+      const data = await response.json();
+      return data.templates;
+    } catch {
+      return [];
+    }
+  },
+
+  async createPlanTemplate(template: PlanTemplate): Promise<void> {
+    await fetch(`${API_BASE}/plan-templates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(template),
+    });
+  },
+
+  async savePlanTemplate(template: PlanTemplate): Promise<void> {
+    await fetch(`${API_BASE}/plan-templates/${template.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, days }),
+      body: JSON.stringify(template),
     });
+  },
+
+  async deletePlanTemplate(id: string): Promise<void> {
+    await fetch(`${API_BASE}/plan-templates/${id}`, { method: 'DELETE' });
   },
 
   // --- GYMS ---
