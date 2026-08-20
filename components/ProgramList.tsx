@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { WorkoutPlan, Language, Exercise, WorkoutDay, Weekday } from '../types';
-import { generateProgramAnalysis } from '../services/geminiService';
 import { translations, translateMuscle, translateExerciseName, translateDayName } from '../translations';
-import { Trash2, Dumbbell, BrainCircuit, X, Calendar, Plus, Edit2, Check, Sparkles, ChevronRight, MapPin, Play, Download, Info, PartyPopper } from 'lucide-react';
+import { Trash2, Dumbbell, X, Calendar, Plus, Edit2, Check, ChevronRight, MapPin, Play, Download, Info, PartyPopper } from 'lucide-react';
 import { getEquipmentIcon } from '../utils/equipmentIcons';
 import { exportWorkoutToPdf } from '../utils/pdfExporter';
 import ExerciseDetailModal from './ExerciseDetailModal';
@@ -20,7 +19,6 @@ interface ProgramListProps {
   onAddExercise: (exercise: Exercise) => void;
   onUpdateExercise: (exercise: Exercise) => void;
   onClear: () => void;
-  onStartWizard?: () => void;
   onLocateExercise: (exercise: Exercise) => void;
   onWatchVideo: (exercise: Exercise) => void;
   onClose?: () => void;
@@ -39,7 +37,6 @@ const ProgramList: React.FC<ProgramListProps> = ({
   onAddExercise,
   onUpdateExercise,
   onClear,
-  onStartWizard,
   onLocateExercise,
   onWatchVideo,
   onClose,
@@ -49,8 +46,6 @@ const ProgramList: React.FC<ProgramListProps> = ({
   onSetDayWeekday,
   lang
 }) => {
-  const [analysis, setAnalysis] = useState<string | null>(null);
-  const [analyzing, setAnalyzing] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedDetailExercise, setSelectedDetailExercise] = useState<Exercise | null>(null);
@@ -66,22 +61,6 @@ const ProgramList: React.FC<ProgramListProps> = ({
   const [formSets, setFormSets] = useState(3);
   const [formReps, setFormReps] = useState('10');
   const [formMuscle, setFormMuscle] = useState('');
-
-  useEffect(() => {
-    const analyze = async () => {
-      if (currentDay && currentDay.exercises.length > 2) {
-        setAnalyzing(true);
-        const result = await generateProgramAnalysis(currentDay.exercises, lang);
-        setAnalysis(result);
-        setAnalyzing(false);
-      } else {
-        setAnalysis(null);
-      }
-    };
-    
-    const timeoutId = setTimeout(analyze, 1500);
-    return () => clearTimeout(timeoutId);
-  }, [currentDay?.exercises.length, lang, activeDayIndex]);
 
   const handleManualAdd = (e: React.FormEvent) => {
     e.preventDefault();
@@ -174,14 +153,6 @@ const ProgramList: React.FC<ProgramListProps> = ({
             )}
           </div>
         </div>
-
-        <button 
-          onClick={onStartWizard}
-          className="w-full group bg-gradient-to-r from-lime-500/20 to-blue-500/20 border border-lime-500/30 hover:border-lime-500/60 p-3 rounded-xl transition-all flex items-center justify-center space-x-3 mb-4"
-        >
-          <Sparkles className="w-4 h-4 text-lime-400 group-hover:animate-pulse" />
-          <span className="text-xs font-black uppercase tracking-widest text-lime-400 group-hover:text-white transition-colors">{t.generateWithAi}</span>
-        </button>
 
         {/* Day Tabs */}
         {workout.days.length > 1 && (
@@ -440,21 +411,6 @@ const ProgramList: React.FC<ProgramListProps> = ({
       )}
 
       <div className="p-4 bg-slate-900 border-t border-slate-800 sticky bottom-0 z-10">
-        {analyzing ? (
-          <div className="flex items-center text-xs text-indigo-400 animate-pulse mb-3 bg-indigo-950/20 p-2 rounded">
-            <BrainCircuit className="w-4 h-4 mr-2" />
-            {t.analyzing}
-          </div>
-        ) : analysis ? (
-           <div className="bg-indigo-950/30 border border-indigo-500/20 rounded p-3 mb-3">
-             <div className="flex items-center text-xs text-indigo-300 font-semibold mb-1">
-               <BrainCircuit className="w-3 h-3 mr-1.5" />
-               {t.aiInsight}
-             </div>
-             <p className="text-xs text-indigo-200 leading-relaxed opacity-80">{analysis}</p>
-           </div>
-        ) : null}
-
         {totalExercises > 0 && (
           <div className="space-y-2">
              <button 

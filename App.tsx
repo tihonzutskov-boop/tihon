@@ -9,7 +9,6 @@ import AuthModal from './components/AuthModal';
 import MachineDetailModal from './components/MachineDetailModal';
 import EquipmentLibrary from './components/EquipmentLibrary';
 import ExerciseLibrary from './components/ExerciseLibrary';
-import PlanWizard from './components/PlanWizard';
 import GuidedSession from './components/GuidedSession';
 import { GymZone, WorkoutPlan, Exercise, Gym, GymMachine, User, Language, WorkoutDay, EquipmentItem, LibraryExercise } from './types';
 import { DEFAULT_GYM } from './constants';
@@ -85,7 +84,6 @@ const App: React.FC = () => {
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const [isPlanOpen, setIsPlanOpen] = useState(false);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
-  const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [viewingMachine, setViewingMachine] = useState<GymMachine | null>(null);
   const [guidedSessionOpen, setGuidedSessionOpen] = useState(false);
   
@@ -155,23 +153,6 @@ const App: React.FC = () => {
       targetDay.exercises = [...targetDay.exercises, uniqueEx];
       return { ...prev, days: newDays };
     });
-  };
-
-  const handleWizardFinish = (days: WorkoutDay[]) => {
-    setWorkoutPlan(prev => {
-      const updated = { ...prev, days };
-      api.savePlan(updated.name, updated.days);
-      return updated;
-    });
-    setActiveDayIndex(0);
-    setIsWizardOpen(false);
-    setIsPlanOpen(true);
-
-    const firstDay = days[0];
-    if (firstDay && firstDay.exercises.length > 0 && firstDay.exercises[0].equipmentId !== 'manual') {
-      setFocusedZoneId(firstDay.exercises[0].equipmentId);
-      setSelectedMachineId(firstDay.exercises[0].machineId || null);
-    }
   };
 
   const handleLocateExercise = (ex: Exercise) => {
@@ -465,7 +446,6 @@ const App: React.FC = () => {
             onAddExercise={addExercise}
             onUpdateExercise={updateExercise}
             onClear={clearProgram}
-            onStartWizard={() => setIsWizardOpen(true)}
             onLocateExercise={handleLocateExercise}
             onWatchVideo={handleWatchVideo}
             onClose={() => setIsPlanOpen(false)}
@@ -524,7 +504,7 @@ const App: React.FC = () => {
               selectedZoneId={selectedZone?.id || null}
               focusedZoneId={focusedZoneId}
               selectedMachineId={selectedMachineId}
-              hideSearch={isPlanOpen || isLibraryOpen || isSelectorOpen || isWizardOpen || Boolean(viewingMachine)}
+              hideSearch={isPlanOpen || isLibraryOpen || isSelectorOpen || Boolean(viewingMachine)}
               lang={lang}
             />
           </div>
@@ -554,15 +534,6 @@ const App: React.FC = () => {
              equipmentList={equipmentList}
              lang={lang}
            />
-        )}
-
-        {isWizardOpen && (
-          <PlanWizard
-            zones={zones}
-            onFinish={handleWizardFinish}
-            onCancel={() => setIsWizardOpen(false)}
-            lang={lang}
-          />
         )}
 
         {showAuthModal && (

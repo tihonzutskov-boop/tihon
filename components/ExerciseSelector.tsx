@@ -1,8 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { GymZone, AiSuggestion, Exercise, Language, EquipmentItem, LibraryExercise } from '../types';
-import { generateExercisesForEquipment } from '../services/geminiService';
+import { GymZone, Exercise, Language, EquipmentItem, LibraryExercise } from '../types';
 import { translations, getGymTranslation, translateMuscle, translateExerciseName } from '../translations';
-import { Loader2, Plus, Sparkles, Map as MapIcon, X, Dumbbell, Play, Check, ChevronDown, ChevronUp, Layers, Info } from 'lucide-react';
+import { Plus, Map as MapIcon, X, Dumbbell, Play, Check, Layers, Info } from 'lucide-react';
 import { getEquipmentIcon } from '../utils/equipmentIcons';
 import { getEquipmentIconComponent } from './EquipmentLibrary';
 import { evaluateZoneExercises, getZoneEquipmentIds } from '../utils/equipmentMatcher';
@@ -27,10 +26,6 @@ const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({
   exercises: propExercises,
   onWatchVideo
 }) => {
-  const [loading, setLoading] = useState(false);
-  const [suggestions, setSuggestions] = useState<AiSuggestion[]>([]);
-  const [goal, setGoal] = useState("Hypertrophy");
-  const [showAiGenerator, setShowAiGenerator] = useState(false);
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
   const [localExercises, setLocalExercises] = useState<LibraryExercise[]>(propExercises || DEFAULT_EXERCISES);
 
@@ -69,14 +64,6 @@ const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({
       icon: 'Dumbbell'
     });
   }, [zone, activeEquipmentList]);
-
-  const handleGenerate = async () => {
-    if (!zone) return;
-    setLoading(true);
-    const results = await generateExercisesForEquipment(zone.name, goal, lang);
-    setSuggestions(results);
-    setLoading(false);
-  };
 
   const handleAddLibraryExercise = (ex: LibraryExercise) => {
     const newEx: Exercise = {
@@ -268,97 +255,6 @@ const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({
           )}
         </div>
 
-        {/* SECTION 2: AI Workout Generator (Expandable) */}
-        <div className="border border-slate-800 rounded-2xl bg-slate-950/40 overflow-hidden">
-          <button
-            onClick={() => setShowAiGenerator(!showAiGenerator)}
-            className="w-full p-4 flex items-center justify-between bg-slate-900/60 hover:bg-slate-900 transition-colors text-left"
-          >
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-indigo-400" />
-              <div>
-                <h4 className="text-xs font-bold text-white">AI Custom Goal Generator</h4>
-                <p className="text-[10px] text-slate-400">Generate targeted sets/reps for specific fitness goals</p>
-              </div>
-            </div>
-            {showAiGenerator ? (
-              <ChevronUp className="w-4 h-4 text-slate-400" />
-            ) : (
-              <ChevronDown className="w-4 h-4 text-slate-400" />
-            )}
-          </button>
-
-          {showAiGenerator && (
-            <div className="p-4 space-y-4 border-t border-slate-800/80 bg-slate-950/60">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">{t.trainingGoal}</label>
-                <select 
-                  value={goal} 
-                  onChange={(e) => setGoal(e.target.value)}
-                  className="w-full bg-slate-900 text-white rounded-xl px-3 py-2 border border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none text-xs min-h-[40px]"
-                >
-                  <option value="Hypertrophy">{t.goalHypertrophy}</option>
-                  <option value="Strength">{t.goalMaxStrength}</option>
-                  <option value="Endurance">{t.goalCardio}</option>
-                  <option value="Rehabilitation">{t.goalRehab}</option>
-                  <option value="Explosive Power">{t.goalPower}</option>
-                </select>
-              </div>
-
-              <button
-                onClick={handleGenerate}
-                disabled={loading}
-                className="w-full bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-bold py-2.5 px-4 rounded-xl flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md text-xs min-h-[40px]"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    {t.consulting}
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4 mr-2" />
-                    Generate Goal Variations
-                  </>
-                )}
-              </button>
-
-              {suggestions.length > 0 && (
-                <div className="space-y-2.5 pt-2">
-                  {suggestions.map((sug, idx) => (
-                    <div key={`sug-${sug.name}-${idx}`} className="bg-slate-900 rounded-xl p-3 border border-slate-700/80">
-                      <div className="flex justify-between items-start mb-1.5 gap-2">
-                        <h5 className="font-semibold text-white text-xs">{translateExerciseName(sug.name, lang)}</h5>
-                        <button
-                          onClick={() => onAddExercise({
-                            id: `ex-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
-                            name: sug.name,
-                            sets: sug.sets,
-                            reps: sug.reps,
-                            targetMuscle: sug.targetMuscle,
-                            notes: sug.notes,
-                            equipmentId: zone.id
-                          })}
-                          className="bg-lime-500 hover:bg-lime-400 text-slate-950 font-bold px-2 py-1 rounded-lg text-xs flex items-center gap-1 shadow"
-                          title={t.addToProgram}
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Add</span>
-                        </button>
-                      </div>
-                      <div className="flex items-center text-[10px] text-slate-400 space-x-2 mb-1">
-                        <span className="bg-slate-950 px-1.5 py-0.5 rounded text-blue-300">{sug.sets} {t.sets}</span>
-                        <span className="bg-slate-950 px-1.5 py-0.5 rounded text-blue-300">{sug.reps} {t.reps}</span>
-                        <span className="bg-slate-950 px-1.5 py-0.5 rounded text-purple-300">{translateMuscle(sug.targetMuscle, lang)}</span>
-                      </div>
-                      <p className="text-[10px] text-slate-400 italic">"{sug.notes}"</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );

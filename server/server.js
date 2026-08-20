@@ -5,12 +5,6 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import { Pool } from 'pg';
 import {
-  generateFullProgramFromPreferences,
-  generateExercisesForEquipment,
-  generateProgramAnalysis,
-  parseFloorPlan,
-} from './gemini.js';
-import {
   verifyGoogleToken,
   signSession,
   setSessionCookie,
@@ -567,53 +561,6 @@ app.delete('/api/exercises/:id', requireAdmin, async (req, res) => {
     res.status(500).json({ error: 'Database error deleting exercise' });
   } finally {
     client?.release();
-  }
-});
-
-// --- Gemini AI Routes ---
-// The Gemini API key lives only on the server; the frontend never sees it.
-
-app.post('/api/gemini/full-program', requireAuth, async (req, res) => {
-  const { preferences, zones, lang } = req.body;
-  try {
-    const days = await generateFullProgramFromPreferences(preferences, zones, lang);
-    res.json({ days });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Gemini request failed', days: [] });
-  }
-});
-
-app.post('/api/gemini/exercises-for-equipment', requireAuth, async (req, res) => {
-  const { equipmentName, goal, lang } = req.body;
-  try {
-    const exercises = await generateExercisesForEquipment(equipmentName, goal, lang);
-    res.json({ exercises });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Gemini request failed', exercises: [] });
-  }
-});
-
-app.post('/api/gemini/program-analysis', requireAuth, async (req, res) => {
-  const { exercises, lang } = req.body;
-  try {
-    const analysis = await generateProgramAnalysis(exercises, lang);
-    res.json({ analysis });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Gemini request failed', analysis: 'Error analyzing program.' });
-  }
-});
-
-app.post('/api/gemini/parse-floor-plan', requireAuth, async (req, res) => {
-  const { base64Data, fileType } = req.body;
-  try {
-    const plan = await parseFloorPlan(base64Data, fileType);
-    res.json(plan);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Gemini request failed' });
   }
 });
 

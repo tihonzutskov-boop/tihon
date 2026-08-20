@@ -182,22 +182,6 @@ export interface WorkoutPlan {
   totalDurationMinutes: number;
 }
 
-export interface AiSuggestion {
-  name: string;
-  sets: number;
-  reps: string;
-  targetMuscle: string;
-  notes: string;
-  equipmentId?: string;
-  machineId?: string;
-  videoUrl?: string;
-}
-
-export interface AiDaySuggestion {
-  dayName: string;
-  exercises: AiSuggestion[];
-}
-
 export interface User {
   id: string;
   name: string;

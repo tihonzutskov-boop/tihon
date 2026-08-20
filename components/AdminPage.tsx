@@ -6,9 +6,8 @@ import ExerciseLibrary from './ExerciseLibrary';
 import EquipmentLibrary, { getEquipmentIconComponent } from './EquipmentLibrary';
 import { QuickAddEquipmentModal } from './QuickAddEquipmentModal';
 import { api, DEFAULT_EQUIPMENT } from '../services/api';
-import { parseFloorPlan } from '../services/geminiService';
 import { evaluateZoneExercises, getZoneEquipmentIds } from '../utils/equipmentMatcher';
-import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Eraser, Eye, EyeOff, Footprints, MapPin, LayoutTemplate, DoorOpen, Lock, Bath, Droplets, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle, Copy, ClipboardPaste, Dumbbell, Activity, Zap, Target, Layers, Box, Wind, RotateCcw, ArrowUpRight, ArrowUpLeft, ArrowDownRight, ArrowDownLeft, ArrowRight, ArrowUp, ArrowDown, MoveDown, Circle, Waves, Timer, Sparkles, Search, Video, Play, Film, Filter, X, ExternalLink, Compass, SlidersHorizontal, ChevronRight, Bookmark, BookmarkCheck, AlertTriangle, Camera } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Eraser, Eye, EyeOff, Footprints, MapPin, LayoutTemplate, DoorOpen, Lock, Bath, Droplets, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle, Copy, ClipboardPaste, Dumbbell, Activity, Zap, Target, Layers, Box, Wind, RotateCcw, ArrowUpRight, ArrowUpLeft, ArrowDownRight, ArrowDownLeft, ArrowRight, ArrowUp, ArrowDown, MoveDown, Circle, Waves, Timer, Sparkles, Search, Video, Play, Film, Filter, X, ExternalLink, Compass, SlidersHorizontal, ChevronRight, Bookmark, BookmarkCheck, Camera } from 'lucide-react';
 import { MACHINE_ICONS_LIST as MACHINE_ICONS } from '../utils/equipmentIcons';
 import { snapWallEndpoint } from '../utils/wallSnapping';
 
@@ -236,174 +235,6 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
   const [clipboard, setClipboard] = useState<{ type: 'zone' | 'machine', data: any } | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const selectedZone = zones.find(z => z.id === selectedZoneId) || null;
-
-  // AI Import State
-  const [isImporting, setIsImporting] = useState(false);
-  const [importStatus, setImportStatus] = useState<string>('');
-  const [importError, setImportError] = useState<string | null>(null);
-  const [isDragActive, setIsDragActive] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const processUploadedFile = async (file: File) => {
-    const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'application/pdf'];
-    if (!validTypes.includes(file.type)) {
-      setImportError('Unsupported file format. Please upload a PDF, PNG, or JPG file.');
-      return;
-    }
-
-    setIsImporting(true);
-    setImportError(null);
-    setImportStatus('Reading uploaded file...');
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const dataUrl = event.target?.result as string;
-        if (!dataUrl) {
-          throw new Error('Could not read file data.');
-        }
-
-        const commaIndex = dataUrl.indexOf(',');
-        if (commaIndex === -1) {
-          throw new Error('Invalid file encoding.');
-        }
-        const base64Data = dataUrl.slice(commaIndex + 1);
-
-        setImportStatus('AI is analyzing room boundaries, doors, and walls...');
-        const parsedData = await parseFloorPlan(base64Data, file.type);
-
-        if (!parsedData || parsedData.error) {
-          throw new Error(parsedData?.error || 'AI analysis failed or confidence was too low.');
-        }
-
-        setImportStatus('Converting layout coordinates & mapping equipment...');
-
-        const parsedDimensions = parsedData.dimensions || { width: 780, height: 580 };
-        const parsedWalls = (parsedDimensions.walls || []).map((w: any) => ({
-          id: w.id || `wall-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-          type: w.type === 'curved' ? 'curved' : 'straight',
-          wallType: w.wallType || 'exterior',
-          x1: Number(w.x1) || 0,
-          y1: Number(w.y1) || 0,
-          x2: Number(w.x2) || 0,
-          y2: Number(w.y2) || 0,
-          controlX: w.controlX !== undefined ? Number(w.controlX) : undefined,
-          controlY: w.controlY !== undefined ? Number(w.controlY) : undefined,
-          thickness: Number(w.thickness) || 8,
-          confidence: w.confidence || 'high'
-        }));
-
-        // Convert the parsed JSON into our app's Gym model, ensuring IDs are generated
-        const generatedGym: Gym = {
-          ...gym,
-          name: parsedData.name || gym.name,
-          dimensions: {
-            width: Number(parsedDimensions.width) || 780,
-            height: Number(parsedDimensions.height) || 580,
-            walls: parsedWalls
-          },
-          entrance: parsedData.entrance || { side: 'bottom', offset: 50, width: 80 },
-          zones: (parsedData.zones || []).map((z: any) => {
-            const zoneId = `zone-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-            return {
-              id: zoneId,
-              name: z.name || 'Training Zone',
-              type: z.type || 'Machine',
-              x: Number(z.x) || 50,
-              y: Number(z.y) || 50,
-              width: Number(z.width) || 150,
-              height: Number(z.height) || 150,
-              color: z.color || '#3b82f6',
-              icon: z.icon || 'Activity',
-              description: z.description || '',
-              machines: (z.machines || []).map((m: any) => ({
-                id: `mach-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                name: m.name || 'Machine',
-                x: Number(m.x) || 10,
-                y: Number(m.y) || 10,
-                width: Number(m.width) || 40,
-                height: Number(m.height) || 40,
-                icon: m.icon || 'Activity',
-                longDescription: m.longDescription || '',
-                status: m.status || 'active'
-              }))
-            };
-          }),
-          annexes: (parsedData.annexes || []).map((a: any) => ({
-            id: `annex-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-            x: Number(a.x) || 0,
-            y: Number(a.y) || 0,
-            width: Number(a.width) || 150,
-            height: Number(a.height) || 150
-          }))
-        };
-
-        // Reset inputs
-        setWidthInput((generatedGym.dimensions!.width / 10).toString());
-        setHeightInput((generatedGym.dimensions!.height / 10).toString());
-
-        // Update editor state (save to history so user can undo!)
-        update(generatedGym, true);
-
-        // Instantly focus on floor plan editor so the user can review and edit
-        setEditMode('room');
-        setRoomTab('dimensions');
-        setSelectedZoneId(null);
-
-        setIsImporting(false);
-        setImportStatus('');
-      } catch (err: any) {
-        console.error('Import processing error:', err);
-        setImportError(
-          err.message || 
-          'The uploaded file is too low quality or complex to be analyzed. Please upload a higher-quality, clearer version.'
-        );
-        setIsImporting(false);
-      }
-    };
-
-    reader.onerror = () => {
-      setImportError('Failed to read file. Please try again with a different image.');
-      setIsImporting(false);
-    };
-
-    reader.readAsDataURL(file);
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      await processUploadedFile(file);
-    }
-  };
-
-  const triggerImportFlow = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-    fileInputRef.current?.click();
-  };
-
-  const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setIsDragActive(true);
-    } else if (e.type === "dragleave") {
-      setIsDragActive(false);
-    }
-  };
-
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragActive(false);
-
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const file = e.dataTransfer.files[0];
-      await processUploadedFile(file);
-    }
-  };
 
   // Active view tab: 'layout' for map designer, 'equipment' for physical gear catalog, 'exercises' for exercise & video library
   const [activeTab, setActiveTab] = useState<'layout' | 'equipment' | 'exercises'>('layout');
@@ -1449,73 +1280,6 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
         </div>
       </header>
       <div className="flex flex-1 overflow-hidden relative">
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileChange}
-          accept="image/png, image/jpeg, image/jpg, application/pdf"
-          className="hidden"
-        />
-
-        {/* AI Processing Overlay */}
-        {isImporting && (
-          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex flex-col items-center justify-center p-6 animate-in fade-in duration-300">
-            <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center space-y-6 shadow-2xl">
-              <div className="relative w-20 h-20 mx-auto">
-                <div className="absolute inset-0 rounded-full border-4 border-lime-500/10 animate-pulse" />
-                <div className="absolute inset-0 rounded-full border-4 border-t-lime-500 animate-spin" />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <Sparkles className="w-8 h-8 text-lime-400 animate-pulse" />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-xl font-bold text-white">Analyzing Floor Plan</h3>
-                <p className="text-slate-400 text-sm leading-relaxed">{importStatus}</p>
-              </div>
-              <div className="text-[10px] text-slate-500 bg-slate-950 px-4 py-2.5 rounded-lg border border-slate-850/80 font-mono">
-                Detecting walls, rooms, doors & equipment...
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* AI Error Alert Modal */}
-        {importError && (
-          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
-            <div className="max-w-md w-full bg-slate-900 border border-red-500/20 rounded-2xl p-6 shadow-2xl space-y-4">
-              <div className="flex items-center space-x-3 text-red-400">
-                <div className="p-2 bg-red-500/10 rounded-lg">
-                  <X className="w-6 h-6" />
-                </div>
-                <h3 className="text-lg font-bold text-white">Import Failed</h3>
-              </div>
-              <p className="text-sm text-slate-400 leading-relaxed">
-                {importError}
-              </p>
-              <div className="flex justify-end space-x-3 pt-2">
-                <button
-                  onClick={() => {
-                    setImportError(null);
-                    if (fileInputRef.current) fileInputRef.current.value = '';
-                  }}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold transition-colors"
-                >
-                  Dismiss
-                </button>
-                <button
-                  onClick={() => {
-                    setImportError(null);
-                    triggerImportFlow();
-                  }}
-                  className="px-4 py-2 bg-lime-500 hover:bg-lime-400 text-slate-950 rounded-lg text-xs font-bold transition-colors"
-                >
-                  Try Again
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {activeTab === 'layout' ? (
             <>
               <aside className="w-72 bg-slate-900 border-r border-slate-800 flex flex-col z-10 flex-shrink-0 shadow-xl overflow-y-auto">
@@ -1531,7 +1295,6 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
                          description={selectedZone ? `Placing equipment in ${selectedZone.name}` : 'Select a zone to place equipment'}
                        />
                        <ToolButton active={editMode === 'room'} onClick={() => { setEditMode('room'); setRoomTab('dimensions'); setSelectedZoneId(null); }} icon={Scaling} label="Room & Walls" description="Boundary, wings, and walls" />
-                       <ToolButton active={false} onClick={triggerImportFlow} icon={Sparkles} label="Import from Photo" description="Auto-generate zones with AI" />
                   </div>
               </div>
             <div className="p-4 flex-1">
@@ -1571,7 +1334,6 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
                            <div className="p-3 rounded-xl border border-dashed border-slate-800 text-center">
                              <p className="text-[10px] text-slate-500">Dimensions, annexes, walls, and the entrance are all in the panel on the right — use its tabs to switch between them.</p>
                            </div>
-                           <ToolButton onClick={triggerImportFlow} icon={Sparkles} label="Import Floor Plan" description="Upload image/PDF to auto-detect" variant="highlight" />
                         </div>
                     ) : !selectedZone ? (
                         <div className="space-y-2">
@@ -2656,30 +2418,6 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
                               className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer"
                             />
                           </div>
-
-                          {/* Low Confidence warning and toggle */}
-                          {selectedWall.confidence === 'low' && (
-                            <div className="p-2 bg-orange-950/20 border border-orange-500/20 rounded-lg flex items-center justify-between gap-1">
-                              <div className="flex flex-col gap-0.5">
-                                <span className="text-[10px] font-bold text-orange-400 flex items-center">
-                                  ⚠️ AI Confidence Low
-                                </span>
-                                <span className="text-[9px] text-slate-400">Ambiguous in uploaded file</span>
-                              </div>
-                              <button
-                                onClick={() => {
-                                  snapshot();
-                                  const newWalls = (dimensions.walls || []).map(w =>
-                                    w.id === selectedWallId ? { ...w, confidence: 'high' as const } : w
-                                  );
-                                  update({ ...gym, dimensions: { ...dimensions, walls: newWalls } }, true);
-                                }}
-                                className="px-2 py-1 bg-orange-500 text-slate-950 font-bold text-[9px] rounded hover:bg-orange-400 transition-colors"
-                              >
-                                Approve
-                              </button>
-                            </div>
-                          )}
 
                           {/* Delete wall action */}
                           <button

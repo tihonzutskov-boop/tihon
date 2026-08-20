@@ -11,7 +11,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@google/genai": "^1.30.0",
     "cookie-parser": "^1.4.7",
     "express": "^4.21.2",
     "google-auth-library": "^10.0.0",
