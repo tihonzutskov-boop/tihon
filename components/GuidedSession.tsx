@@ -146,15 +146,19 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
 
       {/* Header */}
       <div className="flex-shrink-0 px-5 pt-4 pb-3 border-b border-slate-800 bg-slate-900/40">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-1">
           <button onClick={onClose} aria-label="Close session" className="p-1.5 -ml-1.5 text-slate-500 hover:text-white transition-colors">
             <X className="w-5 h-5" />
           </button>
-          <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500 uppercase tracking-wide">
-            <span>Step {current + 1} of {total}</span>
-            <span className="text-slate-700">·</span>
-            <span>{pct}%</span>
-          </div>
+          <span className="flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wider text-lime-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-lime-400" />
+            Personal Coaching
+          </span>
+        </div>
+        <div className="flex items-center justify-end gap-2 text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-3">
+          <span>Step {current + 1} of {total}</span>
+          <span className="text-slate-700">·</span>
+          <span>{pct}%</span>
         </div>
         <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden mb-3">
           <div className="h-full bg-lime-500 rounded-full transition-all duration-200" style={{ width: `${pct}%` }} />

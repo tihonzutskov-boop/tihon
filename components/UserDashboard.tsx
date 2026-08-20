@@ -146,13 +146,17 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, workoutPlan, 
         </div>
 
         {/* My Training Plan */}
-        <div className="mb-8 flex items-center justify-between">
+        <div className="mb-3 flex items-center justify-between flex-wrap gap-2">
            <h2 className="text-xl font-bold text-white flex items-center">
              <span className="w-1.5 h-1.5 rounded-full bg-lime-400 mr-2.5" />
              My training plan
            </h2>
-           <span className="text-xs text-slate-500">Built from your questionnaire</span>
+           <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-lime-400 bg-lime-500/10 border border-lime-500/25 px-2.5 py-1 rounded-full">
+             <span className="w-1.5 h-1.5 rounded-full bg-lime-400" />
+             Personal Coaching
+           </span>
         </div>
+        <p className="text-xs text-slate-500 mb-8">Every session walks you through it step by step — find the machine on the map, see what it looks like, then learn how to do it.</p>
 
         {loadingLogs ? (
           <div className="p-8 text-center text-sm text-slate-500 bg-slate-900 border border-slate-800 rounded-2xl mb-16">Loading…</div>
@@ -226,7 +230,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, workoutPlan, 
                     onClick={() => onStartWorkout(selectedEntry.dayIndex)}
                     className="w-full mt-4 py-2.5 bg-lime-500 hover:bg-lime-400 text-slate-950 font-bold rounded-xl text-xs uppercase tracking-wider transition-colors"
                   >
-                    Start session
+                    Start coaching session
                   </button>
                 )}
               </div>
