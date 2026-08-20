@@ -3,16 +3,16 @@ import { CoachingClient, PlanTemplate, WorkoutPlan, WorkoutDay, Exercise, Librar
 import { QUESTIONNAIRE_GOALS } from '../constants';
 import { api } from '../services/api';
 import ProgramList from './ProgramList';
-import { ClipboardList, Loader2, X } from 'lucide-react';
+import { ClipboardList, Loader2, X, ChevronRight, Plus } from 'lucide-react';
 
 type View = 'catalog' | 'clients';
 
 const hasScheduledPlan = (client: CoachingClient) => !!client.plan && client.plan.days.some(d => d.weekday);
 
-const blankTemplate = (): PlanTemplate => ({
+const blankTemplate = (goal: string): PlanTemplate => ({
   id: `tpl-${Date.now()}`,
   name: '',
-  goal: QUESTIONNAIRE_GOALS[0],
+  goal,
   daysPerWeek: '3',
   days: [{ id: `day-${Date.now()}`, name: 'Workout 1', exercises: [] }],
 });
@@ -35,6 +35,7 @@ const AdminCoaching: React.FC = () => {
   const [templates, setTemplates] = useState<PlanTemplate[]>([]);
   const [libraryExercises, setLibraryExercises] = useState<LibraryExercise[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [openGoals, setOpenGoals] = useState<Set<string>>(new Set());
 
   const [editingTemplate, setEditingTemplate] = useState<PlanTemplate | null>(null);
   const [activeDayIndex, setActiveDayIndex] = useState(0);
@@ -57,15 +58,22 @@ const AdminCoaching: React.FC = () => {
 
   const selectedClient = clients.find(c => c.userId === selectedUserId) || null;
 
-  const templateGroups = QUESTIONNAIRE_GOALS
-    .map(goal => ({ goal, templates: templates.filter(t => t.goal === goal) }))
-    .filter(g => g.templates.length > 0);
+  const templateGroups = QUESTIONNAIRE_GOALS.map(goal => ({ goal, templates: templates.filter(t => t.goal === goal) }));
   const clientGroups = QUESTIONNAIRE_GOALS
     .map(goal => ({ goal, clients: clients.filter(c => c.answers.goals?.includes(goal)) }))
     .filter(g => g.clients.length > 0);
 
-  const startNewTemplate = () => {
-    setEditingTemplate(blankTemplate());
+  const toggleGoal = (goal: string) => {
+    setOpenGoals(prev => {
+      const next = new Set(prev);
+      if (next.has(goal)) next.delete(goal); else next.add(goal);
+      return next;
+    });
+  };
+
+  const startNewTemplate = (goal: string) => {
+    if (!openGoals.has(goal)) toggleGoal(goal);
+    setEditingTemplate(blankTemplate(goal));
     setActiveDayIndex(0);
   };
   const editTemplate = (t: PlanTemplate) => {
@@ -160,42 +168,56 @@ const AdminCoaching: React.FC = () => {
         </div>
 
         {view === 'catalog' ? (
-          <>
-            <div className="p-3 border-b border-slate-800/40">
-              <button
-                onClick={startNewTemplate}
-                className="w-full py-2 border border-dashed border-slate-700 rounded-lg text-slate-400 hover:text-lime-400 hover:border-lime-500/50 transition-all text-xs font-bold bg-slate-950/30"
-              >
-                + New template
-              </button>
-            </div>
-            {templateGroups.length === 0 ? (
-              <div className="p-6 text-center text-xs text-slate-500">No plan templates yet.</div>
-            ) : (
-              templateGroups.map(group => (
-                <div key={group.goal} className="p-3 border-b border-slate-800/40">
-                  <h4 className="text-[10px] font-extrabold text-lime-400 uppercase tracking-widest mb-2 px-1">{group.goal}</h4>
-                  <div className="space-y-1.5">
-                    {group.templates.map(t => (
-                      <button
-                        key={t.id}
-                        onClick={() => editTemplate(t)}
-                        className={`w-full text-left p-2.5 rounded-xl border transition-colors ${
-                          editingTemplate?.id === t.id ? 'border-lime-500 bg-lime-500/5' : 'border-slate-800 bg-slate-950/40 hover:border-slate-700'
-                        }`}
-                      >
-                        <div className="text-xs font-bold text-white truncate mb-1">{t.name || 'Untitled template'}</div>
-                        <div className="flex gap-1.5">
-                          <Tag>{t.daysPerWeek}x/week</Tag>
-                          <Tag>{t.days.length} day{t.days.length !== 1 ? 's' : ''}</Tag>
-                        </div>
-                      </button>
-                    ))}
+          templateGroups.map(group => {
+            const open = openGoals.has(group.goal);
+            return (
+              <div key={group.goal} className="border-b border-slate-800/40">
+                <div
+                  onClick={() => toggleGoal(group.goal)}
+                  className="flex items-center justify-between px-3 py-3 cursor-pointer hover:bg-slate-800/20 transition-colors select-none"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <ChevronRight className={`w-3 h-3 text-slate-500 transition-transform ${open ? 'rotate-90' : ''}`} />
+                    <h4 className="text-[10px] font-extrabold text-lime-400 uppercase tracking-widest">
+                      {group.goal} <span className="text-slate-600">· {group.templates.length}</span>
+                    </h4>
                   </div>
+                  <button
+                    onClick={e => { e.stopPropagation(); startNewTemplate(group.goal); }}
+                    title={`Add a plan to ${group.goal}`}
+                    className="w-5 h-5 rounded-md border border-dashed border-slate-700 text-slate-500 hover:border-lime-500 hover:text-lime-400 hover:bg-lime-500/10 flex items-center justify-center transition-colors flex-shrink-0"
+                  >
+                    <Plus className="w-3 h-3" />
+                  </button>
                 </div>
-              ))
-            )}
-          </>
+                {open && (
+                  <div className="px-3 pb-3 space-y-1.5">
+                    {group.templates.length === 0 ? (
+                      <div className="p-3 text-center border border-dashed border-slate-800 rounded-lg">
+                        <p className="text-[10.5px] text-slate-500">No plans yet — click + to add the first one.</p>
+                      </div>
+                    ) : (
+                      group.templates.map(t => (
+                        <button
+                          key={t.id}
+                          onClick={() => editTemplate(t)}
+                          className={`w-full text-left p-2.5 rounded-xl border transition-colors ${
+                            editingTemplate?.id === t.id ? 'border-lime-500 bg-lime-500/5' : 'border-slate-800 bg-slate-950/40 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="text-xs font-bold text-white truncate mb-1">{t.name || 'Untitled template'}</div>
+                          <div className="flex gap-1.5">
+                            <Tag>{t.daysPerWeek}x/week</Tag>
+                            <Tag>{t.days.length} day{t.days.length !== 1 ? 's' : ''}</Tag>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })
         ) : (
           <>
             <div className="p-3 border-b border-slate-800/40">
