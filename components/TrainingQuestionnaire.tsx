@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ClipboardList, Check } from 'lucide-react';
 import { QuestionnaireAnswers } from '../types';
+import { QUESTIONNAIRE_GOALS } from '../constants';
 
 interface TrainingQuestionnaireProps {
   existing: QuestionnaireAnswers | null;
@@ -20,7 +21,6 @@ const STEP_LABELS: Record<StepKey, string> = {
   health: 'Health & safety',
 };
 
-const GOALS = ['Weight loss', 'Muscle gain', 'General fitness', 'Endurance'];
 const LEVELS = ['Beginner', 'Intermediate', 'Advanced'];
 const LEVELS_ENABLED = ['Beginner'];
 const DAYS = ['1', '2', '3', '4'];
@@ -269,7 +269,7 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
           <div>
             <FieldLabel required hint="choose all that apply">Primary goal</FieldLabel>
             <div className="flex flex-wrap gap-2">
-              {GOALS.map(opt => <Pill key={opt} label={opt} selected={form.goals.includes(opt)} onClick={() => toggleMulti('goals', opt)} />)}
+              {QUESTIONNAIRE_GOALS.map(opt => <Pill key={opt} label={opt} selected={form.goals.includes(opt)} onClick={() => toggleMulti('goals', opt)} />)}
             </div>
           </div>
           <div>

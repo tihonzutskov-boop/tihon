@@ -246,6 +246,54 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
   }
 });
 
+// --- Admin Coaching Routes ---
+
+app.get('/api/coaching/clients', requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT u.id AS user_id, u.name, u.email, u.avatar_url,
+             tq.answers, tq.submitted_at,
+             up.name AS plan_name, up.days AS plan_days
+      FROM training_questionnaires tq
+      JOIN users u ON u.id = tq.user_id
+      LEFT JOIN user_plans up ON up.user_id = tq.user_id
+      ORDER BY tq.submitted_at DESC
+    `);
+    res.json({
+      clients: result.rows.map(r => ({
+        userId: r.user_id,
+        name: r.name,
+        email: r.email,
+        avatarUrl: r.avatar_url,
+        answers: r.answers,
+        submittedAt: r.submitted_at,
+        plan: r.plan_days ? { name: r.plan_name, days: r.plan_days } : null,
+      })),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error fetching clients' });
+  }
+});
+
+app.put('/api/plans/:userId', requireAdmin, async (req, res) => {
+  const { name, days } = req.body;
+  const userId = parseInt(req.params.userId, 10);
+  try {
+    await pool.query(
+      `INSERT INTO user_plans (user_id, name, days, updated_at)
+       VALUES ($1, $2, $3, now())
+       ON CONFLICT (user_id) DO UPDATE SET
+         name=$2, days=$3, updated_at=now()`,
+      [userId, name || 'My Training Plan', JSON.stringify(days || [])]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error saving plan' });
+  }
+});
+
 // --- Gym Routes ---
 
 // GET All Gyms (with nested zones/annexes)

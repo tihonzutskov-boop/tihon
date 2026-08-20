@@ -1,6 +1,10 @@
 
 import { EquipmentType, GymZone, Gym } from './types';
 
+// Shared with the admin Coaching roster so the questionnaire's goal
+// options and the admin's grouping-by-goal can never drift apart.
+export const QUESTIONNAIRE_GOALS = ['Weight loss', 'Muscle gain', 'General fitness', 'Endurance'];
+
 // Mock Data
 // Coordinates are RELATIVE to the gym floor top-left (0,0)
 const DEFAULT_ZONES: GymZone[] = [

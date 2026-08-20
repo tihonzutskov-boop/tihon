@@ -4,10 +4,11 @@ import { GymZone, EquipmentType, Gym, GymDimensions, GymEntrance, GymAnnex, GymM
 import GymMap from './GymMap';
 import ExerciseLibrary from './ExerciseLibrary';
 import EquipmentLibrary, { getEquipmentIconComponent } from './EquipmentLibrary';
+import AdminCoaching from './AdminCoaching';
 import { QuickAddEquipmentModal } from './QuickAddEquipmentModal';
 import { api, DEFAULT_EQUIPMENT } from '../services/api';
 import { evaluateZoneExercises, getZoneEquipmentIds } from '../utils/equipmentMatcher';
-import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Eraser, Eye, EyeOff, Footprints, MapPin, LayoutTemplate, DoorOpen, Lock, Bath, Droplets, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle, Copy, ClipboardPaste, Dumbbell, Activity, Zap, Target, Layers, Box, Wind, RotateCcw, ArrowUpRight, ArrowUpLeft, ArrowDownRight, ArrowDownLeft, ArrowRight, ArrowUp, ArrowDown, MoveDown, Circle, Waves, Timer, Sparkles, Search, Video, Play, Film, Filter, X, ExternalLink, Compass, SlidersHorizontal, ChevronRight, Bookmark, BookmarkCheck, Camera } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Eraser, Eye, EyeOff, Footprints, MapPin, LayoutTemplate, DoorOpen, Lock, Bath, Droplets, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle, Copy, ClipboardPaste, Dumbbell, Activity, Zap, Target, Layers, Box, Wind, RotateCcw, ArrowUpRight, ArrowUpLeft, ArrowDownRight, ArrowDownLeft, ArrowRight, ArrowUp, ArrowDown, MoveDown, Circle, Waves, Timer, Sparkles, Search, Video, Play, Film, Filter, X, ExternalLink, Compass, SlidersHorizontal, ChevronRight, Bookmark, BookmarkCheck, Camera, Users } from 'lucide-react';
 import { MACHINE_ICONS_LIST as MACHINE_ICONS } from '../utils/equipmentIcons';
 import { snapWallEndpoint } from '../utils/wallSnapping';
 
@@ -237,7 +238,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
   const selectedZone = zones.find(z => z.id === selectedZoneId) || null;
 
   // Active view tab: 'layout' for map designer, 'equipment' for physical gear catalog, 'exercises' for exercise & video library
-  const [activeTab, setActiveTab] = useState<'layout' | 'equipment' | 'exercises'>('layout');
+  const [activeTab, setActiveTab] = useState<'layout' | 'equipment' | 'exercises' | 'coaching'>('layout');
 
   // Equipment Library catalog state
   const [equipmentList, setEquipmentList] = useState<EquipmentItem[]>(DEFAULT_EQUIPMENT);
@@ -1252,6 +1253,17 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
             >
               <Dumbbell className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
               Exercise Library
+            </button>
+            <button
+              onClick={() => setActiveTab('coaching')}
+              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
+                activeTab === 'coaching'
+                  ? 'bg-slate-800 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-300'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5 text-lime-400" />
+              Coaching
             </button>
           </div>
         </div>
@@ -2456,11 +2468,13 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
             onEquipmentChange={setEquipmentList}
             onGymChange={(updated) => update(updated, true)}
           />
-        ) : (
+        ) : activeTab === 'exercises' ? (
           <ExerciseLibrary
             gym={gym}
             equipmentList={equipmentList}
           />
+        ) : (
+          <AdminCoaching />
         )}
 
         {/* Quick Add Equipment Modal (Minimal Photo-only flow) */}

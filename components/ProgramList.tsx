@@ -26,6 +26,8 @@ interface ProgramListProps {
   onCompleteWorkout?: (dayName: string, exerciseCount: number, planDayId?: string) => Promise<void>;
   onSavePlan?: () => void;
   onSetDayWeekday?: (dayId: string, weekday: Weekday | undefined) => void;
+  onAddDay?: () => void;
+  onRemoveDay?: (dayId: string) => void;
   lang: Language;
 }
 
@@ -44,6 +46,8 @@ const ProgramList: React.FC<ProgramListProps> = ({
   onCompleteWorkout,
   onSavePlan,
   onSetDayWeekday,
+  onAddDay,
+  onRemoveDay,
   lang
 }) => {
   const [isAdding, setIsAdding] = useState(false);
@@ -155,22 +159,43 @@ const ProgramList: React.FC<ProgramListProps> = ({
         </div>
 
         {/* Day Tabs */}
-        {workout.days.length > 1 && (
-          <div className="flex overflow-x-auto scrollbar-hide space-x-2 pb-2">
+        {(workout.days.length > 1 || onAddDay) && (
+          <div className="flex items-center overflow-x-auto scrollbar-hide space-x-2 pb-2">
             {workout.days.map((day, idx) => (
-              <button
-                key={`${day.id}-${idx}`}
-                onClick={() => setActiveDayIndex(idx)}
-                className={`
-                  flex-shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border
-                  ${activeDayIndex === idx 
-                    ? 'bg-lime-500 border-lime-500 text-slate-950' 
-                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'}
-                `}
-              >
-                {t.day} {idx + 1}
-              </button>
+              <div key={`${day.id}-${idx}`} className="flex-shrink-0 flex items-center">
+                <button
+                  onClick={() => setActiveDayIndex(idx)}
+                  className={`
+                    px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border
+                    ${activeDayIndex === idx
+                      ? 'bg-lime-500 border-lime-500 text-slate-950'
+                      : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'}
+                  `}
+                >
+                  {t.day} {idx + 1}
+                </button>
+                {onRemoveDay && workout.days.length > 1 && (
+                  <button
+                    onClick={() => onRemoveDay(day.id)}
+                    className="ml-1 p-1 text-slate-600 hover:text-red-400 transition-colors"
+                    title="Remove day"
+                    aria-label="Remove day"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
             ))}
+            {onAddDay && (
+              <button
+                onClick={onAddDay}
+                className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg border border-dashed border-slate-700 text-slate-500 hover:border-lime-500 hover:text-lime-400 transition-colors"
+                title="Add day"
+                aria-label="Add day"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         )}
 
