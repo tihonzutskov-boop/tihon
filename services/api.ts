@@ -1,5 +1,5 @@
 
-import { Gym, User, LibraryExercise, EquipmentItem, GymZone, GymMachine, EquipmentType, WorkoutDay, QuestionnaireAnswers, CoachingClient, PlanTemplate } from '../types';
+import { Gym, User, LibraryExercise, EquipmentItem, GymZone, GymMachine, EquipmentType, WorkoutDay, QuestionnaireAnswers, PlanTemplate } from '../types';
 import { DEFAULT_GYM } from '../constants';
 
 // Relative path: works same-origin in production (Express serves the built
@@ -289,19 +289,6 @@ export const api = {
       return { assignedPlan: !!data.assignedPlan };
     } catch {
       return { assignedPlan: false };
-    }
-  },
-
-  // --- ADMIN COACHING ---
-
-  async fetchCoachingClients(): Promise<CoachingClient[]> {
-    try {
-      const response = await fetch(`${API_BASE}/coaching/clients`);
-      if (!response.ok) return [];
-      const data = await response.json();
-      return data.clients;
-    } catch {
-      return [];
     }
   },
 

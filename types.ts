@@ -199,16 +199,6 @@ export interface QuestionnaireAnswers {
   consent?: boolean;          // only present if injuries disclosed
 }
 
-export interface CoachingClient {
-  userId: number;
-  name: string;
-  email: string;
-  avatarUrl?: string;
-  answers: QuestionnaireAnswers;
-  submittedAt: string;
-  plan: { name: string; days: WorkoutDay[] } | null;
-}
-
 export interface PlanTemplate {
   id: string;
   name: string;
