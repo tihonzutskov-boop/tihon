@@ -136,6 +136,12 @@ export interface Gym {
   walls?: GymWall[];
 }
 
+export interface SetDetail {
+  reps: string;
+  weight: string;   // kg
+  restSec: number;
+}
+
 export interface Exercise {
   id: string;
   name: string;
@@ -149,6 +155,16 @@ export interface Exercise {
   makeHarder?: string; // How to make it harder variation instructions
   makeEasier?: string; // How to make it easier variation instructions
   libraryExerciseId?: string; // Optional link back to the LibraryExercise this was added from
+  setDetails?: SetDetail[]; // Optional per-set reps/weight/rest, authored in the session builder; sets/reps above stay in sync as a flat summary for consumers that don't read this
+}
+
+export type SessionBlockType = 'single' | 'superset' | 'circuit' | 'warmup' | 'cooldown';
+
+export interface SessionBlock {
+  id: string;
+  type: SessionBlockType;
+  title?: string; // editable name, shown for superset/circuit
+  exerciseIds: string[]; // references Exercise.id within the same WorkoutDay.exercises
 }
 
 export interface LibraryExercise {
@@ -173,6 +189,7 @@ export interface WorkoutDay {
   name: string;
   exercises: Exercise[];
   weekday?: Weekday;
+  blocks?: SessionBlock[]; // optional grouping/authoring metadata built by the session builder; exercises[] stays the flat source of truth so existing consumers (GuidedSession, self-service builder) work unchanged when this is absent
 }
 
 export interface WorkoutPlan {
@@ -204,6 +221,7 @@ export interface PlanTemplate {
   name: string;
   goal: string;          // one of QUESTIONNAIRE_GOALS
   daysPerWeek: string;    // '1'..'4'
+  durationMin: number;    // target single-session length in minutes (e.g. 45), set by the admin
   days: WorkoutDay[];     // authored with no weekday set
 }
 

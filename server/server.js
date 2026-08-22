@@ -290,7 +290,7 @@ app.get('/api/plan-templates', requireAdmin, async (req, res) => {
     const result = await pool.query('SELECT * FROM plan_templates ORDER BY created_at DESC');
     res.json({
       templates: result.rows.map(r => ({
-        id: r.id, name: r.name, goal: r.goal, daysPerWeek: r.days_per_week, days: r.days,
+        id: r.id, name: r.name, goal: r.goal, daysPerWeek: r.days_per_week, durationMin: r.duration_min, days: r.days,
       })),
     });
   } catch (err) {
@@ -300,11 +300,11 @@ app.get('/api/plan-templates', requireAdmin, async (req, res) => {
 });
 
 app.post('/api/plan-templates', requireAdmin, async (req, res) => {
-  const { id, name, goal, daysPerWeek, days } = req.body;
+  const { id, name, goal, daysPerWeek, durationMin, days } = req.body;
   try {
     await pool.query(
-      'INSERT INTO plan_templates (id, name, goal, days_per_week, days) VALUES ($1, $2, $3, $4, $5)',
-      [id, name, goal, daysPerWeek, JSON.stringify(days || [])]
+      'INSERT INTO plan_templates (id, name, goal, days_per_week, duration_min, days) VALUES ($1, $2, $3, $4, $5, $6)',
+      [id, name, goal, daysPerWeek, durationMin || 45, JSON.stringify(days || [])]
     );
     res.json({ success: true });
   } catch (err) {
@@ -314,13 +314,13 @@ app.post('/api/plan-templates', requireAdmin, async (req, res) => {
 });
 
 app.put('/api/plan-templates/:id', requireAdmin, async (req, res) => {
-  const { name, goal, daysPerWeek, days } = req.body;
+  const { name, goal, daysPerWeek, durationMin, days } = req.body;
   try {
     await pool.query(
-      `INSERT INTO plan_templates (id, name, goal, days_per_week, days)
-       VALUES ($5, $1, $2, $3, $4)
-       ON CONFLICT (id) DO UPDATE SET name=$1, goal=$2, days_per_week=$3, days=$4`,
-      [name, goal, daysPerWeek, JSON.stringify(days || []), req.params.id]
+      `INSERT INTO plan_templates (id, name, goal, days_per_week, duration_min, days)
+       VALUES ($6, $1, $2, $3, $4, $5)
+       ON CONFLICT (id) DO UPDATE SET name=$1, goal=$2, days_per_week=$3, duration_min=$4, days=$5`,
+      [name, goal, daysPerWeek, durationMin || 45, JSON.stringify(days || []), req.params.id]
     );
     res.json({ success: true });
   } catch (err) {

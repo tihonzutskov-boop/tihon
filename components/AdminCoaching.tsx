@@ -1,15 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { PlanTemplate, WorkoutPlan, WorkoutDay, Exercise, LibraryExercise } from '../types';
+import { PlanTemplate, WorkoutDay, LibraryExercise } from '../types';
 import { QUESTIONNAIRE_GOALS } from '../constants';
 import { api } from '../services/api';
-import ProgramList from './ProgramList';
+import SessionBuilder from './SessionBuilder';
 import { ClipboardList, Loader2, X, ChevronRight, Plus } from 'lucide-react';
+
+const DURATIONS = [30, 45, 60, 90];
 
 const blankTemplate = (goal: string): PlanTemplate => ({
   id: `tpl-${Date.now()}`,
   name: '',
   goal,
   daysPerWeek: '3',
+  durationMin: 45,
   days: [{ id: `day-${Date.now()}`, name: 'Workout 1', exercises: [] }],
 });
 
@@ -60,19 +63,11 @@ const AdminCoaching: React.FC = () => {
   };
   const closeTemplateEditor = () => setEditingTemplate(null);
 
-  const asWorkoutPlan = (t: PlanTemplate): WorkoutPlan => ({ id: t.id, name: t.name, days: t.days, totalDurationMinutes: 0 });
-
   const updateDays = (updater: (days: WorkoutDay[]) => WorkoutDay[]) => {
     setEditingTemplate(prev => (prev ? { ...prev, days: updater(prev.days) } : prev));
   };
-  const onAddExercise = (exercise: Exercise) => {
-    updateDays(days => days.map((d, i) => (i === activeDayIndex ? { ...d, exercises: [...d.exercises, exercise] } : d)));
-  };
-  const onRemoveExercise = (id: string) => {
-    updateDays(days => days.map((d, i) => (i === activeDayIndex ? { ...d, exercises: d.exercises.filter(e => e.id !== id) } : d)));
-  };
-  const onUpdateExercise = (exercise: Exercise) => {
-    updateDays(days => days.map((d, i) => (i === activeDayIndex ? { ...d, exercises: d.exercises.map(e => (e.id === exercise.id ? exercise : e)) } : d)));
+  const onChangeDay = (day: WorkoutDay) => {
+    updateDays(days => days.map((d, i) => (i === activeDayIndex ? day : d)));
   };
   const onAddDay = () => {
     updateDays(days => [...days, { id: `day-${Date.now()}`, name: `Workout ${days.length + 1}`, exercises: [] }]);
@@ -169,9 +164,9 @@ const AdminCoaching: React.FC = () => {
                         }`}
                       >
                         <div className="text-xs font-bold text-white truncate mb-1">{t.name || 'Untitled template'}</div>
-                        <div className="flex gap-1.5">
+                        <div className="flex gap-1.5 flex-wrap">
                           <Tag>{t.daysPerWeek}x/week</Tag>
-                          <Tag>{t.days.length} day{t.days.length !== 1 ? 's' : ''}</Tag>
+                          <Tag>{t.durationMin} min</Tag>
                         </div>
                       </button>
                     ))
@@ -192,8 +187,8 @@ const AdminCoaching: React.FC = () => {
         ) : (
           <div className="max-w-3xl">
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 mb-6">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="col-span-2">
                   <label className="block text-[9.5px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Name</label>
                   <input
                     value={editingTemplate.name}
@@ -222,27 +217,57 @@ const AdminCoaching: React.FC = () => {
                     {['1', '2', '3', '4'].map(d => <option key={d} value={d}>{d}</option>)}
                   </select>
                 </div>
+                <div>
+                  <label className="block text-[9.5px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Session duration</label>
+                  <select
+                    value={editingTemplate.durationMin}
+                    onChange={e => setEditingTemplate({ ...editingTemplate, durationMin: parseInt(e.target.value, 10) })}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold text-white focus:outline-none focus:border-lime-500"
+                  >
+                    {DURATIONS.map(d => <option key={d} value={d}>{d} min</option>)}
+                  </select>
+                </div>
               </div>
             </div>
 
+            <div className="flex items-center gap-2 mb-3 overflow-x-auto">
+              {editingTemplate.days.map((d, idx) => (
+                <div key={d.id} className="flex-shrink-0 flex items-center">
+                  <button
+                    onClick={() => setActiveDayIndex(idx)}
+                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border ${
+                      activeDayIndex === idx ? 'bg-lime-500 border-lime-500 text-slate-950' : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'
+                    }`}
+                  >
+                    Day {idx + 1}
+                  </button>
+                  {editingTemplate.days.length > 1 && (
+                    <button onClick={() => onRemoveDay(d.id)} className="ml-1 p-1 text-slate-600 hover:text-red-400 transition-colors" title="Remove day" aria-label="Remove day">
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button
+                onClick={onAddDay}
+                className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg border border-dashed border-slate-700 text-slate-500 hover:border-lime-500 hover:text-lime-400 transition-colors"
+                title="Add day"
+                aria-label="Add day"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
             <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden h-[600px]">
-              <ProgramList
-                workout={asWorkoutPlan(editingTemplate)}
-                activeDayIndex={activeDayIndex}
-                setActiveDayIndex={setActiveDayIndex}
-                onAddExercise={onAddExercise}
-                onRemoveExercise={onRemoveExercise}
-                onUpdateExercise={onUpdateExercise}
-                onClear={onClear}
-                onLocateExercise={() => {}}
-                onWatchVideo={exercise => { if (exercise.videoUrl) window.open(exercise.videoUrl, '_blank'); }}
-                onAddDay={onAddDay}
-                onRemoveDay={onRemoveDay}
-                onSavePlan={onSavePlan}
-                onClose={closeTemplateEditor}
+              <SessionBuilder
+                day={editingTemplate.days[activeDayIndex] || editingTemplate.days[0]}
+                onChange={onChangeDay}
+                targetDurationMin={editingTemplate.durationMin}
                 libraryExercises={libraryExercises}
                 onCreateLibraryExercise={() => setShowCreateExercise(true)}
-                lang="en"
+                onSave={onSavePlan}
+                onClear={onClear}
+                onClose={closeTemplateEditor}
               />
             </div>
           </div>

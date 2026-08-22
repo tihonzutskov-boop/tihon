@@ -119,3 +119,7 @@ CREATE TABLE IF NOT EXISTS plan_templates (
   days JSONB NOT NULL DEFAULT '[]',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Target single-session length in minutes, set by the admin per template and
+-- enforced as a hard cap in the session builder (existing rows default to 45).
+ALTER TABLE plan_templates ADD COLUMN IF NOT EXISTS duration_min INTEGER NOT NULL DEFAULT 45;

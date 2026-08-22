@@ -28,6 +28,15 @@ interface SetRow {
 
 const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, libraryExercises, onClose, onFinish }) => {
   const exercises = day.exercises;
+  const blockTypeByExerciseId = useMemo(() => {
+    const map: Record<string, string> = {};
+    (day.blocks || []).forEach(b => {
+      if (b.type === 'warmup' || b.type === 'cooldown') {
+        b.exerciseIds.forEach(id => { map[id] = b.type; });
+      }
+    });
+    return map;
+  }, [day.blocks]);
   const total = exercises.length * 3;
   const [current, setCurrent] = useState(0);
   const [setState, setSetState] = useState<Record<number, SetRow[]>>({});
@@ -51,6 +60,9 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   const rows: SetRow[] = useMemo(() => {
     if (!exercise) return [];
     if (setState[exIdx]) return setState[exIdx];
+    if (exercise.setDetails && exercise.setDetails.length > 0) {
+      return exercise.setDetails.map(s => ({ reps: s.reps || '', duration: '', weight: s.weight || '', done: false }));
+    }
     return Array.from({ length: Math.max(exercise.sets || 1, 1) }, () => ({
       reps: exercise.reps || '',
       duration: '',
@@ -346,6 +358,13 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                       {doneEx ? <Check className="w-3 h-3" /> : i + 1}
                     </span>
                     <span>{e.name}</span>
+                    {blockTypeByExerciseId[e.id] && (
+                      <span className={`text-[8.5px] font-extrabold uppercase tracking-wide px-1.5 py-0.5 rounded-full ${
+                        blockTypeByExerciseId[e.id] === 'warmup' ? 'bg-amber-500/15 text-amber-400' : 'bg-sky-500/15 text-sky-400'
+                      }`}>
+                        {blockTypeByExerciseId[e.id]}
+                      </span>
+                    )}
                   </div>
                   <div className="flex gap-1.5 ml-7">
                     {STAGES.map((s, si) => {
