@@ -194,12 +194,12 @@ const CATEGORY_TRANSLATIONS: Record<Language, Record<string, string>> = {
 
 // Left-edge / badge color per target muscle group, so exercises are
 // recognizable by muscle at a glance across the grid and detail view.
-const MUSCLE_COLORS: Record<string, string> = {
+export const MUSCLE_COLORS: Record<string, string> = {
   'Chest': '#f87171', 'Back': '#60a5fa', 'Back/Full Body': '#60a5fa', 'Shoulders': '#fbbf24',
   'Legs/Quads': '#34d399', 'Glutes': '#34d399', 'Glutes/Quads': '#34d399',
   'Arms/Biceps': '#c084fc', 'Arms/Triceps': '#c084fc', 'Cardio': '#22d3ee', 'Core': '#fb923c', 'Full Body': '#a3e635'
 };
-const muscleColor = (m: string) => MUSCLE_COLORS[m] || '#94a3b8';
+export const muscleColor = (m: string) => MUSCLE_COLORS[m] || '#94a3b8';
 
 // Searchable "type to filter, or create a new one" combobox used for the
 // Target Muscle and Category fields in the add/edit form — free text isn't
