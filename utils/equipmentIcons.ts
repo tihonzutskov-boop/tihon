@@ -1,22 +1,10 @@
 import React from 'react';
-import { 
-  Dumbbell, 
-  Footprints, 
-  Bike, 
-  Waves, 
-  Weight, 
-  BicepsFlexed, 
-  Sliders, 
-  Disc, 
-  HeartPulse, 
-  Flame, 
-  Gauge, 
-  Shield, 
-  Activity, 
-  Zap, 
-  Target, 
-  Box, 
-  Layers, 
+import {
+  Activity,
+  Zap,
+  Target,
+  Box,
+  Layers,
   Timer,
   DoorOpen,
   Lock,
@@ -35,6 +23,22 @@ import {
   Sparkles,
   LucideProps
 } from 'lucide-react';
+// Hand-drawn pixel-art set for the actual machine/equipment icons (see that
+// file for why: no open pixel-art icon set has real gym equipment icons).
+import {
+  Dumbbell,
+  Footprints,
+  Bike,
+  Waves,
+  Weight,
+  BicepsFlexed,
+  Sliders,
+  Disc,
+  HeartPulse,
+  Flame,
+  Gauge,
+  Shield,
+} from '../components/icons/PixelMachineIcons';
 import { EquipmentType, GymZone, GymMachine } from '../types';
 
 export const ICON_MAP: Record<string, React.FC<LucideProps>> = {
