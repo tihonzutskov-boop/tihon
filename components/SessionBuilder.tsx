@@ -33,9 +33,16 @@ const blankExercise = (): Exercise => ({
   setDetails: [blankSet(), blankSet(), blankSet()],
 });
 
+// A library exercise counts as cardio if its category or target muscle says so
+// (matches the "Cardio / Aerobic" category and "Cardio" muscle used in the library).
+const isCardioCategory = (le: LibraryExercise): boolean =>
+  /cardio/i.test(le.category || '') || /cardio/i.test(le.targetMuscle || '');
+
 // Same heuristic used across the app's other duration estimates: 30 sec of
-// work per 8 reps, plus each set's own rest.
+// work per 8 reps, plus each set's own rest. Cardio exercises skip all that
+// and just use the duration the admin set directly.
 const exerciseMinutes = (ex: Exercise): number => {
+  if (ex.isCardio) return ex.cardioMinutes || 0;
   const sets = ex.setDetails && ex.setDetails.length > 0 ? ex.setDetails : [{ reps: String(ex.reps || 8), weight: '', restSec: 60 }];
   const totalSec = sets.reduce((a, s) => {
     const reps = parseFloat(s.reps) || 8;
@@ -45,14 +52,19 @@ const exerciseMinutes = (ex: Exercise): number => {
 };
 
 const exerciseVolume = (ex: Exercise): number => {
+  if (ex.isCardio) return 0;
   const sets = ex.setDetails || [];
   return sets.reduce((a, s) => a + (parseFloat(s.reps) || 0) * (parseFloat(s.weight) || 0), 0);
 };
 
 const exerciseReps = (ex: Exercise): number => {
+  if (ex.isCardio) return 0;
   const sets = ex.setDetails || [];
   return sets.reduce((a, s) => a + (parseFloat(s.reps) || 0), 0);
 };
+
+const exerciseSummary = (ex: Exercise): string =>
+  ex.isCardio ? `${ex.cardioMinutes || 0} min` : `${ex.setDetails?.length || 0} sets · ${exerciseVolume(ex).toLocaleString()} kg`;
 
 // Days created before blocks existed (or edited outside the builder) have no
 // `blocks` array — treat every exercise as its own Single Exercise block.
@@ -159,6 +171,8 @@ const SessionBuilder: React.FC<SessionBuilderProps> = ({
     updateExercise(exId, { setDetails: sets, sets: sets.length, reps: sets[0]?.reps || '' });
   };
   const pickExercise = (exId: string, le: LibraryExercise) => {
+    const cardio = isCardioCategory(le);
+    const cardioMinutes = exercisesById.get(exId)?.cardioMinutes || 20;
     updateExercise(exId, {
       name: le.name,
       targetMuscle: le.targetMuscle || 'Full Body',
@@ -167,9 +181,25 @@ const SessionBuilder: React.FC<SessionBuilderProps> = ({
       makeHarder: le.makeHarder,
       makeEasier: le.makeEasier,
       libraryExerciseId: le.id,
+      isCardio: cardio,
+      ...(cardio ? { cardioMinutes, sets: 1, reps: `${cardioMinutes} min`, setDetails: undefined } : {}),
     });
     setOpenComboFor(null);
     setComboSearch('');
+  };
+  const toggleCardioMode = (exId: string) => {
+    const ex = exercisesById.get(exId);
+    if (!ex) return;
+    if (ex.isCardio) {
+      updateExercise(exId, { isCardio: false, sets: 3, reps: '', setDetails: [blankSet(), blankSet(), blankSet()] });
+    } else {
+      const mins = ex.cardioMinutes || 20;
+      updateExercise(exId, { isCardio: true, cardioMinutes: mins, sets: 1, reps: `${mins} min`, setDetails: undefined });
+    }
+  };
+  const updateCardioMinutes = (exId: string, value: string) => {
+    const mins = Math.max(0, parseInt(value, 10) || 0);
+    updateExercise(exId, { cardioMinutes: mins, reps: `${mins} min` });
   };
 
   const filteredLibrary = libraryExercises.filter(le => {
@@ -226,66 +256,95 @@ const SessionBuilder: React.FC<SessionBuilderProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 mb-2">
+        <div className="flex items-center justify-between mb-2">
+          {ex.isCardio ? (
+            <span className="text-[9px] font-extrabold uppercase tracking-wide px-2 py-1 rounded-full bg-sky-500/15 text-sky-400">Cardio</span>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => changeSetCount(exId, -1)}
+                className="w-6 h-6 rounded-md border border-slate-700 bg-slate-800 text-slate-400 hover:border-lime-500 hover:text-lime-400 flex items-center justify-center transition-colors"
+              >
+                <Minus className="w-3 h-3" />
+              </button>
+              <span className="text-[11px] font-extrabold text-slate-300 min-w-[54px]">{sets.length} Sets</span>
+              <button
+                type="button"
+                onClick={() => changeSetCount(exId, 1)}
+                className="w-6 h-6 rounded-md border border-slate-700 bg-slate-800 text-slate-400 hover:border-lime-500 hover:text-lime-400 flex items-center justify-center transition-colors"
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+            </div>
+          )}
           <button
             type="button"
-            onClick={() => changeSetCount(exId, -1)}
-            className="w-6 h-6 rounded-md border border-slate-700 bg-slate-800 text-slate-400 hover:border-lime-500 hover:text-lime-400 flex items-center justify-center transition-colors"
+            onClick={() => toggleCardioMode(exId)}
+            className="text-[10px] font-bold text-slate-500 hover:text-lime-400 transition-colors underline"
           >
-            <Minus className="w-3 h-3" />
-          </button>
-          <span className="text-[11px] font-extrabold text-slate-300 min-w-[54px]">{sets.length} Sets</span>
-          <button
-            type="button"
-            onClick={() => changeSetCount(exId, 1)}
-            className="w-6 h-6 rounded-md border border-slate-700 bg-slate-800 text-slate-400 hover:border-lime-500 hover:text-lime-400 flex items-center justify-center transition-colors"
-          >
-            <Plus className="w-3 h-3" />
+            {ex.isCardio ? 'Switch to sets/reps' : 'Track as cardio (duration only)'}
           </button>
         </div>
 
-        <table className="w-full border-collapse">
-          <thead>
-            <tr className="text-[9px] font-extrabold text-slate-500 uppercase tracking-wide">
-              <th className="text-center w-6 pb-1.5">#</th>
-              <th className="text-left pb-1.5 px-2">Reps</th>
-              <th className="text-left pb-1.5 px-2">Weight (kg)</th>
-              <th className="text-left pb-1.5 px-2">Rest (sec)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sets.map((s, i) => (
-              <tr key={i}>
-                <td className="text-center text-[11px] font-extrabold text-slate-500 py-0.5">{i + 1}</td>
-                <td className="px-2 py-0.5">
-                  <input
-                    value={s.reps}
-                    onChange={e => updateSet(exId, i, 'reps', e.target.value)}
-                    placeholder="—"
-                    className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-center text-[11.5px] font-bold text-white outline-none focus:border-lime-500 transition-colors"
-                  />
-                </td>
-                <td className="px-2 py-0.5">
-                  <input
-                    value={s.weight}
-                    onChange={e => updateSet(exId, i, 'weight', e.target.value)}
-                    placeholder="—"
-                    className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-center text-[11.5px] font-bold text-white outline-none focus:border-lime-500 transition-colors"
-                  />
-                </td>
-                <td className="px-2 py-0.5">
-                  <input
-                    value={s.restSec}
-                    onChange={e => updateSet(exId, i, 'restSec', e.target.value)}
-                    placeholder="60"
-                    className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-center text-[11.5px] font-bold text-white outline-none focus:border-lime-500 transition-colors"
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="text-right text-[10.5px] font-extrabold text-slate-400 mt-1.5">{exerciseVolume(ex).toLocaleString()} kg</p>
+        {ex.isCardio ? (
+          <div className="flex items-center gap-2.5">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Duration</label>
+            <input
+              type="number"
+              min={0}
+              value={ex.cardioMinutes ?? 0}
+              onChange={e => updateCardioMinutes(exId, e.target.value)}
+              className="w-20 bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-center text-[11.5px] font-bold text-white outline-none focus:border-lime-500 transition-colors"
+            />
+            <span className="text-[11px] font-bold text-slate-500">min</span>
+          </div>
+        ) : (
+          <>
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="text-[9px] font-extrabold text-slate-500 uppercase tracking-wide">
+                  <th className="text-center w-6 pb-1.5">#</th>
+                  <th className="text-left pb-1.5 px-2">Reps</th>
+                  <th className="text-left pb-1.5 px-2">Weight (kg)</th>
+                  <th className="text-left pb-1.5 px-2">Rest (sec)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sets.map((s, i) => (
+                  <tr key={i}>
+                    <td className="text-center text-[11px] font-extrabold text-slate-500 py-0.5">{i + 1}</td>
+                    <td className="px-2 py-0.5">
+                      <input
+                        value={s.reps}
+                        onChange={e => updateSet(exId, i, 'reps', e.target.value)}
+                        placeholder="—"
+                        className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-center text-[11.5px] font-bold text-white outline-none focus:border-lime-500 transition-colors"
+                      />
+                    </td>
+                    <td className="px-2 py-0.5">
+                      <input
+                        value={s.weight}
+                        onChange={e => updateSet(exId, i, 'weight', e.target.value)}
+                        placeholder="—"
+                        className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-center text-[11.5px] font-bold text-white outline-none focus:border-lime-500 transition-colors"
+                      />
+                    </td>
+                    <td className="px-2 py-0.5">
+                      <input
+                        value={s.restSec}
+                        onChange={e => updateSet(exId, i, 'restSec', e.target.value)}
+                        placeholder="60"
+                        className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-center text-[11.5px] font-bold text-white outline-none focus:border-lime-500 transition-colors"
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="text-right text-[10.5px] font-extrabold text-slate-400 mt-1.5">{exerciseVolume(ex).toLocaleString()} kg</p>
+          </>
+        )}
       </div>
     );
   };
@@ -353,7 +412,7 @@ const SessionBuilder: React.FC<SessionBuilderProps> = ({
                       )}
                     </div>
                     {!isGroup && primary && (
-                      <div className="text-[10px] text-slate-500">{(primary.setDetails?.length || 0)} sets · {exerciseVolume(primary).toLocaleString()} kg</div>
+                      <div className="text-[10px] text-slate-500">{exerciseSummary(primary)}</div>
                     )}
                   </div>
                 </div>
@@ -367,7 +426,7 @@ const SessionBuilder: React.FC<SessionBuilderProps> = ({
                       </div>
                       <div>
                         <div className="text-[11px] font-extrabold">{ex.name || 'New exercise'}</div>
-                        <div className="text-[10px] text-slate-500">{(ex.setDetails?.length || 0)} sets · {exerciseVolume(ex).toLocaleString()} kg</div>
+                        <div className="text-[10px] text-slate-500">{exerciseSummary(ex)}</div>
                       </div>
                     </div>
                   );

@@ -156,6 +156,8 @@ export interface Exercise {
   makeEasier?: string; // How to make it easier variation instructions
   libraryExerciseId?: string; // Optional link back to the LibraryExercise this was added from
   setDetails?: SetDetail[]; // Optional per-set reps/weight/rest, authored in the session builder; sets/reps above stay in sync as a flat summary for consumers that don't read this
+  isCardio?: boolean;   // true when this exercise is tracked by a single duration instead of sets/reps (e.g. treadmill, rowing)
+  cardioMinutes?: number; // minutes to perform, used when isCardio is true
 }
 
 export type SessionBlockType = 'single' | 'superset' | 'circuit' | 'warmup' | 'cooldown';
