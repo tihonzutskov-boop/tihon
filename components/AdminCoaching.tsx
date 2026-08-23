@@ -7,17 +7,34 @@ import { ClipboardList, Loader2, X, ChevronRight, Plus } from 'lucide-react';
 
 const DURATIONS = [30, 45, 60, 90];
 
+const DAYS_OPTIONS = ['1', '2', '3', '4'];
+
+// goal/daysPerWeek/durationMin start unset — the questionnaire fills them in
+// before the builder ever appears, so every template is categorized up front.
 const blankTemplate = (goal: string): PlanTemplate => ({
   id: `tpl-${Date.now()}`,
   name: '',
   goal,
-  daysPerWeek: '3',
-  durationMin: 45,
+  daysPerWeek: '',
+  durationMin: 0,
   days: [{ id: `day-${Date.now()}`, name: 'Workout 1', exercises: [] }],
 });
+const isFullyCategorized = (t: PlanTemplate) => !!(t.goal && t.daysPerWeek && t.durationMin);
 
 const Tag: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <span className="text-[10.5px] font-bold px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300">{children}</span>
+);
+
+const Pill: React.FC<{ selected: boolean; onClick: () => void; children: React.ReactNode }> = ({ selected, onClick, children }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`px-4 py-2.5 rounded-xl border text-sm font-bold transition-colors ${
+      selected ? 'border-lime-500 bg-lime-500/10 text-lime-400' : 'border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-500'
+    }`}
+  >
+    {children}
+  </button>
 );
 
 const AdminCoaching: React.FC = () => {
@@ -27,6 +44,7 @@ const AdminCoaching: React.FC = () => {
   const [openGoals, setOpenGoals] = useState<Set<string>>(new Set());
 
   const [editingTemplate, setEditingTemplate] = useState<PlanTemplate | null>(null);
+  const [wizardStep, setWizardStep] = useState<1 | 2>(1); // 1 = questionnaire (category/days/duration), 2 = session builder
   const [activeDayIndex, setActiveDayIndex] = useState(0);
   const [showCreateExercise, setShowCreateExercise] = useState(false);
   const [newExName, setNewExName] = useState('');
@@ -56,12 +74,32 @@ const AdminCoaching: React.FC = () => {
     if (!openGoals.has(goal)) toggleGoal(goal);
     setEditingTemplate(blankTemplate(goal));
     setActiveDayIndex(0);
+    setWizardStep(1);
   };
   const editTemplate = (t: PlanTemplate) => {
     setEditingTemplate({ ...t });
     setActiveDayIndex(0);
+    setWizardStep(2); // already categorized — skip straight to the builder
   };
   const closeTemplateEditor = () => setEditingTemplate(null);
+
+  // Pre-creates exactly as many days as answered, and auto-fills the name
+  // from the categorization, before dropping into the builder.
+  const goToBuilder = (t: PlanTemplate) => {
+    const n = parseInt(t.daysPerWeek, 10) || 1;
+    const days: WorkoutDay[] = Array.from({ length: n }, (_, i) => ({ id: `day-${Date.now()}-${i}`, name: `Workout ${i + 1}`, exercises: [] }));
+    const name = t.name.trim() ? t.name : `${t.goal} — ${n} Day${n === 1 ? '' : 's'} Plan`;
+    setEditingTemplate({ ...t, days, name });
+    setActiveDayIndex(0);
+    setWizardStep(2);
+  };
+  const pickField = (field: 'goal' | 'daysPerWeek' | 'durationMin', value: string | number) => {
+    if (!editingTemplate) return;
+    const next = { ...editingTemplate, [field]: value };
+    if (field === 'goal' && !openGoals.has(value as string)) toggleGoal(value as string);
+    setEditingTemplate(next);
+    if (isFullyCategorized(next)) goToBuilder(next);
+  };
 
   const updateDays = (updater: (days: WorkoutDay[]) => WorkoutDay[]) => {
     setEditingTemplate(prev => (prev ? { ...prev, days: updater(prev.days) } : prev));
@@ -184,50 +222,69 @@ const AdminCoaching: React.FC = () => {
             <ClipboardList className="w-8 h-8 mb-3 opacity-40" />
             <p className="text-sm">Select a template to edit it, or create a new one.</p>
           </div>
+        ) : wizardStep === 1 ? (
+          <div className="max-w-lg mx-auto pt-6">
+            <div className="text-center mb-7">
+              <h2 className="text-lg font-extrabold text-white mb-1">New Training Plan</h2>
+              <p className="text-xs text-slate-500">Answer these and you'll drop straight into the session builder — no extra click.</p>
+            </div>
+
+            <div className="mb-6">
+              <div className="text-[10px] font-extrabold text-lime-400 uppercase tracking-wide mb-2.5">Goal category</div>
+              <div className="flex flex-wrap gap-2">
+                {QUESTIONNAIRE_GOALS.map(g => (
+                  <Pill key={g} selected={editingTemplate.goal === g} onClick={() => pickField('goal', g)}>{g}</Pill>
+                ))}
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <div className="text-[10px] font-extrabold text-lime-400 uppercase tracking-wide mb-2.5">Days per week</div>
+              <div className="flex flex-wrap gap-2">
+                {DAYS_OPTIONS.map(d => (
+                  <Pill key={d} selected={editingTemplate.daysPerWeek === d} onClick={() => pickField('daysPerWeek', d)}>{d}</Pill>
+                ))}
+              </div>
+            </div>
+
+            <div className="mb-8">
+              <div className="text-[10px] font-extrabold text-lime-400 uppercase tracking-wide mb-2.5">Session duration</div>
+              <div className="flex flex-wrap gap-2">
+                {DURATIONS.map(d => (
+                  <Pill key={d} selected={editingTemplate.durationMin === d} onClick={() => pickField('durationMin', d)}>{d} min</Pill>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={closeTemplateEditor}
+              className="px-5 py-2.5 rounded-xl border border-slate-700 bg-slate-800 text-slate-400 hover:text-white text-xs font-bold transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
         ) : (
           <div className="max-w-3xl">
+            <div className="flex items-center gap-2 mb-4 flex-wrap">
+              <Tag>{editingTemplate.goal}</Tag>
+              <Tag>{editingTemplate.daysPerWeek}x/week</Tag>
+              <Tag>{editingTemplate.durationMin} min</Tag>
+              <button
+                onClick={() => setWizardStep(1)}
+                className="ml-auto text-[11px] font-bold text-slate-500 hover:text-slate-300 underline transition-colors"
+              >
+                ← Change
+              </button>
+            </div>
+
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 mb-6">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="col-span-2">
-                  <label className="block text-[9.5px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Name</label>
-                  <input
-                    value={editingTemplate.name}
-                    onChange={e => setEditingTemplate({ ...editingTemplate, name: e.target.value })}
-                    placeholder="e.g. Weight Loss — 3 Day Starter"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold text-white focus:outline-none focus:border-lime-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[9.5px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Goal category</label>
-                  <select
-                    value={editingTemplate.goal}
-                    onChange={e => setEditingTemplate({ ...editingTemplate, goal: e.target.value })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold text-white focus:outline-none focus:border-lime-500"
-                  >
-                    {QUESTIONNAIRE_GOALS.map(g => <option key={g} value={g}>{g}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[9.5px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Days per week</label>
-                  <select
-                    value={editingTemplate.daysPerWeek}
-                    onChange={e => setEditingTemplate({ ...editingTemplate, daysPerWeek: e.target.value })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold text-white focus:outline-none focus:border-lime-500"
-                  >
-                    {['1', '2', '3', '4'].map(d => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[9.5px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Session duration</label>
-                  <select
-                    value={editingTemplate.durationMin}
-                    onChange={e => setEditingTemplate({ ...editingTemplate, durationMin: parseInt(e.target.value, 10) })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold text-white focus:outline-none focus:border-lime-500"
-                  >
-                    {DURATIONS.map(d => <option key={d} value={d}>{d} min</option>)}
-                  </select>
-                </div>
-              </div>
+              <label className="block text-[9.5px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Name</label>
+              <input
+                value={editingTemplate.name}
+                onChange={e => setEditingTemplate({ ...editingTemplate, name: e.target.value })}
+                placeholder="e.g. Weight Loss — 3 Day Starter"
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold text-white focus:outline-none focus:border-lime-500"
+              />
             </div>
 
             <div className="flex items-center gap-2 mb-3 overflow-x-auto">
