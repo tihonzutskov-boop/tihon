@@ -1603,20 +1603,32 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
                                 </span>
                               )}
                             </div>
-                            {isFromExplicit && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  snapshot();
-                                  const newIds = (selectedZone.equipmentIds || []).filter(id => id !== eqId);
-                                  updateZone('equipmentIds', newIds);
-                                }}
-                                className="text-slate-500 hover:text-red-400 p-0.5 opacity-60 group-hover:opacity-100 transition-opacity"
-                                title="Remove equipment from zone"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            )}
+                            <div className="flex items-center gap-0.5 flex-shrink-0">
+                              {equipmentList.some(e => e.id === eqId) && (
+                                <button
+                                  type="button"
+                                  onClick={() => addMachineFromEquipment(equipmentList.find(e => e.id === eqId)!)}
+                                  className="text-slate-500 hover:text-lime-400 p-0.5 opacity-60 group-hover:opacity-100 transition-opacity"
+                                  title={`Add another ${item.name} — places a second one here, no new library item needed`}
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {isFromExplicit && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    snapshot();
+                                    const newIds = (selectedZone.equipmentIds || []).filter(id => id !== eqId);
+                                    updateZone('equipmentIds', newIds);
+                                  }}
+                                  className="text-slate-500 hover:text-red-400 p-0.5 opacity-60 group-hover:opacity-100 transition-opacity"
+                                  title="Remove equipment from zone"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
                           </div>
                         );
                       });
