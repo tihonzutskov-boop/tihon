@@ -326,6 +326,29 @@ app.get('/api/coaching/clients', requireAdmin, async (req, res) => {
   }
 });
 
+// Clears a client's questionnaire and any assigned plan, so they see a
+// fresh "Let's build your training plan" prompt and get freshly re-matched
+// on resubmission — e.g. to pick up a template the admin fixed after the
+// client was already (mis)assigned an earlier, broken version of it.
+app.delete('/api/coaching/clients/:userId/questionnaire', requireAdmin, async (req, res) => {
+  const { userId } = req.params;
+  let client;
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+    await client.query('DELETE FROM training_questionnaires WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM user_plans WHERE user_id = $1', [userId]);
+    await client.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    await client?.query('ROLLBACK');
+    console.error(err);
+    res.status(500).json({ error: 'Database error resetting questionnaire' });
+  } finally {
+    client?.release();
+  }
+});
+
 // --- Plan Template Catalog Routes ---
 
 app.get('/api/plan-templates', requireAdmin, async (req, res) => {

@@ -56,6 +56,8 @@ const AdminCoaching: React.FC = () => {
   const [libraryExercises, setLibraryExercises] = useState<LibraryExercise[]>([]);
   const [openGoals, setOpenGoals] = useState<Set<string>>(new Set());
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
 
   const [editingTemplate, setEditingTemplate] = useState<PlanTemplate | null>(null);
   const [wizardStep, setWizardStep] = useState<1 | 2>(1); // 1 = questionnaire (category/days/duration), 2 = session builder
@@ -162,6 +164,25 @@ const AdminCoaching: React.FC = () => {
       const result = await api.createPlanTemplate(editingTemplate);
       if (!result.ok) throw new Error(result.error ? `Not saved to the server: ${result.error}` : 'Not saved to the server — check your connection.');
       setTemplates(prev => [editingTemplate, ...prev]);
+    }
+  };
+
+  const resetClientQuestionnaire = async (client: CoachingClient) => {
+    if (!window.confirm(`Reset ${client.name}'s questionnaire? They'll lose their current answers${client.plan ? ' and assigned plan' : ''} and see the "build your training plan" prompt again next time they open the dashboard.`)) {
+      return;
+    }
+    setResetError(null);
+    setResetting(true);
+    try {
+      const result = await api.resetClientQuestionnaire(client.userId);
+      if (!result.ok) {
+        setResetError(result.error ? `Could not reset: ${result.error}` : 'Could not reset — check your connection.');
+        return;
+      }
+      setClients(prev => prev.filter(c => c.userId !== client.userId));
+      setSelectedUserId(null);
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -347,7 +368,16 @@ const AdminCoaching: React.FC = () => {
             </div>
           ) : (
             <div className="max-w-2xl">
-              <h2 className="text-lg font-bold text-white mb-1">{selectedClient.name}</h2>
+              <div className="flex items-start justify-between gap-3 mb-1">
+                <h2 className="text-lg font-bold text-white">{selectedClient.name}</h2>
+                <button
+                  onClick={() => resetClientQuestionnaire(selectedClient)}
+                  disabled={resetting}
+                  className="flex-shrink-0 px-3 py-1.5 rounded-lg border border-red-800/40 bg-red-950/20 text-red-400 hover:bg-red-950/40 text-[11px] font-bold transition-colors disabled:opacity-50"
+                >
+                  {resetting ? 'Resetting…' : 'Reset Questionnaire'}
+                </button>
+              </div>
               <p className="text-xs text-slate-500 mb-4">
                 {hasScheduledPlan(selectedClient) ? (
                   <>Assigned plan: <span className="text-lime-400 font-semibold">{selectedClient.plan?.name}</span></>
@@ -355,6 +385,11 @@ const AdminCoaching: React.FC = () => {
                   'No plan assigned yet — add a matching template to the catalog.'
                 )}
               </p>
+              {resetError && (
+                <div className="mb-4 p-3 rounded-xl bg-red-950/30 border border-red-800/40 text-xs text-red-400">
+                  {resetError}
+                </div>
+              )}
 
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
                 <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Questionnaire answers</h3>

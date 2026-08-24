@@ -303,6 +303,21 @@ export const api = {
     }
   },
 
+  async resetClientQuestionnaire(userId: number): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const response = await fetch(`${API_BASE}/coaching/clients/${userId}/questionnaire`, { method: 'DELETE' });
+      if (response.ok) return { ok: true };
+      let message = `Server responded with ${response.status}`;
+      try {
+        const body = await response.json();
+        if (body?.error) message = body.error;
+      } catch { /* not JSON */ }
+      return { ok: false, error: message };
+    } catch (error: any) {
+      return { ok: false, error: error?.message || 'Network error' };
+    }
+  },
+
   // --- PLAN TEMPLATE CATALOG ---
 
   async fetchPlanTemplates(): Promise<PlanTemplate[]> {
