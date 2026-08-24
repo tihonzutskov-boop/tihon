@@ -92,10 +92,11 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, workoutPlan, 
             <div className="flex items-center space-x-4">
                <button
                  onClick={onOpenTutorials}
-                 className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors"
+                 className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-xs font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors"
                  title={t.exerciseTutorials}
                >
-                 <Film className="w-4 h-4 text-lime-400" /> {t.exerciseTutorials}
+                 <Film className="w-4 h-4 text-lime-400" />
+                 <span className="hidden sm:inline">{t.exerciseTutorials}</span>
                </button>
                <div className="hidden md:flex flex-col items-end mr-2">
                  <span className="text-sm font-bold text-white">{user.name}</span>
