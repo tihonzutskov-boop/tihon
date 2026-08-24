@@ -232,11 +232,20 @@ app.get('/api/questionnaire/me', requireAuth, async (req, res) => {
   }
 });
 
+// Keyed by day COUNT, not the user's requested daysPerWeek — the matched
+// template can have a different day count than what the user asked for
+// (the fallback match below accepts any template for the goal when no
+// exact days-per-week variant exists), and spreading by the user's answer
+// instead of the template's actual day count silently drops days past
+// spread.length or leaves extra requested days empty.
 const WEEKDAY_SPREADS = {
-  '1': ['wed'],
-  '2': ['tue', 'thu'],
-  '3': ['mon', 'wed', 'fri'],
-  '4': ['mon', 'tue', 'thu', 'fri'],
+  1: ['wed'],
+  2: ['tue', 'thu'],
+  3: ['mon', 'wed', 'fri'],
+  4: ['mon', 'tue', 'thu', 'fri'],
+  5: ['mon', 'tue', 'wed', 'thu', 'fri'],
+  6: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'],
+  7: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'],
 };
 
 app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
@@ -266,7 +275,8 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
         if (match) break;
       }
       if (match) {
-        const spread = WEEKDAY_SPREADS[answers.daysPerWeek] || [];
+        const dayCount = Math.min(Math.max(match.days.length, 1), 7);
+        const spread = WEEKDAY_SPREADS[dayCount] || [];
         const days = match.days.map((d, i) => ({ ...d, id: `day-${Date.now()}-${i}`, weekday: spread[i] }));
         await pool.query(
           `INSERT INTO user_plans (user_id, name, days, updated_at)

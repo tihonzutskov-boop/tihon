@@ -82,6 +82,16 @@ const AdminCoaching: React.FC = () => {
     .map(goal => ({ goal, clients: clients.filter(c => c.answers.goals?.includes(goal)) }))
     .filter(g => g.clients.length > 0);
 
+  // Every (goal, days-per-week) combo a client could submit — a ● means a
+  // template exists for that exact pair; even without one, the goal-only
+  // fallback in the questionnaire matcher still assigns *something* as long
+  // as the goal row has at least one ● somewhere.
+  const coverage = QUESTIONNAIRE_GOALS.map(goal => ({
+    goal,
+    perDays: DAYS_OPTIONS.map(d => templates.some(t => t.goal === goal && t.daysPerWeek === d)),
+    anyMatch: templates.some(t => t.goal === goal),
+  }));
+
   const toggleGoal = (goal: string) => {
     setOpenGoals(prev => {
       const next = new Set(prev);
@@ -197,6 +207,37 @@ const AdminCoaching: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {view === 'catalog' && (
+          <div className="p-3 border-b border-slate-800/50">
+            <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wide mb-2">Coverage · goal &times; days/week</p>
+            <div className="grid gap-1" style={{ gridTemplateColumns: '1fr repeat(4, 16px)' }}>
+              <span />
+              {DAYS_OPTIONS.map(d => (
+                <span key={d} className="text-[8px] font-bold text-slate-600 text-center">{d}d</span>
+              ))}
+              {coverage.map(row => (
+                <React.Fragment key={row.goal}>
+                  <span
+                    className={`text-[9.5px] font-semibold truncate pr-1 ${row.anyMatch ? 'text-slate-400' : 'text-amber-400'}`}
+                    title={row.anyMatch ? row.goal : `${row.goal} — no template covers this goal at all`}
+                  >
+                    {row.goal}
+                  </span>
+                  {row.perDays.map((has, i) => (
+                    <span
+                      key={i}
+                      className={`text-[10px] text-center leading-none ${has ? 'text-lime-400' : 'text-slate-700'}`}
+                      title={`${row.goal} · ${DAYS_OPTIONS[i]} day${DAYS_OPTIONS[i] === '1' ? '' : 's'}/week — ${has ? 'covered' : 'no exact template (falls back to any template for this goal, if one exists)'}`}
+                    >
+                      {has ? '●' : '·'}
+                    </span>
+                  ))}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+        )}
 
         {view === 'catalog' ? templateGroups.map(group => {
           const open = openGoals.has(group.goal);
