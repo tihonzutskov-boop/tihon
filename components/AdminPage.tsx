@@ -3,11 +3,13 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { GymZone, EquipmentType, Gym, GymDimensions, GymEntrance, GymAnnex, GymMachine, LibraryExercise, EquipmentItem } from '../types';
 import GymMap from './GymMap';
 import ExerciseLibrary from './ExerciseLibrary';
+import ExerciseTutorials from './ExerciseTutorials';
 import EquipmentLibrary, { getEquipmentIconComponent } from './EquipmentLibrary';
 import AdminCoaching from './AdminCoaching';
 import { QuickAddEquipmentModal } from './QuickAddEquipmentModal';
 import { api, DEFAULT_EQUIPMENT } from '../services/api';
 import { evaluateZoneExercises, getZoneEquipmentIds } from '../utils/equipmentMatcher';
+import { getExerciseLocations } from '../utils/exerciseMatcher';
 import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Eraser, Eye, EyeOff, Footprints, MapPin, LayoutTemplate, DoorOpen, Lock, Bath, Droplets, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle, Copy, ClipboardPaste, Dumbbell, Activity, Zap, Target, Layers, Box, Wind, RotateCcw, ArrowUpRight, ArrowUpLeft, ArrowDownRight, ArrowDownLeft, ArrowRight, ArrowUp, ArrowDown, MoveDown, Circle, Waves, Timer, Sparkles, Search, Video, Play, Film, Filter, X, ExternalLink, Compass, SlidersHorizontal, ChevronRight, Bookmark, BookmarkCheck, Camera, Users } from 'lucide-react';
 import { MACHINE_ICONS_LIST as MACHINE_ICONS } from '../utils/equipmentIcons';
 import { snapWallEndpoint } from '../utils/wallSnapping';
@@ -245,6 +247,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
 
   // Exercise library state for zone exercise matching
   const [libraryExercises, setLibraryExercises] = useState<LibraryExercise[]>([]);
+  const [showTutorials, setShowTutorials] = useState(false);
   const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');
   const [savingToLibrary, setSavingToLibrary] = useState(false);
   const [saveToLibraryStatus, setSaveToLibraryStatus] = useState<'idle' | 'saved' | 'exists'>('idle');
@@ -1264,6 +1267,13 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
             >
               <Users className="w-3.5 h-3.5 text-lime-400" />
               Coaching
+            </button>
+            <button
+              onClick={() => setShowTutorials(true)}
+              className="px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 text-slate-400 hover:text-slate-300"
+            >
+              <Film className="w-3.5 h-3.5 text-lime-400" />
+              Tutorials
             </button>
           </div>
         </div>
@@ -2498,6 +2508,23 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
           equipmentList={equipmentList}
           onEquipmentCreated={handleQuickAddEquipmentCreated}
         />
+
+        {showTutorials && (
+          <ExerciseTutorials
+            libraryExercises={libraryExercises}
+            gym={gym}
+            isAdmin
+            onClose={() => setShowTutorials(false)}
+            onExercisesUpdated={setLibraryExercises}
+            onLocateExercise={(ex) => {
+              const location = getExerciseLocations(ex, gym);
+              const zone = location.primaryZone || location.matchedZones[0];
+              setShowTutorials(false);
+              setActiveTab('layout');
+              if (zone) setSelectedZoneId(zone.id);
+            }}
+          />
+        )}
 
         {/* Quick Add Success Toast */}
         {quickAddFeedback && (

@@ -169,6 +169,11 @@ export interface SessionBlock {
   exerciseIds: string[]; // references Exercise.id within the same WorkoutDay.exercises
 }
 
+export interface TutorialStep {
+  text: string;
+  time?: number | null; // seconds into tutorialVideoUrl where playback should pause for this step
+}
+
 export interface LibraryExercise {
   id: string;
   name: string;
@@ -178,10 +183,13 @@ export interface LibraryExercise {
   category: string;          // compound/isolation, strength, cardio, mobility, etc.
   instructions: string;      // Clear movement execution & form instructions
   equipmentId?: string;      // Optional mapped zone/location ID on the gym map
-  videoUrl?: string;         // Uploaded video URL demonstrating how to perform the movement
+  videoUrl?: string;         // Pasted YouTube/video link, shown via the "Watch Guide Video" embed
   imageUrl?: string;         // Uploaded GIF demonstrating the movement
   makeHarder?: string;       // Instructions for increasing difficulty (tempo, load, ROM, stance)
   makeEasier?: string;       // Instructions for regressing difficulty (assistance, bands, ROM, load)
+  tutorialVideoUrl?: string;      // Uploaded tutorial video file (data URI) — a real <video>, separate from videoUrl, so it supports timestamp-based seeking
+  tutorialVideoFileName?: string; // Original filename of the uploaded tutorial video
+  steps?: TutorialStep[];         // Step-by-step tutorial breakdown, each optionally pinned to a tutorialVideoUrl timestamp
 }
 
 export type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';

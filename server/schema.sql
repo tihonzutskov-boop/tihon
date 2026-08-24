@@ -77,6 +77,14 @@ ALTER TABLE equipment ALTER COLUMN image_url TYPE TEXT;
 ALTER TABLE exercises ALTER COLUMN image_url TYPE TEXT;
 ALTER TABLE equipment ADD COLUMN IF NOT EXISTS muscle_groups JSONB DEFAULT '[]';
 
+-- Tutorial video is a separate uploaded <video> (base64 data URI), distinct
+-- from the pasted-YouTube-link video_url column above, so it supports real
+-- timestamp seeking; steps is the step-by-step breakdown with optional
+-- per-step timestamps into that video.
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS tutorial_video_url TEXT;
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS tutorial_video_file_name VARCHAR(255);
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS steps JSONB DEFAULT '[]';
+
 CREATE TABLE IF NOT EXISTS workout_logs (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { X, ArrowLeft, Check, Plus, Minus, Dumbbell, PlayCircle } from 'lucide-react';
 import { WorkoutDay, Gym, EquipmentItem, LibraryExercise, Exercise } from '../types';
 import GymMap from './GymMap';
@@ -45,6 +45,14 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   const stageIdx = current % 3;
   const stage = STAGES[stageIdx];
   const exercise: Exercise | undefined = exercises[exIdx];
+
+  const [tutorialStepIdx, setTutorialStepIdx] = useState(0);
+  const [tutorialPlaying, setTutorialPlaying] = useState(false);
+  const tutorialVideoRef = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    setTutorialStepIdx(0);
+    setTutorialPlaying(false);
+  }, [exIdx]);
 
   const zone = useMemo(() => gym.zones.find(z => z.id === exercise?.equipmentId), [gym.zones, exercise]);
   const machine = useMemo(() => zone?.machines?.find(m => m.id === exercise?.machineId), [zone, exercise]);
@@ -108,6 +116,39 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   const harder = libraryExercise?.makeHarder || exercise.makeHarder;
   const easier = libraryExercise?.makeEasier || exercise.makeEasier;
   const allSetsDone = rows.length > 0 && rows.every(r => r.done);
+
+  const tutorialSteps = libraryExercise?.steps || [];
+  const hasTutorialVideo = !!(libraryExercise?.tutorialVideoUrl && tutorialSteps.length > 0);
+
+  const playNextTutorialStep = () => {
+    if (tutorialStepIdx >= tutorialSteps.length - 1) return;
+    const video = tutorialVideoRef.current;
+    const next = tutorialSteps[tutorialStepIdx + 1];
+    if (video && next && next.time != null) {
+      const target = next.time;
+      setTutorialPlaying(true);
+      const onTime = () => {
+        if (video.currentTime >= target) {
+          video.pause();
+          video.removeEventListener('timeupdate', onTime);
+          setTutorialStepIdx(i => i + 1);
+          setTutorialPlaying(false);
+        }
+      };
+      video.addEventListener('timeupdate', onTime);
+      video.play();
+    } else {
+      setTutorialStepIdx(i => i + 1);
+    }
+  };
+  const playPrevTutorialStep = () => {
+    if (tutorialStepIdx <= 0) return;
+    const prevIdx = tutorialStepIdx - 1;
+    const video = tutorialVideoRef.current;
+    const t = tutorialSteps[prevIdx]?.time;
+    if (video && t != null) video.currentTime = t;
+    setTutorialStepIdx(prevIdx);
+  };
 
   return (
     <div className="fixed inset-0 z-[100] bg-slate-950 text-slate-200 flex flex-col overflow-hidden">
@@ -196,24 +237,79 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-5 py-5 max-w-lg mx-auto w-full">
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-5">
-          <div className="h-44 border-b border-slate-800 flex items-center justify-center overflow-hidden bg-gradient-to-br from-slate-800 to-slate-900">
-            {stage.key === 'identify' ? (
-              equipmentItem?.imageUrl ? (
-                <img src={equipmentItem.imageUrl} alt={equipmentItem.name} className="w-full h-full object-cover" />
-              ) : (
-                <div className="flex flex-col items-center gap-2 text-slate-500 text-xs font-bold uppercase tracking-wide">
-                  <Dumbbell className="w-8 h-8 opacity-50" />
-                  <span>{equipmentItem ? 'No photo added yet' : 'Equipment not linked yet'}</span>
+          {stage.key === 'tutorial' && hasTutorialVideo ? (
+            <div className="relative aspect-video border-b border-slate-800 bg-black overflow-hidden">
+              <video
+                ref={tutorialVideoRef}
+                src={libraryExercise!.tutorialVideoUrl}
+                muted
+                playsInline
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/92 via-black/40 to-transparent pointer-events-none" />
+              {tutorialPlaying && (
+                <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 text-[9px] font-extrabold uppercase tracking-wide text-white bg-lime-500/25 border border-lime-500/60 px-2 py-1 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-lime-400 animate-pulse" />
+                  Playing&hellip;
                 </div>
-              )
-            ) : stage.key === 'tutorial' ? (
-              gifUrl ? (
-                <img src={gifUrl} alt={exercise.name} className="w-full h-full object-cover" />
-              ) : (
-                <PlayCircle className="w-10 h-10 text-sky-400" />
-              )
-            ) : null}
-          </div>
+              )}
+              <div className={`absolute inset-x-0 bottom-0 p-3.5 transition-opacity duration-200 ${tutorialPlaying ? 'opacity-0' : 'opacity-100'}`}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[9px] font-extrabold uppercase tracking-wide text-white/60">
+                    Step {tutorialStepIdx + 1} of {tutorialSteps.length}
+                  </span>
+                  <div className="flex gap-1">
+                    {tutorialSteps.map((_, i) => (
+                      <span
+                        key={i}
+                        className={`h-[3px] rounded-full transition-all ${
+                          i === tutorialStepIdx ? 'w-4 bg-lime-400' : i < tutorialStepIdx ? 'w-2.5 bg-lime-500/60' : 'w-2.5 bg-white/25'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <p className="text-[13px] font-bold text-white leading-snug mb-2.5" style={{ textShadow: '0 2px 8px rgba(0,0,0,0.7)' }}>
+                  {tutorialSteps[tutorialStepIdx]?.text}
+                </p>
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={playPrevTutorialStep}
+                    disabled={tutorialStepIdx === 0}
+                    className="px-3.5 py-2 rounded-lg text-[11px] font-extrabold bg-white/10 border border-white/20 text-white disabled:opacity-30 transition-opacity"
+                  >
+                    ←
+                  </button>
+                  <button
+                    onClick={playNextTutorialStep}
+                    disabled={tutorialStepIdx >= tutorialSteps.length - 1}
+                    className="flex-1 py-2 rounded-lg text-[11px] font-extrabold bg-lime-500 text-slate-950 disabled:opacity-30 transition-opacity"
+                  >
+                    Next Step →
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="h-44 border-b border-slate-800 flex items-center justify-center overflow-hidden bg-gradient-to-br from-slate-800 to-slate-900">
+              {stage.key === 'identify' ? (
+                equipmentItem?.imageUrl ? (
+                  <img src={equipmentItem.imageUrl} alt={equipmentItem.name} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="flex flex-col items-center gap-2 text-slate-500 text-xs font-bold uppercase tracking-wide">
+                    <Dumbbell className="w-8 h-8 opacity-50" />
+                    <span>{equipmentItem ? 'No photo added yet' : 'Equipment not linked yet'}</span>
+                  </div>
+                )
+              ) : stage.key === 'tutorial' ? (
+                gifUrl ? (
+                  <img src={gifUrl} alt={exercise.name} className="w-full h-full object-cover" />
+                ) : (
+                  <PlayCircle className="w-10 h-10 text-sky-400" />
+                )
+              ) : null}
+            </div>
+          )}
           <div className="p-5">
             <p className="text-[11px] font-extrabold text-lime-400 uppercase tracking-wide mb-1.5">
               {exercise.targetMuscle} · {stage.label}
@@ -226,12 +322,14 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
               </div>
             )}
 
-            <p className="text-sm text-slate-400 leading-relaxed">
-              {stage.key === 'locate' && zone && `Head to the ${zone.name}. Follow the map above — it marks exactly where this machine sits on the gym floor.`}
-              {stage.key === 'locate' && !zone && 'This exercise has no zone set — ask an admin to link it in the plan editor.'}
-              {stage.key === 'identify' && (equipmentItem?.description || 'Look for the machine matching this name on the gym floor.')}
-              {stage.key === 'tutorial' && instructions}
-            </p>
+            {!(stage.key === 'tutorial' && hasTutorialVideo) && (
+              <p className="text-sm text-slate-400 leading-relaxed">
+                {stage.key === 'locate' && zone && `Head to the ${zone.name}. Follow the map above — it marks exactly where this machine sits on the gym floor.`}
+                {stage.key === 'locate' && !zone && 'This exercise has no zone set — ask an admin to link it in the plan editor.'}
+                {stage.key === 'identify' && (equipmentItem?.description || 'Look for the machine matching this name on the gym floor.')}
+                {stage.key === 'tutorial' && instructions}
+              </p>
+            )}
 
             {stage.key === 'tutorial' && (harder || easier) && (
               <div className="grid grid-cols-2 gap-2.5 mt-4">

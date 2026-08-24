@@ -10,9 +10,11 @@ import MachineDetailModal from './components/MachineDetailModal';
 import EquipmentLibrary from './components/EquipmentLibrary';
 import ExerciseLibrary from './components/ExerciseLibrary';
 import GuidedSession from './components/GuidedSession';
+import ExerciseTutorials from './components/ExerciseTutorials';
 import { GymZone, WorkoutPlan, Exercise, Gym, GymMachine, User, Language, WorkoutDay, EquipmentItem, LibraryExercise, QuestionnaireAnswers } from './types';
 import { DEFAULT_GYM } from './constants';
 import { api, DEFAULT_EQUIPMENT } from './services/api';
+import { getExerciseLocations } from './utils/exerciseMatcher';
 import { translations, getGymTranslation } from './translations';
 import { ChevronDown, MapPin, Loader2, ClipboardList, BookOpen, Globe, Search, X, Settings } from 'lucide-react';
 
@@ -93,6 +95,7 @@ const App: React.FC = () => {
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [viewingMachine, setViewingMachine] = useState<GymMachine | null>(null);
   const [guidedSessionOpen, setGuidedSessionOpen] = useState(false);
+  const [tutorialsOpen, setTutorialsOpen] = useState(false);
   
   const [activeDayIndex, setActiveDayIndex] = useState(0);
   const [workoutPlan, setWorkoutPlan] = useState<WorkoutPlan>({
@@ -164,14 +167,25 @@ const App: React.FC = () => {
 
   const handleLocateExercise = (ex: Exercise) => {
     if (ex.equipmentId === 'manual') return;
-    
+
     setFocusedZoneId(ex.equipmentId);
     setSelectedMachineId(ex.machineId || null);
-    
+
     // On mobile, close sidebar to show map
     if (window.innerWidth < 768) {
       setIsPlanOpen(false);
     }
+  };
+
+  const handleLocateLibraryExercise = (ex: LibraryExercise) => {
+    const location = getExerciseLocations(ex, activeGym);
+    const zone = location.primaryZone || location.matchedZones[0];
+    setTutorialsOpen(false);
+    if (zone) {
+      setFocusedZoneId(zone.id);
+      setSelectedMachineId(location.primaryMachine?.id || null);
+    }
+    handleGymSelect(activeGymId);
   };
 
   const handleWatchVideo = (ex: Exercise) => {
@@ -311,6 +325,7 @@ const App: React.FC = () => {
              setQuestionnaire(answers);
              if (assignedPlan) await loadMyPlan();
            }}
+           onOpenTutorials={() => setTutorialsOpen(true)}
            lang={lang}
          />
          {guidedSessionOpen && activeGym && workoutPlan.days[activeDayIndex] && (
@@ -325,6 +340,16 @@ const App: React.FC = () => {
                api.completeWorkout(d.name, d.exercises.length, d.id);
                setGuidedSessionOpen(false);
              }}
+           />
+         )}
+         {tutorialsOpen && (
+           <ExerciseTutorials
+             libraryExercises={libraryExercises}
+             gym={activeGym}
+             isAdmin={user.role === 'admin'}
+             onClose={() => setTutorialsOpen(false)}
+             onLocateExercise={handleLocateLibraryExercise}
+             onExercisesUpdated={setLibraryExercises}
            />
          )}
        </>
