@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { PlanTemplate, WorkoutDay, LibraryExercise } from '../types';
+import { PlanTemplate, WorkoutDay, LibraryExercise, CoachingClient } from '../types';
 import { QUESTIONNAIRE_GOALS } from '../constants';
 import { api } from '../services/api';
 import SessionBuilder from './SessionBuilder';
@@ -8,6 +8,10 @@ import { ClipboardList, Loader2, X, ChevronRight, Plus } from 'lucide-react';
 const DURATIONS = [30, 45, 60, 90];
 
 const DAYS_OPTIONS = ['1', '2', '3', '4'];
+
+type View = 'catalog' | 'clients';
+
+const hasScheduledPlan = (client: CoachingClient) => !!client.plan && client.plan.days.some(d => d.weekday);
 
 // goal/daysPerWeek/durationMin start unset — the questionnaire fills them in
 // before the builder ever appears, so every template is categorized up front.
@@ -25,6 +29,13 @@ const Tag: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <span className="text-[10.5px] font-bold px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300">{children}</span>
 );
 
+const Answer: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => (
+  <div>
+    <p className="text-[9.5px] font-bold text-slate-500 uppercase tracking-wide mb-1">{label}</p>
+    <p className="text-xs font-semibold text-slate-200">{value}</p>
+  </div>
+);
+
 const Pill: React.FC<{ selected: boolean; onClick: () => void; children: React.ReactNode }> = ({ selected, onClick, children }) => (
   <button
     type="button"
@@ -38,10 +49,13 @@ const Pill: React.FC<{ selected: boolean; onClick: () => void; children: React.R
 );
 
 const AdminCoaching: React.FC = () => {
+  const [view, setView] = useState<View>('catalog');
   const [loading, setLoading] = useState(true);
   const [templates, setTemplates] = useState<PlanTemplate[]>([]);
+  const [clients, setClients] = useState<CoachingClient[]>([]);
   const [libraryExercises, setLibraryExercises] = useState<LibraryExercise[]>([]);
   const [openGoals, setOpenGoals] = useState<Set<string>>(new Set());
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
 
   const [editingTemplate, setEditingTemplate] = useState<PlanTemplate | null>(null);
   const [wizardStep, setWizardStep] = useState<1 | 2>(1); // 1 = questionnaire (category/days/duration), 2 = session builder
@@ -53,14 +67,20 @@ const AdminCoaching: React.FC = () => {
   const [newExInstructions, setNewExInstructions] = useState('');
 
   useEffect(() => {
-    Promise.all([api.fetchPlanTemplates(), api.fetchExercises()]).then(([t, e]) => {
+    Promise.all([api.fetchPlanTemplates(), api.fetchExercises(), api.fetchCoachingClients()]).then(([t, e, c]) => {
       setTemplates(t);
       setLibraryExercises(e);
+      setClients(c);
       setLoading(false);
     });
   }, []);
 
+  const selectedClient = clients.find(c => c.userId === selectedUserId) || null;
+
   const templateGroups = QUESTIONNAIRE_GOALS.map(goal => ({ goal, templates: templates.filter(t => t.goal === goal) }));
+  const clientGroups = QUESTIONNAIRE_GOALS
+    .map(goal => ({ goal, clients: clients.filter(c => c.answers.goals?.includes(goal)) }))
+    .filter(g => g.clients.length > 0);
 
   const toggleGoal = (goal: string) => {
     setOpenGoals(prev => {
@@ -160,11 +180,25 @@ const AdminCoaching: React.FC = () => {
   return (
     <div className="flex flex-1 overflow-hidden">
       <div className="w-72 border-r border-slate-800 bg-slate-900 flex flex-col overflow-y-auto flex-shrink-0">
-        <div className="p-4 border-b border-slate-800/50">
+        <div className="p-4 border-b border-slate-800/50 space-y-3">
           <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Personal Coaching</h3>
+          <div className="flex items-center bg-slate-950/70 p-1 rounded-lg border border-slate-800/80">
+            <button
+              onClick={() => setView('catalog')}
+              className={`flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold transition-all ${view === 'catalog' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-300'}`}
+            >
+              Catalog
+            </button>
+            <button
+              onClick={() => setView('clients')}
+              className={`flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold transition-all ${view === 'clients' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-300'}`}
+            >
+              Clients{clients.length > 0 ? ` · ${clients.length}` : ''}
+            </button>
+          </div>
         </div>
 
-        {templateGroups.map(group => {
+        {view === 'catalog' ? templateGroups.map(group => {
           const open = openGoals.has(group.goal);
           return (
             <div key={group.goal} className="border-b border-slate-800/40">
@@ -213,11 +247,111 @@ const AdminCoaching: React.FC = () => {
               )}
             </div>
           );
-        })}
+        }) : (
+          <>
+            <div className="p-3 border-b border-slate-800/40">
+              <p className="text-xs text-slate-400">{clients.length} client{clients.length !== 1 ? 's' : ''} submitted a questionnaire</p>
+            </div>
+            {clientGroups.length === 0 ? (
+              <div className="p-6 text-center text-xs text-slate-500">No questionnaires submitted yet.</div>
+            ) : (
+              clientGroups.map(group => (
+                <div key={group.goal} className="p-3 border-b border-slate-800/40">
+                  <h4 className="text-[10px] font-extrabold text-lime-400 uppercase tracking-widest mb-2 px-1">
+                    {group.goal} <span className="text-slate-600">· {group.clients.length}</span>
+                  </h4>
+                  <div className="space-y-1.5">
+                    {group.clients.map(client => {
+                      const scheduled = hasScheduledPlan(client);
+                      return (
+                        <button
+                          key={client.userId}
+                          onClick={() => setSelectedUserId(client.userId)}
+                          className={`w-full text-left p-2.5 rounded-xl border transition-colors ${
+                            selectedUserId === client.userId ? 'border-lime-500 bg-lime-500/5' : 'border-slate-800 bg-slate-950/40 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <div className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-[10px] font-bold text-lime-400 flex-shrink-0 overflow-hidden">
+                              {client.avatarUrl ? <img src={client.avatarUrl} alt={client.name} className="w-full h-full object-cover" /> : client.name.charAt(0)}
+                            </div>
+                            <span className="text-xs font-bold text-white truncate">{client.name}</span>
+                          </div>
+                          <span
+                            className={`text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-full ${
+                              scheduled ? 'bg-lime-500/10 text-lime-400 border border-lime-500/25' : 'bg-amber-500/10 text-amber-400 border border-amber-500/25'
+                            }`}
+                          >
+                            {scheduled ? 'Plan assigned' : 'Needs a plan'}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))
+            )}
+          </>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
-        {!editingTemplate ? (
+        {view === 'clients' ? (
+          !selectedClient ? (
+            <div className="h-full flex flex-col items-center justify-center text-center text-slate-500">
+              <ClipboardList className="w-8 h-8 mb-3 opacity-40" />
+              <p className="text-sm">Select a client to see their questionnaire answers.</p>
+            </div>
+          ) : (
+            <div className="max-w-2xl">
+              <h2 className="text-lg font-bold text-white mb-1">{selectedClient.name}</h2>
+              <p className="text-xs text-slate-500 mb-4">
+                {hasScheduledPlan(selectedClient) ? (
+                  <>Assigned plan: <span className="text-lime-400 font-semibold">{selectedClient.plan?.name}</span></>
+                ) : (
+                  'No plan assigned yet — add a matching template to the catalog.'
+                )}
+              </p>
+
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Questionnaire answers</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-4">
+                  <Answer label="Age" value={selectedClient.answers.age} />
+                  <Answer label="Height" value={`${selectedClient.answers.heightCm} cm`} />
+                  <Answer label="Weight" value={`${selectedClient.answers.weightKg} kg`} />
+                  <Answer label="Sex" value={selectedClient.answers.sex} />
+                  <Answer label="Experience" value={selectedClient.answers.level} />
+                  <Answer label="Schedule" value={`${selectedClient.answers.daysPerWeek}x/week · ${selectedClient.answers.minutesPerSession}`} />
+                </div>
+                <div className="flex flex-wrap gap-1.5 mb-4">
+                  {selectedClient.answers.goals.map(g => <Tag key={g}>{g}</Tag>)}
+                </div>
+                <Answer label="Equipment comfort" value={selectedClient.answers.equipment} />
+                {selectedClient.answers.avoidExercises && (
+                  <div className="mt-4">
+                    <Answer label="Exercises to avoid" value={selectedClient.answers.avoidExercises} />
+                  </div>
+                )}
+                {(selectedClient.answers.injuryAreas.length > 0 || selectedClient.answers.injuryNotes) && (
+                  <div className="mt-4 pt-4 border-t border-slate-800">
+                    <h4 className="text-[10px] font-bold text-orange-400 uppercase tracking-widest mb-2">Health & safety</h4>
+                    {selectedClient.answers.injuryAreas.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {selectedClient.answers.injuryAreas.map(a => <Tag key={a}>{a}</Tag>)}
+                      </div>
+                    )}
+                    {selectedClient.answers.injuryNotes && <p className="text-xs text-slate-400 mb-2">{selectedClient.answers.injuryNotes}</p>}
+                    {selectedClient.answers.medicalClearance && (
+                      <p className="text-xs text-slate-400">
+                        Medical clearance: <span className="text-white font-semibold">{selectedClient.answers.medicalClearance}</span>
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        ) : !editingTemplate ? (
           <div className="h-full flex flex-col items-center justify-center text-center text-slate-500">
             <ClipboardList className="w-8 h-8 mb-3 opacity-40" />
             <p className="text-sm">Select a template to edit it, or create a new one.</p>

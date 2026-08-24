@@ -235,6 +235,16 @@ export interface PlanTemplate {
   days: WorkoutDay[];     // authored with no weekday set
 }
 
+export interface CoachingClient {
+  userId: number;
+  name: string;
+  email: string;
+  avatarUrl?: string;
+  answers: QuestionnaireAnswers;
+  submittedAt: string;
+  plan: { name: string; days: WorkoutDay[] } | null;
+}
+
 export interface User {
   id: string;
   name: string;
