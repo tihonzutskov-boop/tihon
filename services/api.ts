@@ -497,10 +497,18 @@ export const api = {
     } catch (error) {
        console.warn("Backend save postponed. Syncing locally.");
     }
-    const cached = localStorage.getItem('gym_exercises');
-    let exercises: LibraryExercise[] = cached ? JSON.parse(cached) : [...DEFAULT_EXERCISES];
-    exercises.push(exercise);
-    localStorage.setItem('gym_exercises', JSON.stringify(exercises));
+    // This local cache is a small offline fallback, not built to hold a
+    // multi-MB uploaded tutorial video — localStorage has a hard quota
+    // (~5-10mb) that a base64 video can blow past, throwing here. That must
+    // never mask whether the fetch above actually reached the server.
+    try {
+      const cached = localStorage.getItem('gym_exercises');
+      let exercises: LibraryExercise[] = cached ? JSON.parse(cached) : [...DEFAULT_EXERCISES];
+      exercises.push(exercise);
+      localStorage.setItem('gym_exercises', JSON.stringify(exercises));
+    } catch (storageError) {
+      console.warn('Could not cache exercise locally (localStorage quota likely exceeded):', storageError);
+    }
   },
 
   // Returns whether the backend actually persisted the change — existing
@@ -530,10 +538,16 @@ export const api = {
        console.warn("Backend save postponed. Syncing locally.");
        result = { ok: false, error: error?.message || 'Network error' };
     }
-    const cached = localStorage.getItem('gym_exercises');
-    let exercises: LibraryExercise[] = cached ? JSON.parse(cached) : [...DEFAULT_EXERCISES];
-    exercises = exercises.map(ex => ex.id === exercise.id ? exercise : ex);
-    localStorage.setItem('gym_exercises', JSON.stringify(exercises));
+    // Same as createExercise above: never let a localStorage quota error
+    // here overwrite a real result from the fetch above.
+    try {
+      const cached = localStorage.getItem('gym_exercises');
+      let exercises: LibraryExercise[] = cached ? JSON.parse(cached) : [...DEFAULT_EXERCISES];
+      exercises = exercises.map(ex => ex.id === exercise.id ? exercise : ex);
+      localStorage.setItem('gym_exercises', JSON.stringify(exercises));
+    } catch (storageError) {
+      console.warn('Could not cache exercise locally (localStorage quota likely exceeded):', storageError);
+    }
     return result;
   },
 
