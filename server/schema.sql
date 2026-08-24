@@ -70,6 +70,16 @@ CREATE TABLE IF NOT EXISTS exercises (
   image_url TEXT
 );
 
+-- The create/edit form has always collected these three, but the POST/PUT
+-- routes never read or stored them — required_equipment_ids is what the
+-- Equipment Library picker's checkboxes actually save to (equipment_id
+-- above is a single zone/location, unrelated), and make_harder/make_easier
+-- are REQUIRED fields on that same form. All three were silently discarded
+-- on every save until now.
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS required_equipment_ids JSONB DEFAULT '[]';
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS make_harder TEXT;
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS make_easier TEXT;
+
 -- Uploaded photos are stored as base64 data URIs (no file-hosting backend),
 -- which are far longer than VARCHAR(255) — widen for tables already deployed
 -- before this change.
