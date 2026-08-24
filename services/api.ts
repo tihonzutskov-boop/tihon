@@ -539,16 +539,29 @@ export const api = {
     }
   },
 
-  async createExercise(exercise: LibraryExercise): Promise<void> {
+  // Reports whether the backend actually persisted the exercise — see
+  // saveExercise below for why callers need to check this.
+  async createExercise(exercise: LibraryExercise): Promise<{ ok: boolean; error?: string }> {
+    let result: { ok: boolean; error?: string } = { ok: false };
     try {
       const response = await fetch(`${API_BASE}/exercises`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(exercise),
       });
-      if (!response.ok) throw new Error("API signup/create error");
-    } catch (error) {
-       console.warn("Backend save postponed. Syncing locally.");
+      if (response.ok) {
+        result = { ok: true };
+      } else {
+        let message = `Server responded with ${response.status}`;
+        try {
+          const body = await response.json();
+          if (body?.error) message = body.error;
+        } catch { /* not JSON */ }
+        result = { ok: false, error: message };
+      }
+    } catch (error: any) {
+      console.warn("Backend save postponed. Syncing locally.");
+      result = { ok: false, error: error?.message || 'Network error' };
     }
     // This local cache is a small offline fallback, not built to hold a
     // multi-MB uploaded tutorial video — localStorage has a hard quota
@@ -562,6 +575,7 @@ export const api = {
     } catch (storageError) {
       console.warn('Could not cache exercise locally (localStorage quota likely exceeded):', storageError);
     }
+    return result;
   },
 
   // Returns whether the backend actually persisted the change — existing

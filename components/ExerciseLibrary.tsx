@@ -285,6 +285,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
   const [formMuscle, setFormMuscle] = useState('Legs/Quads');
   const [formCategory, setFormCategory] = useState('Compound (Strength)');
   const [formError, setFormError] = useState('');
+  const [savingExercise, setSavingExercise] = useState(false);
   const [equipmentPickerSearch, setEquipmentPickerSearch] = useState('');
 
   useEffect(() => {
@@ -344,17 +345,23 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
       id: `ex-${Date.now()}`,
       requiredEquipmentIds: selectedEquipmentIds
     };
+    const result = await api.createExercise(exerciseToSave);
+    if (!result.ok) {
+      throw new Error(result.error ? `Not saved to the server: ${result.error}` : 'Not saved to the server — check your connection.');
+    }
     setLibraryExercises(prev => [...prev, exerciseToSave]);
-    await api.createExercise(exerciseToSave);
   };
-  
+
   const handleSaveExerciseEdit = async (updatedEx: LibraryExercise) => {
     const fullUpdated: LibraryExercise = {
       ...updatedEx,
       requiredEquipmentIds: selectedEquipmentIds
     };
+    const result = await api.saveExercise(fullUpdated);
+    if (!result.ok) {
+      throw new Error(result.error ? `Not saved to the server: ${result.error}` : 'Not saved to the server — check your connection.');
+    }
     setLibraryExercises(prev => prev.map(ex => ex.id === fullUpdated.id ? fullUpdated : ex));
-    await api.saveExercise(fullUpdated);
   };
   
   const handleDeleteExercise = async (id: string) => {
@@ -831,12 +838,14 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                   makeEasier: ((formData.get('makeEasier') as string) || '').trim()
                 };
 
-                if (editingExercise) {
-                  handleSaveExerciseEdit({ ...editingExercise, ...exData });
-                } else {
-                  handleAddNewExercise(exData);
-                }
-                setIsExerciseModalOpen(false);
+                setSavingExercise(true);
+                (editingExercise
+                  ? handleSaveExerciseEdit({ ...editingExercise, ...exData })
+                  : handleAddNewExercise(exData)
+                )
+                  .then(() => setIsExerciseModalOpen(false))
+                  .catch((err: any) => setFormError(err?.message || 'Failed to save. Please try again.'))
+                  .finally(() => setSavingExercise(false));
              }} className="flex-1 flex flex-col min-h-0 overflow-hidden">
                 <div className="p-6 space-y-4 overflow-y-auto flex-1">
                   <div>
@@ -976,8 +985,8 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
 
                 <div className="p-4 border-t border-slate-800 bg-slate-900 flex justify-end space-x-3 flex-shrink-0">
                    <button type="button" onClick={() => setIsExerciseModalOpen(false)} className="px-5 py-2.5 bg-slate-950 hover:bg-slate-800 rounded-xl text-xs font-bold text-slate-400 border border-slate-800 transition-colors min-h-[44px]">{t.discardBtn}</button>
-                   <button type="submit" className="px-5 py-2.5 bg-lime-500 hover:bg-lime-400 rounded-xl text-xs font-bold text-slate-950 shadow-md shadow-lime-500/20 min-h-[44px]">
-                     {editingExercise ? t.saveBtn : t.publishBtn}
+                   <button type="submit" disabled={savingExercise} className="px-5 py-2.5 bg-lime-500 hover:bg-lime-400 rounded-xl text-xs font-bold text-slate-950 shadow-md shadow-lime-500/20 min-h-[44px] disabled:opacity-60">
+                     {savingExercise ? 'Saving…' : editingExercise ? t.saveBtn : t.publishBtn}
                    </button>
                 </div>
              </form>
