@@ -9,7 +9,7 @@ interface SessionBuilderProps {
   targetDurationMin: number;
   libraryExercises: LibraryExercise[];
   onCreateLibraryExercise?: () => void;
-  onSave: () => void;
+  onSave: () => void | Promise<void>;
   onClear: () => void;
   onClose?: () => void;
 }
@@ -84,6 +84,8 @@ const SessionBuilder: React.FC<SessionBuilderProps> = ({
   const [pickerMuscleFilter, setPickerMuscleFilter] = useState('All');
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const blocks = blocksFor(day);
   const exercisesById = new Map<string, Exercise>(day.exercises.map(ex => [ex.id, ex]));
@@ -522,6 +524,11 @@ const SessionBuilder: React.FC<SessionBuilderProps> = ({
           )}
         </div>
 
+        {saveError && (
+          <div className="mt-4 p-3 rounded-xl bg-red-950/30 border border-red-800/40 text-xs text-red-400">
+            {saveError}
+          </div>
+        )}
         <div className="flex gap-2.5 mt-6 pt-4 border-t border-slate-800">
           <button
             type="button"
@@ -532,12 +539,25 @@ const SessionBuilder: React.FC<SessionBuilderProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => { onSave(); setSaved(true); setTimeout(() => setSaved(false), 1600); }}
-            className={`flex-1 py-2.5 font-black rounded-xl text-xs transition-all ${
+            disabled={saving}
+            onClick={async () => {
+              setSaveError(null);
+              setSaving(true);
+              try {
+                await onSave();
+                setSaved(true);
+                setTimeout(() => setSaved(false), 1600);
+              } catch (err: any) {
+                setSaveError(err?.message || 'Failed to save. Please try again.');
+              } finally {
+                setSaving(false);
+              }
+            }}
+            className={`flex-1 py-2.5 font-black rounded-xl text-xs transition-all disabled:opacity-60 ${
               saved ? 'bg-emerald-500 text-slate-950' : 'bg-gradient-to-r from-lime-500 to-lime-600 hover:from-lime-400 hover:to-lime-500 text-slate-950'
             }`}
           >
-            {saved ? 'Saved!' : 'Save Plan'}
+            {saving ? 'Saving…' : saved ? 'Saved!' : 'Save Plan'}
           </button>
           {onClose && (
             <button type="button" onClick={onClose} className="px-4 py-2.5 text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors border border-slate-800">

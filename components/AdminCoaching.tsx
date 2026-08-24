@@ -151,14 +151,16 @@ const AdminCoaching: React.FC = () => {
     setEditingTemplate(prev => (prev ? { ...prev, days: [{ id: `day-${Date.now()}`, name: 'Workout 1', exercises: [] }] } : prev));
     setActiveDayIndex(0);
   };
-  const onSavePlan = () => {
+  const onSavePlan = async () => {
     if (!editingTemplate || !editingTemplate.name.trim()) return;
     const exists = templates.some(t => t.id === editingTemplate.id);
     if (exists) {
-      api.savePlanTemplate(editingTemplate);
+      const result = await api.savePlanTemplate(editingTemplate);
+      if (!result.ok) throw new Error(result.error ? `Not saved to the server: ${result.error}` : 'Not saved to the server — check your connection.');
       setTemplates(prev => prev.map(t => (t.id === editingTemplate.id ? editingTemplate : t)));
     } else {
-      api.createPlanTemplate(editingTemplate);
+      const result = await api.createPlanTemplate(editingTemplate);
+      if (!result.ok) throw new Error(result.error ? `Not saved to the server: ${result.error}` : 'Not saved to the server — check your connection.');
       setTemplates(prev => [editingTemplate, ...prev]);
     }
   };

@@ -316,20 +316,47 @@ export const api = {
     }
   },
 
-  async createPlanTemplate(template: PlanTemplate): Promise<void> {
-    await fetch(`${API_BASE}/plan-templates`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(template),
-    });
+  // Both report whether the save actually reached the server — unlike
+  // exercises, plan templates have no offline/local fallback at all, so a
+  // silently swallowed failure here means the admin sees their edits (e.g.
+  // exercises just added in the builder) while the template a client's
+  // questionnaire actually matches against never changed.
+  async createPlanTemplate(template: PlanTemplate): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const response = await fetch(`${API_BASE}/plan-templates`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(template),
+      });
+      if (response.ok) return { ok: true };
+      let message = `Server responded with ${response.status}`;
+      try {
+        const body = await response.json();
+        if (body?.error) message = body.error;
+      } catch { /* not JSON */ }
+      return { ok: false, error: message };
+    } catch (error: any) {
+      return { ok: false, error: error?.message || 'Network error' };
+    }
   },
 
-  async savePlanTemplate(template: PlanTemplate): Promise<void> {
-    await fetch(`${API_BASE}/plan-templates/${template.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(template),
-    });
+  async savePlanTemplate(template: PlanTemplate): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const response = await fetch(`${API_BASE}/plan-templates/${template.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(template),
+      });
+      if (response.ok) return { ok: true };
+      let message = `Server responded with ${response.status}`;
+      try {
+        const body = await response.json();
+        if (body?.error) message = body.error;
+      } catch { /* not JSON */ }
+      return { ok: false, error: message };
+    } catch (error: any) {
+      return { ok: false, error: error?.message || 'Network error' };
+    }
   },
 
   async deletePlanTemplate(id: string): Promise<void> {
