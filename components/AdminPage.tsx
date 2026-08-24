@@ -1268,13 +1268,6 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
               <Users className="w-3.5 h-3.5 text-lime-400" />
               Coaching
             </button>
-            <button
-              onClick={() => setShowTutorials(true)}
-              className="px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 text-slate-400 hover:text-slate-300"
-            >
-              <Film className="w-3.5 h-3.5 text-lime-400" />
-              Tutorials
-            </button>
           </div>
         </div>
 
@@ -2494,6 +2487,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
           <ExerciseLibrary
             gym={gym}
             equipmentList={equipmentList}
+            onOpenTutorials={() => setShowTutorials(true)}
           />
         ) : (
           <AdminCoaching />

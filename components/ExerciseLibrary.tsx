@@ -3,11 +3,10 @@ import { Gym, LibraryExercise, Language, EquipmentItem } from '../types';
 import { api, DEFAULT_EQUIPMENT } from '../services/api';
 import { searchAndFilterExercises, getExerciseLocations } from '../utils/exerciseMatcher';
 import { getEquipmentIcon, isBeginnerFriendly } from '../utils/equipmentIcons';
-import { getYouTubeEmbedUrl } from '../utils/youtubeEmbed';
 import { getEquipmentIconComponent } from './EquipmentLibrary';
 import { getExerciseRequiredEquipmentIds, getZoneEquipmentIds } from '../utils/equipmentMatcher';
-import { 
-  Search, MapPin, Dumbbell, Play, Edit3, Trash2, Plus, X, Loader2, Video, KeyRound, Box, Info, Image, Sparkles, Globe, Layers, Check, Flame, ShieldCheck
+import {
+  Search, MapPin, Dumbbell, Edit3, Trash2, Plus, X, Loader2, KeyRound, Box, Sparkles, Globe, Layers, Check, Flame, ShieldCheck, Film
 } from 'lucide-react';
 
 interface ExerciseLibraryProps {
@@ -16,6 +15,7 @@ interface ExerciseLibraryProps {
   lang?: Language;
   onLanguageChange?: (lang: Language) => void;
   onLocateExercise?: (exercise: any) => void;
+  onOpenTutorials?: () => void;
 }
 
 const LIB_UI: Record<Language, any> = {
@@ -261,11 +261,12 @@ const SearchCombo: React.FC<{ value: string; options: string[]; onChange: (val: 
 };
 
 const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
-  gym, 
-  equipmentList = DEFAULT_EQUIPMENT, 
-  lang = 'en', 
-  onLanguageChange, 
-  onLocateExercise 
+  gym,
+  equipmentList = DEFAULT_EQUIPMENT,
+  lang = 'en',
+  onLanguageChange,
+  onLocateExercise,
+  onOpenTutorials
 }) => {
   const [libLang, setLibLang] = useState<Language>('en');
   const [libraryExercises, setLibraryExercises] = useState<LibraryExercise[]>([]);
@@ -283,12 +284,8 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
   const [selectedEquipmentIds, setSelectedEquipmentIds] = useState<string[]>([]);
   const [formMuscle, setFormMuscle] = useState('Legs/Quads');
   const [formCategory, setFormCategory] = useState('Compound (Strength)');
-  const [formGifUrl, setFormGifUrl] = useState('');
   const [formError, setFormError] = useState('');
   const [equipmentPickerSearch, setEquipmentPickerSearch] = useState('');
-  const gifFileInputRef = React.useRef<HTMLInputElement>(null);
-
-  const [playingVideoUrl, setPlayingVideoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (lang && lang !== libLang) {
@@ -320,7 +317,6 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     setSelectedEquipmentIds(existingIds);
     setFormMuscle(ex.targetMuscle);
     setFormCategory(ex.category);
-    setFormGifUrl(ex.imageUrl || '');
     setFormError('');
     setEquipmentPickerSearch('');
     setIsExerciseModalOpen(true);
@@ -331,7 +327,6 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     setSelectedEquipmentIds([]);
     setFormMuscle('Legs/Quads');
     setFormCategory('Compound (Strength)');
-    setFormGifUrl('');
     setFormError('');
     setEquipmentPickerSearch('');
     setIsExerciseModalOpen(true);
@@ -341,18 +336,6 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     setSelectedEquipmentIds(prev =>
       prev.includes(eqId) ? prev.filter(id => id !== eqId) : [...prev, eqId]
     );
-  };
-
-  const handleGifFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setFormGifUrl(reader.result);
-      }
-    };
-    reader.readAsDataURL(file);
   };
 
   const handleAddNewExercise = async (newEx: Omit<LibraryExercise, 'id'>) => {
@@ -379,10 +362,6 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
        setLibraryExercises(prev => prev.filter(ex => ex.id !== id));
        await api.deleteExercise(id);
     }
-  };
-
-  const getEmbedUrl = (url: string) => {
-    return getYouTubeEmbedUrl(url);
   };
 
   // Map of equipment by ID for fast lookup
@@ -498,6 +477,14 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
           <option value="category" className="bg-slate-950 text-white">Group: category</option>
           <option value="name" className="bg-slate-950 text-white">Sort: name A-Z</option>
         </select>
+        {onOpenTutorials && (
+          <button
+            onClick={onOpenTutorials}
+            className="flex items-center justify-center px-4 py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-200 rounded-xl text-xs font-bold transition-all flex-shrink-0"
+          >
+            <Film className="w-4 h-4 mr-1.5 text-lime-400" /> Tutorials
+          </button>
+        )}
         <button
           onClick={handleOpenCreateModal}
           className="flex items-center justify-center px-4 py-2.5 bg-lime-500 hover:bg-lime-400 text-slate-950 rounded-xl text-xs font-bold transition-all shadow-md shadow-lime-500/10 flex-shrink-0"
@@ -668,17 +655,13 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                         )}
                       </div>
 
-                      <p className="text-[10.5px] text-slate-500 leading-relaxed line-clamp-2 mb-3">
-                        {ex.instructions || t.noInstructions}
-                      </p>
-
                       <div className="flex items-center justify-between pt-2.5 border-t border-slate-850/60">
                         <span className={`text-[9.5px] font-bold flex items-center gap-1 ${isMapped ? 'text-slate-500' : 'text-amber-400'}`}>
                           {isMapped ? <><MapPin className="w-2.5 h-2.5" /> {t.mapAlign}</> : '⚠️ Needs review'}
                         </span>
-                        {ex.videoUrl && (
-                          <span className="w-5 h-5 rounded-full bg-lime-500/10 text-lime-400 flex items-center justify-center">
-                            <Play className="w-2.5 h-2.5 fill-current" />
+                        {!!(ex.tutorialVideoUrl && ex.steps && ex.steps.length > 0) && (
+                          <span className="text-[8.5px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-lime-500/10 text-lime-400 flex items-center gap-1">
+                            <Film className="w-2.5 h-2.5" /> Tutorial
                           </span>
                         )}
                       </div>
@@ -732,18 +715,6 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
               </div>
 
               <div className="p-6 space-y-5 overflow-y-auto flex-1">
-                {ex.imageUrl && (
-                  <div>
-                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                      <Image className="w-3.5 h-3.5" />
-                      <span>Exercise GIF</span>
-                    </div>
-                    <div className="rounded-xl overflow-hidden border border-slate-800 bg-slate-950">
-                      <img src={ex.imageUrl} alt={`${ex.name} demonstration`} referrerPolicy="no-referrer" className="w-full max-h-72 object-cover" />
-                    </div>
-                  </div>
-                )}
-
                 <div>
                   <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
                     <Layers className="w-3.5 h-3.5 text-lime-400" />
@@ -764,14 +735,6 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                   ) : (
                     <p className="text-xs font-bold text-slate-300">{ex.equipmentRequired || t.bodyweight}</p>
                   )}
-                </div>
-
-                <div>
-                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                    <Info className="w-3.5 h-3.5" />
-                    <span>{t.execGuidance}</span>
-                  </div>
-                  <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-line">{ex.instructions || t.noInstructions}</p>
                 </div>
 
                 {(ex.makeHarder || ex.makeEasier) && (
@@ -795,16 +758,6 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                       </div>
                     )}
                   </div>
-                )}
-
-                {ex.videoUrl && (
-                  <button
-                    onClick={() => setPlayingVideoUrl(ex.videoUrl!)}
-                    className="w-full py-3 bg-slate-950/80 hover:bg-slate-900 border border-slate-800 rounded-xl text-lime-400 hover:text-lime-300 text-xs font-bold transition-all flex items-center justify-center gap-1.5"
-                  >
-                    <Play className="w-4 h-4 fill-lime-400 text-lime-400" />
-                    {t.watchGuide}
-                  </button>
                 )}
 
                 <div className={`px-3 py-2.5 rounded-xl border text-xs font-semibold flex items-center gap-2 ${isMapped ? 'bg-slate-950/50 border-slate-800 text-slate-300' : 'bg-amber-950/30 border-amber-800/30 text-amber-400'}`}>
@@ -853,10 +806,6 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                   setFormError('Select at least one equipment item (use "Open Floor / Mat Area" for bodyweight moves).');
                   return;
                 }
-                if (!formGifUrl) {
-                  setFormError('Upload an exercise GIF.');
-                  return;
-                }
                 setFormError('');
 
                 // Construct human readable equipment label
@@ -871,10 +820,13 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                   equipmentRequired: reqString,
                   requiredEquipmentIds: selectedEquipmentIds,
                   category: formCategory,
-                  instructions: formData.get('instructions') as string || '',
+                  // Instructions / GIF / video URL are no longer editable here — that
+                  // content now lives in the Tutorials editor. Carry over whatever an
+                  // exercise already had rather than wiping it.
+                  instructions: editingExercise?.instructions || '',
                   equipmentId: zoneRaw === 'auto' ? '' : zoneRaw,
-                  videoUrl: formData.get('videoUrl') as string || '',
-                  imageUrl: formGifUrl,
+                  videoUrl: editingExercise?.videoUrl || '',
+                  imageUrl: editingExercise?.imageUrl || '',
                   makeHarder: ((formData.get('makeHarder') as string) || '').trim(),
                   makeEasier: ((formData.get('makeEasier') as string) || '').trim()
                 };
@@ -975,48 +927,9 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                     </select>
                   </div>
 
-                  {/* Exercise GIF upload */}
-                  <div>
-                    <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Exercise GIF <span className="text-red-500">*</span></label>
-                    {formGifUrl ? (
-                      <div className="relative rounded-xl overflow-hidden border border-slate-700 bg-slate-950 aspect-video max-h-44 group">
-                        <img src={formGifUrl} alt="Exercise GIF preview" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                          <button type="button" onClick={() => gifFileInputRef.current?.click()} className="px-3 py-1.5 rounded-lg bg-slate-800 text-white text-xs font-semibold hover:bg-slate-700 flex items-center gap-1">
-                            <Image className="w-3 h-3" /> Change
-                          </button>
-                          <button type="button" onClick={() => setFormGifUrl('')} className="px-3 py-1.5 rounded-lg bg-red-600/80 text-white text-xs font-semibold hover:bg-red-600 flex items-center gap-1">
-                            <X className="w-3 h-3" /> Remove
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div
-                        onClick={() => gifFileInputRef.current?.click()}
-                        className="border-2 border-dashed border-slate-700 hover:border-lime-500/60 rounded-xl p-4 text-center cursor-pointer bg-slate-950/40 hover:bg-slate-950/80 transition-all group"
-                      >
-                        <div className="w-10 h-10 rounded-full bg-slate-800 group-hover:bg-lime-500/20 text-slate-400 group-hover:text-lime-400 mx-auto flex items-center justify-center mb-2 transition-colors">
-                          <Image className="w-5 h-5" />
-                        </div>
-                        <p className="text-xs font-semibold text-slate-300 group-hover:text-white">Click to upload a GIF</p>
-                        <p className="text-[10px] text-slate-500 mt-0.5">A short looping clip showing proper form</p>
-                      </div>
-                    )}
-                    <input type="file" ref={gifFileInputRef} onChange={handleGifFileUpload} accept="image/gif" className="hidden" />
-                  </div>
-
-                  {/* Video URL for movement demonstration */}
-                  <div>
-                    <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">{t.ytLinkLabel} <span className="text-red-500">*</span></label>
-                    <input required name="videoUrl" type="url" defaultValue={editingExercise?.videoUrl || ''} placeholder="e.g. https://www.youtube.com/watch?v=ultWZbUMPL8" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-700 focus:outline-none focus:border-lime-500/50 transition-colors min-h-[44px]" />
-                    <p className="text-[9px] text-slate-500 leading-relaxed mt-1">{t.ytLinkHelp}</p>
-                  </div>
-
-                  {/* Step-by-Step Movement Instructions */}
-                  <div>
-                    <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">{t.stepInstructionsLabel} <span className="text-red-500">*</span></label>
-                    <textarea required name="instructions" rows={3} defaultValue={editingExercise?.instructions || ''} placeholder={t.instructionsPlace} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-lime-500/50 transition-colors resize-none" />
-                  </div>
+                  <p className="text-[10px] text-slate-500 leading-relaxed -mt-1">
+                    Video, step-by-step instructions, and the GIF now live in the Tutorials editor — save this exercise first, then open &ldquo;Tutorials&rdquo; to add them.
+                  </p>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {/* Difficulty Modifiers: How to make it harder */}
@@ -1068,30 +981,6 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                    </button>
                 </div>
              </form>
-          </div>
-        </div>
-      )}
-
-      {/* FOOTER SCALE-UP VIDEO MODAL */}
-      {playingVideoUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md" onClick={() => setPlayingVideoUrl(null)} />
-          <div className="relative bg-black border border-slate-850 rounded-2xl w-full max-w-3xl shadow-2xl aspect-video overflow-hidden animate-in zoom-in-95 duration-250 my-auto">
-             <button 
-               onClick={() => setPlayingVideoUrl(null)} 
-               className="absolute top-3 right-3 z-50 p-2.5 bg-black/80 hover:bg-black rounded-full text-white/90 hover:text-white transition-colors border border-slate-700 min-w-[44px] min-h-[44px] flex items-center justify-center"
-               title="Close Video"
-               aria-label="Close"
-             >
-                <X className="w-5 h-5" />
-             </button>
-             <iframe
-               src={getEmbedUrl(playingVideoUrl)}
-               title="Instructional Demonstration Player"
-               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-               allowFullScreen
-               className="w-full h-full border-0 absolute inset-0"
-             />
           </div>
         </div>
       )}
