@@ -503,21 +503,38 @@ export const api = {
     localStorage.setItem('gym_exercises', JSON.stringify(exercises));
   },
 
-  async saveExercise(exercise: LibraryExercise): Promise<void> {
+  // Returns whether the backend actually persisted the change — existing
+  // callers that only `await` this and ignore the result keep working
+  // exactly as before; callers that need to know about a silent backend
+  // failure (e.g. a save that only landed in the localStorage fallback) can
+  // check `.ok`.
+  async saveExercise(exercise: LibraryExercise): Promise<{ ok: boolean; error?: string }> {
+    let result: { ok: boolean; error?: string } = { ok: false };
     try {
       const response = await fetch(`${API_BASE}/exercises/${exercise.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(exercise),
       });
-      if (!response.ok) throw new Error("API save error");
-    } catch (error) {
+      if (response.ok) {
+        result = { ok: true };
+      } else {
+        let message = `Server responded with ${response.status}`;
+        try {
+          const body = await response.json();
+          if (body?.error) message = body.error;
+        } catch { /* response wasn't JSON (e.g. a proxy error page) — keep the status message */ }
+        result = { ok: false, error: message };
+      }
+    } catch (error: any) {
        console.warn("Backend save postponed. Syncing locally.");
+       result = { ok: false, error: error?.message || 'Network error' };
     }
     const cached = localStorage.getItem('gym_exercises');
     let exercises: LibraryExercise[] = cached ? JSON.parse(cached) : [...DEFAULT_EXERCISES];
     exercises = exercises.map(ex => ex.id === exercise.id ? exercise : ex);
     localStorage.setItem('gym_exercises', JSON.stringify(exercises));
+    return result;
   },
 
   async deleteExercise(id: string): Promise<void> {

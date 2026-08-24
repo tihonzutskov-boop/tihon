@@ -37,7 +37,9 @@ const initDb = async () => {
 initDb();
 
 app.use(cookieParser());
-app.use(express.json({ limit: '25mb' }));
+// 60mb to accommodate a short uploaded tutorial video as a base64 data URI
+// (roughly 33% larger than the raw file), on top of the existing GIF uploads.
+app.use(express.json({ limit: '60mb' }));
 
 // --- Auth Routes ---
 

@@ -47,8 +47,15 @@ const ExerciseTutorials: React.FC<ExerciseTutorialsProps> = ({
   const active = activeId ? libraryExercises.find(e => e.id === activeId) || null : null;
 
   const handleSaveTutorial = async (updated: LibraryExercise) => {
-    await api.saveExercise(updated);
+    const result = await api.saveExercise(updated);
     onExercisesUpdated(libraryExercises.map(e => (e.id === updated.id ? updated : e)));
+    if (!result.ok) {
+      throw new Error(
+        result.error
+          ? `Saved on this device only — the server rejected it: ${result.error}`
+          : 'Saved on this device only — could not reach the server.'
+      );
+    }
   };
 
   return (

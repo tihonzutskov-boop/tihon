@@ -166,6 +166,8 @@ const EditTutorialModal: React.FC<EditTutorialModalProps> = ({ exercise, onClose
         makeEasier: easier.trim(),
       });
       onClose();
+    } catch (err: any) {
+      setError(err?.message || 'Failed to save. Please try again.');
     } finally {
       setSaving(false);
     }
