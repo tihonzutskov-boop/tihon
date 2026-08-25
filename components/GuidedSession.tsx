@@ -213,7 +213,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                 floorColor={gym.floorColor}
                 annexes={gym.annexes}
                 focusedZoneId={zone.id}
-                selectedMachineId={exercise.machineId || null}
+                selectedMachineId={machine?.id || null}
                 hideSearch
               />
             ) : (
