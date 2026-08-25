@@ -29,7 +29,7 @@ const App: React.FC = () => {
   const [equipmentList, setEquipmentList] = useState<EquipmentItem[]>(DEFAULT_EQUIPMENT);
   const [libraryExercises, setLibraryExercises] = useState<LibraryExercise[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   const [user, setUser] = useState<User | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');

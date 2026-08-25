@@ -77,10 +77,14 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
     const location = getExerciseLocations(exercise, gym);
     return location.primaryMachine || undefined;
   }, [zone, exercise, gym]);
-  const equipmentItem = useMemo(
-    () => (machine?.equipmentId ? equipmentList.find(e => e.id === machine.equipmentId) : undefined),
-    [machine, equipmentList]
-  );
+  const equipmentItem = useMemo(() => {
+    if (!machine) return undefined;
+    // Machines placed before addMachineFromEquipment started setting
+    // equipmentId (AdminPage.tsx) never got linked back to their Equipment
+    // Library item — fall back to matching by name, which the placement
+    // flow always copies from the equipment item verbatim.
+    return equipmentList.find(e => e.id === machine.equipmentId) || equipmentList.find(e => e.name === machine.name);
+  }, [machine, equipmentList]);
   const libraryExercise = useMemo(
     () => (exercise?.libraryExerciseId ? libraryExercises.find(le => le.id === exercise.libraryExerciseId) : undefined),
     [exercise, libraryExercises]

@@ -363,7 +363,8 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
       height: 40,
       icon: eq.icon || 'Dumbbell',
       longDescription: eq.description || '',
-      videoUrl: ''
+      videoUrl: '',
+      equipmentId: eq.id
     };
 
     // Ensure the zone's equipmentIds includes this physical equipment's ID
