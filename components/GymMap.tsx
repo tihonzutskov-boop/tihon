@@ -1333,10 +1333,15 @@ const GymMap: React.FC<GymMapProps> = ({
                 const isMatch = matchingZoneIds.has(zone.id);
                 const hasActiveSearch = matchingZoneIds.size > 0 || mapSearchQuery.trim().length > 0 || selectedMuscleFilter !== 'All';
                 const zoneOpacity = focusedZoneId
-                  ? (isFocused ? 1 : 0.22)
+                  ? (isFocused ? 1 : 0.28)
                   : hasActiveSearch
-                  ? (isMatch ? 1 : 0.15) 
+                  ? (isMatch ? 1 : 0.15)
                   : (selectedZoneId && !isSelected ? 0.4 : 1);
+                // On the Locate map, keep the zone's fill dim so the focused
+                // zone stands out, but keep every zone's name readable at a
+                // glance regardless of focus — so the fill can stay subtle
+                // without the floor becoming unreadable.
+                const labelOpacity = focusedZoneId ? (isFocused ? 1 : 0.92) : zoneOpacity;
 
                 // Zone style matching screenshot
                 const zoneStyle = getZoneThemeStyle(zone);
@@ -1368,7 +1373,6 @@ const GymMap: React.FC<GymMapProps> = ({
                       if (!isThumbnail && isLayoutEdit && onZoneDragStart) onZoneDragStart(e, zone);
                     }}
                     className={`transition-all duration-300 ease-in-out ${isThumbnail ? '' : isLayoutEdit ? 'cursor-move' : isMachineEdit && isFocused ? 'cursor-default' : 'cursor-pointer'}`}
-                    style={{ opacity: zoneOpacity }}
                   >
                     {/* Active / Match Highlight Glow */}
                     {isMatch && !isThumbnail && (
@@ -1389,7 +1393,8 @@ const GymMap: React.FC<GymMapProps> = ({
                       stroke={isSelected ? '#38bdf8' : zoneStyle.stroke}
                       strokeWidth={isThumbnail ? 2 : (isSelected || isFocused ? 2.5 : 1.5)}
                       rx="8"
-                      className="transition-colors duration-200 shadow-sm"
+                      className="transition-all duration-300 ease-in-out shadow-sm"
+                      style={{ opacity: zoneOpacity }}
                     />
 
                     {/* Inner Dashed Accent Border for Workout Zones, Solid for Amenities */}
@@ -1404,7 +1409,8 @@ const GymMap: React.FC<GymMapProps> = ({
                       strokeDasharray={isAmenity ? undefined : "4 3"}
                       strokeOpacity={isAmenity ? 0.95 : 0.85}
                       rx="4"
-                      className="pointer-events-none"
+                      className="pointer-events-none transition-opacity duration-300 ease-in-out"
+                      style={{ opacity: zoneOpacity }}
                     />
 
                     {/* Soft blurred machine footprints — real position & size within
@@ -1412,7 +1418,7 @@ const GymMap: React.FC<GymMapProps> = ({
                         is the one being focused/zoomed, since the real machines take
                         over rendering at that point. */}
                     {!isFocused && !isThumbnail && zone.machines && zone.machines.length > 0 && (
-                      <g style={{ pointerEvents: 'none' }}>
+                      <g style={{ pointerEvents: 'none', opacity: zoneOpacity }} className="transition-opacity duration-300 ease-in-out">
                         {zone.machines.map((machine, mIdx) => (
                           <rect
                             key={`preview-${zone.id}-${machine.id}-${mIdx}`}
@@ -1428,7 +1434,9 @@ const GymMap: React.FC<GymMapProps> = ({
                       </g>
                     )}
 
-                    {/* Centered White Zone Name matching screenshot */}
+                    {/* Centered White Zone Name matching screenshot — opacity is
+                        tracked separately from the fill/border above so the
+                        label stays legible even when a zone's fill is dimmed. */}
                     <text
                       x={zone.x + zone.width / 2}
                       y={zone.y + zone.height / 2}
@@ -1437,7 +1445,8 @@ const GymMap: React.FC<GymMapProps> = ({
                       fontWeight="600"
                       textAnchor="middle"
                       dominantBaseline="middle"
-                      className="pointer-events-none select-none drop-shadow-sm font-sans"
+                      className="pointer-events-none select-none drop-shadow-sm font-sans transition-opacity duration-300 ease-in-out"
+                      style={{ opacity: labelOpacity }}
                     >
                       {getGymTranslation(zone.name, lang)}
                     </text>
