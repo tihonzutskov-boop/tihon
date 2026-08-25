@@ -868,59 +868,6 @@ const GymMap: React.FC<GymMapProps> = ({
               );
             })()}
 
-            {/* Entrance label and marker */}
-            {(() => {
-              const side = entrance?.side || 'bottom';
-              let entX = dimensions.width / 2;
-              let entY = dimensions.height - 5;
-              let entTextY = dimensions.height + 15;
-              if (side === 'bottom') {
-                entX = dimensions.width / 2;
-                entY = dimensions.height - 5;
-                entTextY = dimensions.height + 15;
-              } else if (side === 'top') {
-                entX = dimensions.width / 2;
-                entY = -5;
-                entTextY = -10;
-              } else if (side === 'left') {
-                entX = -5;
-                entY = dimensions.height / 2;
-                entTextY = dimensions.height / 2 + 15;
-              } else if (side === 'right') {
-                entX = dimensions.width - 5;
-                entY = dimensions.height / 2;
-                entTextY = dimensions.height / 2 + 15;
-              }
-              return (
-                <g className="select-none pointer-events-none">
-                  {side === 'bottom' && (
-                    <rect
-                      x={dimensions.width / 2 - 26}
-                      y={dimensions.height - 5}
-                      width={52}
-                      height={10}
-                      rx={4}
-                      fill="#0c1322"
-                      stroke="#233554"
-                      strokeWidth={1.5}
-                    />
-                  )}
-                  <text
-                    x={entX}
-                    y={entTextY}
-                    textAnchor="middle"
-                    fill="#475569"
-                    fontSize="10"
-                    fontWeight="700"
-                    letterSpacing="3"
-                    className="uppercase"
-                  >
-                    ENTRANCE
-                  </text>
-                </g>
-              );
-            })()}
-
             {/* Architectural Walls & Portals Layer */}
             {(dimensions.walls || []).map((wall) => {
               const isSelected = selectedWallId === wall.id;
