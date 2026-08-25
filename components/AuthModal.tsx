@@ -21,6 +21,7 @@ const GOOGLE_CLIENT_ID = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID as stri
 const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, lang }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const buttonRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -31,6 +32,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, lang }) => {
 
     let cancelled = false;
     let attempts = 0;
+    setError(null);
 
     const handleCredentialResponse = async (response: any) => {
       setLoading(true);
@@ -63,13 +65,19 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, lang }) => {
         attempts += 1;
         setTimeout(tryInit, 100);
       } else {
-        setError('Could not load Google sign-in. Check your connection and try again.');
+        // This means Google's identity script itself never finished
+        // loading in this browser — most often an ad-blocker/privacy
+        // extension or a restrictive network blocking
+        // accounts.google.com/gsi/client, not anything about which
+        // Google account is being used (that check happens later, inside
+        // Google's own flow, well past this point).
+        setError('Could not load Google sign-in. This is usually caused by an ad-blocker, privacy extension, or restrictive network blocking Google’s sign-in script — try disabling extensions for this site, switching networks, or a different browser.');
       }
     };
 
     tryInit();
     return () => { cancelled = true; };
-  }, [onSuccess, onClose]);
+  }, [onSuccess, onClose, retryCount]);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -102,8 +110,16 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, lang }) => {
 
         <div className="p-6 sm:p-8 space-y-4 sm:space-y-5 overflow-y-auto flex-1 flex flex-col items-center">
            {error && (
-             <div className="w-full p-3 bg-red-950/30 border border-red-900/50 rounded-lg text-red-400 text-xs text-center font-medium">
-               {error}
+             <div className="w-full p-3 bg-red-950/30 border border-red-900/50 rounded-lg text-red-400 text-xs text-center font-medium space-y-2.5">
+               <p>{error}</p>
+               {GOOGLE_CLIENT_ID && (
+                 <button
+                   onClick={() => { setError(null); setRetryCount(c => c + 1); }}
+                   className="text-[11px] font-bold text-red-300 underline hover:text-red-200 transition-colors"
+                 >
+                   Try again
+                 </button>
+               )}
              </div>
            )}
 
