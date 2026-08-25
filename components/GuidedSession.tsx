@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { X, ArrowLeft, Check, Plus, Minus, Dumbbell, PlayCircle } from 'lucide-react';
 import { WorkoutDay, Gym, EquipmentItem, LibraryExercise, Exercise } from '../types';
 import GymMap from './GymMap';
+import { getExerciseLocations } from '../utils/exerciseMatcher';
 
 interface GuidedSessionProps {
   day: WorkoutDay;
@@ -54,8 +55,28 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
     setTutorialPlaying(false);
   }, [exIdx]);
 
-  const zone = useMemo(() => gym.zones.find(z => z.id === exercise?.equipmentId), [gym.zones, exercise]);
-  const machine = useMemo(() => zone?.machines?.find(m => m.id === exercise?.machineId), [zone, exercise]);
+  // Exercises built in the plan-template builder (Coaching > Catalog) are
+  // never tied to a specific gym's zone — they're created with
+  // equipmentId: 'manual' and no machineId, since a template is meant to be
+  // reusable across whichever gym a trainee ends up training at. A direct
+  // id lookup always misses for those, so fall back to the same
+  // name/equipment matching ExerciseLibrary and GymMap already use to
+  // resolve "where does this actually live" dynamically in the trainee's
+  // current gym.
+  const zone = useMemo(() => {
+    if (!exercise) return undefined;
+    const direct = gym.zones.find(z => z.id === exercise.equipmentId);
+    if (direct) return direct;
+    const location = getExerciseLocations(exercise, gym);
+    return location.primaryZone || location.matchedZones[0] || undefined;
+  }, [gym, exercise]);
+  const machine = useMemo(() => {
+    if (!exercise) return undefined;
+    const direct = zone?.machines?.find(m => m.id === exercise.machineId);
+    if (direct) return direct;
+    const location = getExerciseLocations(exercise, gym);
+    return location.primaryMachine || undefined;
+  }, [zone, exercise, gym]);
   const equipmentItem = useMemo(
     () => (machine?.equipmentId ? equipmentList.find(e => e.id === machine.equipmentId) : undefined),
     [machine, equipmentList]
