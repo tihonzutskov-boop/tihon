@@ -1457,12 +1457,34 @@ const GymMap: React.FC<GymMapProps> = ({
                       </g>
                     )}
 
+                    {/* Zone icon — shown when a zone has no individual machines
+                        placed in it (e.g. Locker Room, Front Desk, Showers), so
+                        the tile isn't just a colored box with a name label and
+                        nothing else. Zones with machines already get visual
+                        richness from the machine footprints/icons themselves. */}
+                    {!isThumbnail && (!zone.machines || zone.machines.length === 0) && zone.height >= 70 && (() => {
+                      const ZoneIcon = getEquipmentIcon(zone.icon, zone.name, zone.type);
+                      if (!ZoneIcon) return null;
+                      const iconSize = zone.width < 110 || zone.height < 90 ? 20 : 26;
+                      return (
+                        <g
+                          transform={`translate(${zone.x + zone.width / 2}, ${zone.y + zone.height / 2 - iconSize * 0.9})`}
+                          className="pointer-events-none transition-opacity duration-300 ease-in-out"
+                          style={{ opacity: labelOpacity }}
+                        >
+                          <g transform={`translate(${-iconSize / 2}, ${-iconSize / 2})`}>
+                            <ZoneIcon size={iconSize} color={zoneStyle.textColor || '#ffffff'} />
+                          </g>
+                        </g>
+                      );
+                    })()}
+
                     {/* Centered White Zone Name matching screenshot — opacity is
                         tracked separately from the fill/border above so the
                         label stays legible even when a zone's fill is dimmed. */}
                     <text
                       x={zone.x + zone.width / 2}
-                      y={zone.y + zone.height / 2}
+                      y={zone.y + zone.height / 2 + ((!zone.machines || zone.machines.length === 0) && zone.height >= 70 ? 14 : 0)}
                       fill={zoneStyle.textColor || '#ffffff'}
                       fontSize={zone.width < 110 || zone.height < 55 ? '12' : '14'}
                       fontWeight="600"
