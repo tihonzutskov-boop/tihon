@@ -399,7 +399,14 @@ const AdminCoaching: React.FC = () => {
                   <Answer label="Weight" value={`${selectedClient.answers.weightKg} kg`} />
                   <Answer label="Sex" value={selectedClient.answers.sex} />
                   <Answer label="Experience" value={selectedClient.answers.level} />
-                  <Answer label="Schedule" value={`${selectedClient.answers.daysPerWeek}x/week · ${selectedClient.answers.minutesPerSession}`} />
+                  <Answer
+                    label="Schedule"
+                    value={`${selectedClient.answers.daysPerWeek}x/week · ${selectedClient.answers.minutesPerSession}${
+                      selectedClient.answers.preferredDays?.length
+                        ? ` (${selectedClient.answers.preferredDays.map(d => d.charAt(0).toUpperCase() + d.slice(1)).join(', ')})`
+                        : ''
+                    }`}
+                  />
                 </div>
                 <div className="flex flex-wrap gap-1.5 mb-4">
                   {selectedClient.answers.goals.map(g => <Tag key={g}>{g}</Tag>)}

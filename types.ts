@@ -217,6 +217,7 @@ export interface QuestionnaireAnswers {
   goals: string[];           // multi-select
   level: string;              // only 'Beginner' selectable for now
   daysPerWeek: string;        // '1'..'4'
+  preferredDays: Weekday[];   // which weekdays, in calendar order — length matches daysPerWeek
   minutesPerSession: string;  // '30 min'..'90 min'
   equipment: string;
   avoidExercises?: string;

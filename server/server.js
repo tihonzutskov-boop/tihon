@@ -247,6 +247,7 @@ const WEEKDAY_SPREADS = {
   6: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'],
   7: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'],
 };
+const WEEKDAY_ORDER = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
 app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
   const { answers } = req.body;
@@ -276,7 +277,17 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
       }
       if (match) {
         const dayCount = Math.min(Math.max(match.days.length, 1), 7);
-        const spread = WEEKDAY_SPREADS[dayCount] || [];
+        // Prefer the specific days the user picked in the questionnaire,
+        // kept in calendar order regardless of click order so Day 1/Day
+        // 2/... map onto the week predictably. Only usable when it covers
+        // the matched template's actual day count — otherwise (a mismatch
+        // between what was picked and what the fallback-matched template
+        // needs) fall back to the generic spread, same as before this
+        // existed.
+        const userDays = Array.isArray(answers.preferredDays)
+          ? WEEKDAY_ORDER.filter(d => answers.preferredDays.includes(d))
+          : [];
+        const spread = userDays.length >= dayCount ? userDays.slice(0, dayCount) : (WEEKDAY_SPREADS[dayCount] || []);
         const days = match.days.map((d, i) => ({ ...d, id: `day-${Date.now()}-${i}`, weekday: spread[i] }));
         await pool.query(
           `INSERT INTO user_plans (user_id, name, days, updated_at)
