@@ -3,7 +3,6 @@ import { X, ArrowLeft, Check, Plus, Minus, Dumbbell, PlayCircle } from 'lucide-r
 import { WorkoutDay, Gym, EquipmentItem, LibraryExercise, Exercise } from '../types';
 import GymMap from './GymMap';
 import { getExerciseLocations } from '../utils/exerciseMatcher';
-import { getExerciseRequiredEquipmentIds } from '../utils/equipmentMatcher';
 
 interface GuidedSessionProps {
   day: WorkoutDay;
@@ -90,17 +89,6 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
     () => (exercise?.libraryExerciseId ? libraryExercises.find(le => le.id === exercise.libraryExerciseId) : undefined),
     [exercise, libraryExercises]
   );
-  // Only resolvable via the linked library exercise — a bare plan Exercise
-  // has no equipmentRequired/requiredEquipmentIds of its own to check. When
-  // there's no link, Identify falls back to the single-item view below,
-  // same as before this existed.
-  const requiredEquipment = useMemo<EquipmentItem[]>(() => {
-    if (!libraryExercise) return [];
-    return getExerciseRequiredEquipmentIds(libraryExercise, equipmentList)
-      .map(id => equipmentList.find(e => e.id === id))
-      .filter((e): e is EquipmentItem => !!e);
-  }, [libraryExercise, equipmentList]);
-  const zoneForEquipment = (eq: EquipmentItem) => gym.zones.find(z => (z.equipmentIds || []).includes(eq.id));
 
   const rows: SetRow[] = useMemo(() => {
     if (!exercise) return [];
@@ -327,38 +315,6 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                 </div>
               </div>
             </div>
-          ) : stage.key === 'identify' && requiredEquipment.length > 1 ? (
-            <div className="border-b border-slate-800">
-              <div className="flex items-center gap-2 px-4 pt-3.5 pb-2">
-                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-lime-400 text-slate-950 text-[10px] font-extrabold flex items-center justify-center">
-                  {requiredEquipment.length}
-                </span>
-                <p className="text-[11px] font-bold text-slate-400">This exercise needs {requiredEquipment.length} pieces of equipment.</p>
-              </div>
-              <div className="grid grid-cols-2 gap-2.5 px-4 pb-4">
-                {requiredEquipment.map((eq, i) => {
-                  const eqZone = zoneForEquipment(eq);
-                  return (
-                    <div key={eq.id} className="bg-slate-950/60 border border-slate-800 rounded-xl overflow-hidden">
-                      <div className="relative aspect-square flex items-center justify-center overflow-hidden bg-gradient-to-br from-slate-800 to-slate-900">
-                        <span className="absolute top-1.5 left-1.5 w-5 h-5 rounded-full bg-slate-950 text-lime-400 text-[10px] font-extrabold flex items-center justify-center border border-lime-500/40">
-                          {i + 1}
-                        </span>
-                        {eq.imageUrl ? (
-                          <img src={eq.imageUrl} alt={eq.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <Dumbbell className="w-6 h-6 text-slate-600" />
-                        )}
-                      </div>
-                      <div className="p-2">
-                        <p className="text-[11px] font-bold text-white leading-tight mb-0.5">{eq.name}</p>
-                        {eqZone && <p className="text-[9.5px] text-slate-500 truncate">{eqZone.name}</p>}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
           ) : (
             <div className="h-44 border-b border-slate-800 flex items-center justify-center overflow-hidden bg-gradient-to-br from-slate-800 to-slate-900">
               {stage.key === 'identify' ? (
@@ -391,7 +347,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
               </div>
             )}
 
-            {!(stage.key === 'tutorial' && hasTutorialVideo) && !(stage.key === 'identify' && requiredEquipment.length > 1) && (
+            {!(stage.key === 'tutorial' && hasTutorialVideo) && (
               <p className="text-sm text-slate-400 leading-relaxed">
                 {stage.key === 'locate' && zone && `Head to the ${zone.name}. Follow the map above — it marks exactly where this machine sits on the gym floor.`}
                 {stage.key === 'locate' && !zone && 'This exercise has no zone set — ask an admin to link it in the plan editor.'}
