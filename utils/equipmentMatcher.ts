@@ -109,7 +109,11 @@ export function getExerciseRequiredEquipmentIds(exercise: LibraryExercise, allEq
 
   if (text.includes('dumbbell') || text.includes('db ')) ids.add('eq-dumbbells');
   if (text.includes('barbell') || text.includes('deadlift') || text.includes('bench press') || text.includes('squat')) ids.add('eq-barbell-plates');
-  if (text.includes('squat') || text.includes('rack') || text.includes('cage')) ids.add('eq-squat-rack');
+  // Deliberately no bare 'rack' — plenty of unrelated equipment labels
+  // legitimately contain that word too (e.g. "Dumbbell rack"), and a bare
+  // match here previously tagged those exercises with a squat rack instead
+  // of what they actually need.
+  if (text.includes('squat') || text.includes('cage')) ids.add('eq-squat-rack');
   if (text.includes('bench') || text.includes('incline') || text.includes('seated dumbbell') || text.includes('chest press')) ids.add('eq-adj-bench');
   if (text.includes('cable') || text.includes('tricep pushdown') || text.includes('fly')) ids.add('eq-cable-crossover');
   if (text.includes('pulldown') || text.includes('lat pull')) ids.add('eq-lat-pulldown');

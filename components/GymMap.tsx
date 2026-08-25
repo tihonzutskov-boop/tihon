@@ -1332,9 +1332,9 @@ const GymMap: React.FC<GymMapProps> = ({
                 const isAmenity = isAmenityZone(zone);
                 const isMatch = matchingZoneIds.has(zone.id);
                 const hasActiveSearch = matchingZoneIds.size > 0 || mapSearchQuery.trim().length > 0 || selectedMuscleFilter !== 'All';
-                const zoneOpacity = focusedZoneId 
-                  ? (isFocused ? 1 : 0.06) 
-                  : hasActiveSearch 
+                const zoneOpacity = focusedZoneId
+                  ? (isFocused ? 1 : 0.22)
+                  : hasActiveSearch
                   ? (isMatch ? 1 : 0.15) 
                   : (selectedZoneId && !isSelected ? 0.4 : 1);
 
