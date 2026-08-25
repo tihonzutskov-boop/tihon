@@ -258,6 +258,11 @@ export function getExerciseLocations(
 
   const matchedZonesMap = new Map<string, GymZone>();
   const matchedMachinesList: { zone: GymZone; machine: GymMachine }[] = [];
+  // Tracks how strongly each zone matched, so a zone with a real machine
+  // hit can be preferred over one that only matched via a broad shared
+  // keyword (e.g. 'bench' also appearing in an unrelated zone's
+  // description) when picking the primary zone below.
+  const matchStrength = new Map<string, 'machine' | 'keyword'>();
 
   // Check each zone and machine in the gym
   gym.zones.forEach(zone => {
@@ -292,6 +297,7 @@ export function getExerciseLocations(
 
     if (zoneMatched || (matchZoneByKeywords && matchZoneByType)) {
       matchedZonesMap.set(zone.id, zone);
+      matchStrength.set(zone.id, zoneMatched ? 'machine' : 'keyword');
     }
   });
 
@@ -316,7 +322,11 @@ export function getExerciseLocations(
   if (exercise.equipmentId && matchedZonesMap.has(exercise.equipmentId)) {
     primaryZone = matchedZonesMap.get(exercise.equipmentId)!;
   } else if (matchedZones.length > 0) {
-    primaryZone = matchedZones[0];
+    // Prefer a zone with a real machine-level match over one that only
+    // matched via a broad shared zone keyword, so a generic word can't
+    // outrank the zone that actually contains the right equipment.
+    const machineMatched = matchedZones.find(z => matchStrength.get(z.id) === 'machine');
+    primaryZone = machineMatched || matchedZones[0];
   }
 
   if (exercise.machineId && matchedMachinesList.some(m => m.machine.id === exercise.machineId)) {
