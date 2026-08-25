@@ -312,10 +312,12 @@ const App: React.FC = () => {
          <UserDashboard
            user={user}
            gyms={gyms}
+           activeGymId={activeGymId}
            workoutPlan={workoutPlan}
            onLogout={handleLogout}
            onEnterGym={handleGymSelect}
-           onStartWorkout={(dayIndex) => {
+           onStartWorkout={(dayIndex, gymId) => {
+             setActiveGymId(gymId);
              setActiveDayIndex(dayIndex);
              setGuidedSessionOpen(true);
            }}

@@ -10,10 +10,11 @@ import { api } from '../services/api';
 interface UserDashboardProps {
   user: User;
   gyms: Gym[];
+  activeGymId: string;
   workoutPlan: WorkoutPlan;
   onLogout: () => void;
   onEnterGym: (gymId: string) => void;
-  onStartWorkout: (dayIndex: number) => void;
+  onStartWorkout: (dayIndex: number, gymId: string) => void;
   questionnaire: QuestionnaireAnswers | null;
   onSubmitQuestionnaire: (answers: QuestionnaireAnswers) => void;
   onOpenTutorials: () => void;
@@ -43,13 +44,18 @@ const startOfThisWeek = (): Date => {
   return monday;
 };
 
-const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, workoutPlan, onLogout, onEnterGym, onStartWorkout, questionnaire, onSubmitQuestionnaire, onOpenTutorials, lang }) => {
+const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, workoutPlan, onLogout, onEnterGym, onStartWorkout, questionnaire, onSubmitQuestionnaire, onOpenTutorials, lang }) => {
   const t = translations[lang];
 
   const [stats, setStats] = useState(user.stats || { workoutsCompleted: 0, totalMinutes: 0, streakDays: 0 });
   const [logs, setLogs] = useState<WorkoutLogEntry[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
   const [selectedWeekday, setSelectedWeekday] = useState<Weekday>(() => jsDayToKey(new Date().getDay()));
+  // Which physical gym the trainee is training at today — a plan's exercises
+  // are located against one specific gym's floor plan (zone ids aren't
+  // shared across locations), so starting a session at the wrong gym is
+  // exactly why "equipment can't be found on the map" happens.
+  const [sessionGymId, setSessionGymId] = useState(activeGymId);
 
   useEffect(() => {
     api.fetchMyWorkouts().then(({ logs, stats }) => {
@@ -145,13 +151,28 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, workoutPlan, 
             </div>
             {todayEntry?.day && todayEntry.status === 'today' && (
               <button
-                onClick={() => onStartWorkout(todayEntry.dayIndex)}
+                onClick={() => onStartWorkout(todayEntry.dayIndex, sessionGymId)}
                 className="flex-shrink-0 bg-lime-500 hover:bg-lime-400 text-slate-950 font-bold text-xs sm:text-sm px-5 py-3 rounded-xl transition-colors whitespace-nowrap"
               >
                 Start today's session
               </button>
             )}
           </div>
+          {gyms.length > 1 && (
+            <div className="relative mt-5 flex items-center gap-2.5">
+              <MapPin className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide flex-shrink-0">Training at</label>
+              <select
+                value={sessionGymId}
+                onChange={e => setSessionGymId(e.target.value)}
+                className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-white focus:outline-none focus:border-lime-500 cursor-pointer"
+              >
+                {gyms.map(g => (
+                  <option key={g.id} value={g.id}>{getGymTranslation(g.name, lang)}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Stats Grid */}
@@ -259,7 +280,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, workoutPlan, 
                 </div>
                 {selectedEntry.status === 'today' && (
                   <button
-                    onClick={() => onStartWorkout(selectedEntry.dayIndex)}
+                    onClick={() => onStartWorkout(selectedEntry.dayIndex, sessionGymId)}
                     className="w-full mt-4 py-2.5 bg-lime-500 hover:bg-lime-400 text-slate-950 font-bold rounded-xl text-xs uppercase tracking-wider transition-colors"
                   >
                     Start coaching session
