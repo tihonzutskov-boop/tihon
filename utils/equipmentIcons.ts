@@ -310,6 +310,19 @@ export function getZoneThemeStyle(zone: { type?: string | EquipmentType; name?: 
   const name = (zone.name || '').toLowerCase();
   const type = (zone.type || '') as EquipmentType;
 
+  // An admin-picked color (via the zone editor's Color Code field) always
+  // wins over the auto-detected theme below — otherwise picking a color
+  // has no visible effect for any zone whose name/type happens to match
+  // one of the keyword categories, which is nearly all of them.
+  if (zone.color && zone.color.startsWith('#') && zone.color.toLowerCase() !== '#ffffff' && zone.color.toLowerCase() !== '#000000') {
+    return {
+      fill: zone.color + 'bb',
+      stroke: zone.color,
+      dashStroke: zone.color,
+      textColor: '#ffffff'
+    };
+  }
+
   // 1. Treadmills / Rowers / Cardio -> Deep Cyan/Ocean Blue
   if (
     type === EquipmentType.CARDIO ||
@@ -414,16 +427,6 @@ export function getZoneThemeStyle(zone: { type?: string | EquipmentType; name?: 
       fill: '#243447',
       stroke: '#64748b',
       dashStroke: '#94a3b8',
-      textColor: '#ffffff'
-    };
-  }
-
-  // Custom explicit color fallback
-  if (zone.color && zone.color.startsWith('#') && zone.color !== '#ffffff' && zone.color !== '#000000') {
-    return {
-      fill: zone.color + 'bb',
-      stroke: zone.color,
-      dashStroke: zone.color,
       textColor: '#ffffff'
     };
   }
