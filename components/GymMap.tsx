@@ -1353,14 +1353,17 @@ const GymMap: React.FC<GymMapProps> = ({
                 const isMatch = matchingZoneIds.has(zone.id);
                 const hasActiveSearch = matchingZoneIds.size > 0 || mapSearchQuery.trim().length > 0 || selectedMuscleFilter !== 'All';
                 const zoneOpacity = focusedZoneId
-                  ? (isFocused ? 1 : 0.28)
+                  ? (isFocused ? 1 : 0.6)
                   : hasActiveSearch
                   ? (isMatch ? 1 : 0.15)
                   : (selectedZoneId && !isSelected ? 0.4 : 1);
-                // On the Locate map, keep the zone's fill dim so the focused
-                // zone stands out, but keep every zone's name readable at a
-                // glance regardless of focus — so the fill can stay subtle
-                // without the floor becoming unreadable.
+                // On the Locate map, dim the non-focused zones' fill so the
+                // focused zone stands out, but keep every zone's name
+                // readable at a glance regardless of focus. These zone
+                // theme colors are already fairly dark/muted by design, so
+                // a low opacity here reads as near-invisible against the
+                // near-black floor rather than "dim" — 0.6 keeps a real gap
+                // vs. the fully-lit focused zone while staying visible.
                 const labelOpacity = focusedZoneId ? (isFocused ? 1 : 0.92) : zoneOpacity;
 
                 // Zone style matching screenshot
