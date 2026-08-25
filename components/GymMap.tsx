@@ -714,6 +714,26 @@ const GymMap: React.FC<GymMapProps> = ({
           animation: machineGlowWhite 1.3s ease-in-out infinite;
           stroke: #ffffff !important;
         }
+        @keyframes machineGlowLime {
+          0%, 100% { stroke-width: 2px; stroke-opacity: 0.85; filter: drop-shadow(0 0 4px rgba(163,230,53,0.7)); }
+          50% { stroke-width: 3px; stroke-opacity: 1; filter: drop-shadow(0 0 14px rgba(163,230,53,1)); }
+        }
+        .machine-glow-lime {
+          animation: machineGlowLime 1.3s ease-in-out infinite;
+          stroke: #a3e635 !important;
+        }
+        @keyframes spotlightRing {
+          0% { transform: scale(0.7); opacity: 0.9; }
+          100% { transform: scale(2.1); opacity: 0; }
+        }
+        .spotlight-ring {
+          transform-box: fill-box;
+          transform-origin: center;
+          animation: spotlightRing 1.8s ease-out infinite;
+          stroke: #a3e635;
+          fill: none;
+          pointer-events: none;
+        }
       `}</style>
 
       {!isThumbnail && (
@@ -1477,17 +1497,25 @@ const GymMap: React.FC<GymMapProps> = ({
                     {/* Machines rendered inside zone (when focused or editing) */}
                     {((isFocused && !isAmenity && !isEditable) || (isMachineEdit && isFocused)) && zone.machines && (
                       <g className="animate-in fade-in zoom-in duration-300">
-                        {zone.machines.map((machine, mIdx) => {
+                        {(() => {
+                          // Spotlight mode: once a specific machine in this zone is the
+                          // resolved match (selectedMachineId), every other machine dims
+                          // to gray so there's only one thing left to look at.
+                          const zoneHasTarget = !isEditable && !!selectedMachineId && zone.machines!.some(m => m.id === selectedMachineId);
+                          return zone.machines!.map((machine, mIdx) => {
                           const isMachineSelected = selectedMachineId === machine.id;
                           const isHovered = hoveredMachineId === machine.id;
                           const showAdminSelected = isEditable && isMachineSelected;
+                          const isUserTarget = !isEditable && isMachineSelected;
                           const showUserGlow = !isEditable && (isMachineSelected || isHovered);
+                          const isDimmed = zoneHasTarget && !isMachineSelected && !isHovered;
                           const MachineIcon = getEquipmentIcon(machine.icon, machine.name, zone.type);
 
                           return (
                             <g
                                key={`mach-${zone.id}-${machine.id}-${mIdx}`}
                                transform={`translate(${zone.x + machine.x}, ${zone.y + machine.y})`}
+                               style={{ opacity: isDimmed ? 0.35 : 1, filter: isDimmed ? 'grayscale(1)' : 'none', transition: 'opacity 0.3s ease, filter 0.3s ease' }}
                                onMouseDown={(e) => {
                                  if (isMachineEdit && onMachineDragStart) {
                                    e.stopPropagation();
@@ -1510,13 +1538,20 @@ const GymMap: React.FC<GymMapProps> = ({
                                }}
                                className={`${isMachineEdit ? 'cursor-move' : !isEditable ? 'cursor-pointer hover:opacity-80' : ''}`}
                             >
+                              {isUserTarget && (
+                                <rect
+                                  x={-6} y={-6} width={machine.width + 12} height={machine.height + 12}
+                                  rx="8" strokeWidth="1.5"
+                                  className="spotlight-ring"
+                                />
+                              )}
                               <rect
                                 width={machine.width} height={machine.height}
-                                fill={zoneStyle.stroke} fillOpacity={0.85}
-                                stroke={showAdminSelected ? "#3b82f6" : "#ffffff"}
+                                fill={zoneStyle.stroke} fillOpacity={isUserTarget ? 1 : isDimmed ? 0.5 : 0.85}
+                                stroke={showAdminSelected ? "#3b82f6" : isUserTarget ? "#a3e635" : "#ffffff"}
                                 strokeWidth={(showAdminSelected || showUserGlow) ? 2 : 1}
                                 rx="4"
-                                className={showAdminSelected ? 'machine-pulse' : showUserGlow ? 'machine-glow-white' : ''}
+                                className={showAdminSelected ? 'machine-pulse' : isUserTarget ? 'machine-glow-lime' : (showUserGlow ? 'machine-glow-white' : '')}
                               />
 
                               <g transform={`translate(${machine.width / 2}, ${machine.height / 2})`} className="pointer-events-none">
@@ -1567,10 +1602,11 @@ const GymMap: React.FC<GymMapProps> = ({
                               )}
                             </g>
                           )
-                        })}
+                        });
+                        })()}
                       </g>
                     )}
-                    
+
                     {isSelected && isLayoutEdit && !isThumbnail && (
                       <rect
                         x={zone.x + zone.width - 12} y={zone.y + zone.height - 12} width="12" height="12"
