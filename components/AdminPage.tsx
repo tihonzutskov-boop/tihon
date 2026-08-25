@@ -26,6 +26,20 @@ const useGymHistory = (initialGym: Gym) => {
   const [present, setPresent] = useState<Gym>(initialGym);
   const [future, setFuture] = useState<Gym[]>([]);
 
+  // The admin sidebar's gym switcher changes initialGym without remounting
+  // this component (so global tabs like Equipment/Exercises stay mounted
+  // across the switch) — when that happens, reset history to the newly
+  // selected gym instead of keeping the previous gym's undo stack.
+  const prevInitialIdRef = useRef(initialGym.id);
+  useEffect(() => {
+    if (initialGym.id !== prevInitialIdRef.current) {
+      prevInitialIdRef.current = initialGym.id;
+      setPresent(initialGym);
+      setPast([]);
+      setFuture([]);
+    }
+  }, [initialGym]);
+
   const snapshot = useCallback(() => {
     setPast(prev => [...prev, present]);
     setFuture([]);
@@ -60,32 +74,50 @@ const useGymHistory = (initialGym: Gym) => {
   return { gym: present, update, snapshot, undo, redo, canUndo: past.length > 0, canRedo: future.length > 0 };
 };
 
-const GymDashboard: React.FC<{ 
+const GymDashboard: React.FC<{
   gyms: Gym[],
   onCreate: () => void,
   onEdit: (id: string) => void,
   onDelete: (id: string) => void,
-  onExit: () => void,
-  onPreviewAsUser: (gymId: string) => void
-}> = ({ gyms, onCreate, onEdit, onDelete, onExit, onPreviewAsUser }) => {
+  onExit?: () => void,
+  onPreviewAsUser: (gymId: string) => void,
+  // When embedded inside the persistent admin sidebar shell (as the
+  // "Locations" tab), this renders without its own full-page header/back
+  // button — that chrome now lives one level up.
+  embedded?: boolean
+}> = ({ gyms, onCreate, onEdit, onDelete, onExit, onPreviewAsUser, embedded = false }) => {
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200 flex flex-col animate-in fade-in duration-500">
-      <header className="h-20 border-b border-slate-800 bg-slate-900/50 backdrop-blur flex items-center justify-between px-8">
-         <div className="flex items-center space-x-4">
-            <button onClick={onExit} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors">
-              <ArrowLeft className="w-5 h-5" />
+    <div className={embedded ? 'h-full flex flex-col animate-in fade-in duration-300' : 'min-h-screen bg-slate-950 text-slate-200 flex flex-col animate-in fade-in duration-500'}>
+      {!embedded && (
+        <header className="h-20 border-b border-slate-800 bg-slate-900/50 backdrop-blur flex items-center justify-between px-8">
+           <div className="flex items-center space-x-4">
+              <button onClick={onExit} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors">
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <div>
+                <h1 className="text-xl font-bold text-white tracking-tight">Gym Management</h1>
+                <p className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Admin Dashboard</p>
+              </div>
+           </div>
+           <button onClick={onCreate} className="flex items-center px-4 py-2.5 bg-lime-500 hover:bg-lime-400 text-slate-900 rounded-lg text-sm font-bold transition-all shadow-lg shadow-lime-900/20">
+              <Plus className="w-5 h-5 mr-2" />
+              Add New Gym
             </button>
-            <div>
-              <h1 className="text-xl font-bold text-white tracking-tight">Gym Management</h1>
-              <p className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Admin Dashboard</p>
-            </div>
-         </div>
-         <button onClick={onCreate} className="flex items-center px-4 py-2.5 bg-lime-500 hover:bg-lime-400 text-slate-900 rounded-lg text-sm font-bold transition-all shadow-lg shadow-lime-900/20">
-            <Plus className="w-5 h-5 mr-2" />
-            Add New Gym
-          </button>
-      </header>
+        </header>
+      )}
       <div className="flex-1 p-8 overflow-y-auto">
+        {embedded && (
+          <div className="flex items-center justify-between mb-6 max-w-7xl mx-auto">
+            <div>
+              <h1 className="text-xl font-bold text-white tracking-tight">Locations</h1>
+              <p className="text-xs text-slate-500 uppercase tracking-wider font-semibold">{gyms.length} {gyms.length === 1 ? 'gym' : 'gyms'}</p>
+            </div>
+            <button onClick={onCreate} className="flex items-center px-4 py-2.5 bg-lime-500 hover:bg-lime-400 text-slate-900 rounded-lg text-sm font-bold transition-all shadow-lg shadow-lime-900/20">
+              <Plus className="w-5 h-5 mr-2" />
+              Add New Gym
+            </button>
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
           {gyms.map(gym => (
             <div key={gym.id} className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden hover:border-slate-700 hover:shadow-2xl transition-all group flex flex-col">
@@ -124,7 +156,19 @@ const GymDashboard: React.FC<{
   );
 };
 
-interface GymLayoutEditorProps { initialGym: Gym; onSave: (updatedGym: Gym) => Promise<void>; onBack: () => void; onPreviewAsUser: (gymId: string) => void; }
+type AdminSection = 'gyms' | 'layout' | 'equipment' | 'exercises' | 'coaching';
+
+interface GymLayoutEditorProps {
+  initialGym: Gym;
+  gyms: Gym[];
+  onSave: (updatedGym: Gym) => Promise<void>;
+  onSwitchGym: (id: string) => void;
+  onCreateGym: () => void;
+  onDeleteGymRequest: (id: string) => void;
+  onPreviewAsUser: (gymId: string) => void;
+  onExit: () => void;
+  initialSection?: AdminSection;
+}
 
 interface DragState {
   mode: 'move-zone' | 'resize-zone' | 'resize-room' | 'move-annex' | 'resize-annex' | 'move-machine' | 'resize-machine' | 'move-wall' | 'resize-wall-p1' | 'resize-wall-p2' | 'adjust-wall-curve';
@@ -218,7 +262,7 @@ const ToolButton = ({ active, onClick, icon: Icon, label, description, disabled 
   );
 };
 
-const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, onBack, onPreviewAsUser }) => {
+const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onSave, onSwitchGym, onCreateGym, onDeleteGymRequest, onPreviewAsUser, onExit, initialSection }) => {
   const { gym, update, snapshot, undo, redo, canUndo, canRedo } = useGymHistory(initialGym);
   const zones = gym.zones;
   const dimensions = gym.dimensions || { width: 780, height: 580 };
@@ -239,8 +283,31 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const selectedZone = zones.find(z => z.id === selectedZoneId) || null;
 
-  // Active view tab: 'layout' for map designer, 'equipment' for physical gear catalog, 'exercises' for exercise & video library
-  const [activeTab, setActiveTab] = useState<'layout' | 'equipment' | 'exercises' | 'coaching'>('layout');
+  // Active section: 'gyms' for the locations list, 'layout' for the map
+  // designer, 'equipment'/'exercises'/'coaching' for the global (not
+  // gym-scoped) admin sections.
+  const [activeTab, setActiveTab] = useState<AdminSection>(initialSection || 'layout');
+  const [gymSwitcherOpen, setGymSwitcherOpen] = useState(false);
+
+  // The gym switcher changes which gym this same component instance is
+  // editing without remounting it (so activeTab and the global-section
+  // state below survive the switch) — reset only the gym-scoped selection
+  // state when that happens.
+  const prevGymIdRef = useRef(gym.id);
+  useEffect(() => {
+    if (gym.id !== prevGymIdRef.current) {
+      prevGymIdRef.current = gym.id;
+      setSelectedZoneId(null);
+      setSelectedMachineId(null);
+      setSelectedAnnexId(null);
+      setSelectedWallId(null);
+      setEditMode('layout');
+      setRoomTab('dimensions');
+      setZoneTab('details');
+      setDragState(null);
+      setSaveState('idle');
+    }
+  }, [gym.id]);
 
   // Equipment Library catalog state
   const [equipmentList, setEquipmentList] = useState<EquipmentItem[]>(DEFAULT_EQUIPMENT);
@@ -1213,77 +1280,104 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
     return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
   }, [dragState, gym, update, dimensions, annexes]);
 
+  const SECTIONS: { key: AdminSection; label: string; icon: any; iconClassName?: string }[] = [
+    { key: 'gyms', label: 'Locations', icon: MapPin },
+    { key: 'layout', label: 'Floor Plan', icon: LayoutTemplate },
+    { key: 'equipment', label: 'Equipment Library', icon: Layers, iconClassName: 'text-lime-400' },
+    { key: 'exercises', label: 'Exercise Library', icon: Dumbbell, iconClassName: 'text-blue-400' },
+    { key: 'coaching', label: 'Coaching', icon: Users, iconClassName: 'text-lime-400' },
+  ];
+  const activeSectionMeta = SECTIONS.find(s => s.key === activeTab)!;
+
   return (
-    <div className="flex flex-col h-screen bg-slate-950 text-slate-200 animate-in slide-in-from-right duration-300">
+    <div className="flex h-screen bg-slate-950 text-slate-200 animate-in slide-in-from-right duration-300">
+      {/* Persistent admin nav — reachable regardless of which gym (if any)
+          is active, so Equipment/Exercise/Coaching/Tutorials never require
+          opening an unrelated gym's floor plan first. */}
+      <aside className="w-56 bg-slate-900 border-r border-slate-800 flex flex-col flex-shrink-0 z-20">
+        <div className="h-16 flex items-center px-4 border-b border-slate-800 flex-shrink-0">
+          <div className="w-7 h-7 rounded-lg bg-lime-500 flex items-center justify-center text-slate-900 font-black text-xs mr-2.5 flex-shrink-0">G</div>
+          <span className="text-sm font-extrabold text-white flex-1">GYDE Admin</span>
+          <button onClick={onExit} title="Exit admin" className="p-1.5 -mr-1.5 text-slate-500 hover:text-white hover:bg-slate-800 rounded-lg transition-colors flex-shrink-0">
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+        </div>
+        <nav className="flex-1 p-2.5 space-y-1 overflow-y-auto">
+          <p className="px-2.5 pt-1.5 pb-1 text-[9.5px] font-bold text-slate-500 uppercase tracking-widest">Workspace</p>
+          {SECTIONS.map(s => (
+            <button
+              key={s.key}
+              onClick={() => setActiveTab(s.key)}
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-bold transition-all ${
+                activeTab === s.key ? 'bg-lime-500/10 text-lime-400' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+              }`}
+            >
+              <s.icon className={`w-4 h-4 flex-shrink-0 ${activeTab === s.key ? '' : s.iconClassName || ''}`} />
+              <span className="flex-1 text-left">{s.label}</span>
+              {s.key === 'equipment' && (
+                <span className="px-1.5 py-0.2 rounded bg-slate-950 text-[10px] text-lime-400 font-mono border border-slate-750">{equipmentList.length}</span>
+              )}
+            </button>
+          ))}
+          <button
+            onClick={() => setShowTutorials(true)}
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-bold text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-all"
+          >
+            <Play className="w-4 h-4 flex-shrink-0 text-blue-400" />
+            <span className="flex-1 text-left">Tutorials</span>
+          </button>
+        </nav>
+
+        {/* Gym switcher — swaps which gym Floor Plan (and View as User)
+            points at, without leaving whichever section is active. */}
+        <div className="p-2.5 border-t border-slate-800 flex-shrink-0 relative">
+          <button
+            onClick={() => setGymSwitcherOpen(o => !o)}
+            onBlur={() => setTimeout(() => setGymSwitcherOpen(false), 120)}
+            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg border border-slate-800 bg-slate-950/60 text-left hover:border-slate-700 transition-colors"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-lime-400 flex-shrink-0" />
+            <span className="flex-1 min-w-0">
+              <span className="block text-[9px] font-bold text-slate-500 uppercase tracking-wide leading-none mb-0.5">Active location</span>
+              <span className="block text-xs font-bold text-white truncate leading-none">{gym.name}</span>
+            </span>
+            <ChevronRight className={`w-3.5 h-3.5 text-slate-500 flex-shrink-0 transition-transform ${gymSwitcherOpen ? 'rotate-90' : ''}`} />
+          </button>
+          {gymSwitcherOpen && (
+            <div className="absolute bottom-full left-2.5 right-2.5 mb-1.5 bg-slate-950 border border-slate-800 rounded-lg shadow-2xl overflow-hidden max-h-52 overflow-y-auto">
+              {gyms.map(g => (
+                <button
+                  key={g.id}
+                  onMouseDown={(e) => { e.preventDefault(); onSwitchGym(g.id); setGymSwitcherOpen(false); }}
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-left transition-colors ${
+                    g.id === gym.id ? 'text-lime-400 bg-lime-500/5' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${g.id === gym.id ? 'bg-lime-400' : 'bg-slate-600'}`} />
+                  <span className="truncate">{g.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </aside>
+
+      <div className="flex flex-col flex-1 overflow-hidden">
       <header className="h-16 border-b border-slate-800 bg-slate-900 flex items-center justify-between px-6 flex-shrink-0 z-20">
         <div className="flex items-center space-x-6">
-          <button
-            onClick={onBack}
-            className="p-2 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors flex-shrink-0"
-            title="Back to Gym List"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          
-          <div className="flex flex-col flex-shrink-0">
-            <span className="text-[9px] text-lime-400 font-bold uppercase tracking-widest leading-none mb-1">Editing</span>
-            <input 
-              value={gym.name} 
-              onFocus={() => snapshot()} 
-              onChange={(e) => update({ ...gym, name: e.target.value }, false)} 
-              className="bg-transparent text-sm font-bold text-white focus:outline-none focus:border-b border-slate-700 hover:border-slate-600 transition-colors w-40 leading-none" 
-            />
-          </div>
-
-          <div className="flex items-center bg-slate-950/70 p-1 rounded-lg border border-slate-800/80 animate-in fade-in duration-300">
-            <button 
-              onClick={() => setActiveTab('layout')}
-              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
-                activeTab === 'layout' 
-                  ? 'bg-slate-800 text-white shadow-md' 
-                  : 'text-slate-400 hover:text-slate-300'
-              }`}
-            >
-              <LayoutTemplate className="w-3.5 h-3.5" />
-              Floor Plan
-            </button>
-            <button 
-              onClick={() => setActiveTab('equipment')}
-              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
-                activeTab === 'equipment' 
-                  ? 'bg-slate-800 text-white shadow-md' 
-                  : 'text-slate-400 hover:text-slate-300'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5 text-lime-400" />
-              Equipment Library
-              <span className="ml-0.5 px-1.5 py-0.2 rounded bg-slate-900 text-[10px] text-lime-400 font-mono border border-slate-750">
-                {equipmentList.length}
-              </span>
-            </button>
-            <button 
-              onClick={() => setActiveTab('exercises')}
-              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
-                activeTab === 'exercises' 
-                  ? 'bg-slate-800 text-white shadow-md' 
-                  : 'text-slate-400 hover:text-slate-300'
-              }`}
-            >
-              <Dumbbell className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
-              Exercise Library
-            </button>
-            <button
-              onClick={() => setActiveTab('coaching')}
-              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
-                activeTab === 'coaching'
-                  ? 'bg-slate-800 text-white shadow-md'
-                  : 'text-slate-400 hover:text-slate-300'
-              }`}
-            >
-              <Users className="w-3.5 h-3.5 text-lime-400" />
-              Coaching
-            </button>
-          </div>
+          {activeTab === 'layout' ? (
+            <div className="flex flex-col flex-shrink-0">
+              <span className="text-[9px] text-lime-400 font-bold uppercase tracking-widest leading-none mb-1">Editing</span>
+              <input
+                value={gym.name}
+                onFocus={() => snapshot()}
+                onChange={(e) => update({ ...gym, name: e.target.value }, false)}
+                className="bg-transparent text-sm font-bold text-white focus:outline-none focus:border-b border-slate-700 hover:border-slate-600 transition-colors w-40 leading-none"
+              />
+            </div>
+          ) : (
+            <h2 className="text-sm font-extrabold text-white">{activeSectionMeta.label}</h2>
+          )}
         </div>
 
         <div className="flex items-center space-x-3">
@@ -1299,18 +1393,29 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
               </button>
             </>
           )}
-          <button
-            onClick={() => onPreviewAsUser(gym.id)}
-            className="flex items-center px-4 py-2 rounded-lg text-sm font-medium bg-lime-500/10 hover:bg-lime-500/20 text-lime-400 border border-lime-500/30 transition-colors"
-            title="See this gym exactly as a regular user would"
-          >
-            <Eye className="w-4 h-4 mr-2" />
-            View as User
-          </button>
+          {activeTab !== 'gyms' && (
+            <button
+              onClick={() => onPreviewAsUser(gym.id)}
+              className="flex items-center px-4 py-2 rounded-lg text-sm font-medium bg-lime-500/10 hover:bg-lime-500/20 text-lime-400 border border-lime-500/30 transition-colors"
+              title="See this gym exactly as a regular user would"
+            >
+              <Eye className="w-4 h-4 mr-2" />
+              View as User
+            </button>
+          )}
         </div>
       </header>
       <div className="flex flex-1 overflow-hidden relative">
-        {activeTab === 'layout' ? (
+        {activeTab === 'gyms' ? (
+          <GymDashboard
+            embedded
+            gyms={gyms}
+            onCreate={onCreateGym}
+            onEdit={(id) => { onSwitchGym(id); setActiveTab('layout'); }}
+            onDelete={onDeleteGymRequest}
+            onPreviewAsUser={onPreviewAsUser}
+          />
+        ) : activeTab === 'layout' ? (
             <>
               <aside className="w-72 bg-slate-900 border-r border-slate-800 flex flex-col z-10 flex-shrink-0 shadow-xl overflow-y-auto">
               <div className="p-4 border-b border-slate-800/50">
@@ -2544,17 +2649,58 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
           </div>
         )}
       </div>
+      </div>
     </div>
   );
 };
 
 const AdminPage: React.FC<AdminPageProps> = ({ gyms, setGyms, onExit, onPreviewAsUser }) => {
+  // null until the admin explicitly opens a gym (via the Locations tab or
+  // the sidebar switcher) — GymLayoutEditor still needs *some* gym to seed
+  // its floor-plan state, so it falls back to the first one, but starts on
+  // the Locations tab rather than assuming that gym is what they wanted.
   const [editingGymId, setEditingGymId] = useState<string | null>(null);
-  const handleCreateGym = async () => { const newGym: Gym = { id: `gym-${Date.now()}`, name: 'New Location', zones: [], dimensions: { width: 780, height: 580 }, entrance: { side: 'bottom', offset: 50, width: 80 }, floorColor: '#1e293b', annexes: [] }; await api.createGym(newGym); setGyms(prev => [...prev, newGym]); };
-  const handleDeleteGym = async (id: string) => { if (window.confirm('Are you sure you want to delete this gym location?')) { await api.deleteGym(id); setGyms(prev => prev.filter(g => g.id !== id)); if (editingGymId === id) setEditingGymId(null); } };
+  const handleCreateGym = async () => {
+    const newGym: Gym = { id: `gym-${Date.now()}`, name: 'New Location', zones: [], dimensions: { width: 780, height: 580 }, entrance: { side: 'bottom', offset: 50, width: 80 }, floorColor: '#1e293b', annexes: [] };
+    await api.createGym(newGym);
+    setGyms(prev => [...prev, newGym]);
+    setEditingGymId(newGym.id);
+  };
+  const handleDeleteGym = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this gym location?')) {
+      await api.deleteGym(id);
+      setGyms(prev => prev.filter(g => g.id !== id));
+      if (editingGymId === id) setEditingGymId(null);
+    }
+  };
   const saveGymChanges = async (updatedGym: Gym) => { await api.saveGym(updatedGym); setGyms(prev => prev.map(g => g.id === updatedGym.id ? updatedGym : g)); };
-  if (editingGymId) { const gym = gyms.find(g => g.id === editingGymId); if (!gym) { setEditingGymId(null); return null; } return ( <GymLayoutEditor initialGym={gym} onSave={saveGymChanges} onBack={() => setEditingGymId(null)} onPreviewAsUser={onPreviewAsUser} /> ); }
-  return ( <GymDashboard gyms={gyms} onCreate={handleCreateGym} onEdit={setEditingGymId} onDelete={handleDeleteGym} onExit={onExit} onPreviewAsUser={onPreviewAsUser} /> );
+
+  const activeGym = gyms.find(g => g.id === editingGymId) || gyms[0] || null;
+  if (!activeGym) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-200 flex flex-col items-center justify-center gap-4">
+        <p className="text-slate-400 text-sm">No gym locations yet.</p>
+        <button onClick={handleCreateGym} className="flex items-center px-4 py-2.5 bg-lime-500 hover:bg-lime-400 text-slate-900 rounded-lg text-sm font-bold transition-all shadow-lg shadow-lime-900/20">
+          <Plus className="w-5 h-5 mr-2" />
+          Create your first gym
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <GymLayoutEditor
+      initialGym={activeGym}
+      gyms={gyms}
+      initialSection={editingGymId ? 'layout' : 'gyms'}
+      onSave={saveGymChanges}
+      onSwitchGym={setEditingGymId}
+      onCreateGym={handleCreateGym}
+      onDeleteGymRequest={handleDeleteGym}
+      onPreviewAsUser={onPreviewAsUser}
+      onExit={onExit}
+    />
+  );
 };
 
 export default AdminPage;
