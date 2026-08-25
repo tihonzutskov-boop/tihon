@@ -121,8 +121,13 @@ export function getExerciseCapabilities(rawName: string): ExerciseCapabilities {
   if (canonical === 'dumbbell bench press' || canonical === 'dumbbell bicep curl' || canonical === 'dumbbell shoulder press' || canonical === 'dumbbell row') {
     return {
       canonicalName: canonical,
-      zoneKeywords: ['dumbbell', 'rack', 'free weights', 'bench'],
-      equipmentKeywords: ['dumbbell', 'bench', 'rack'],
+      // Deliberately no bare 'rack' keyword — it also matches squat/power
+      // rack zones and machines (a machine literally named "Squat Rack"
+      // matches the keyword "rack"), which previously sent dumbbell
+      // exercises to the wrong equipment entirely. A "Dumbbell rack" zone
+      // still matches fine via the 'dumbbell' keyword alone.
+      zoneKeywords: ['dumbbell', 'free weights', 'bench'],
+      equipmentKeywords: ['dumbbell', 'bench'],
       equipmentTypes: [EquipmentType.FREE_WEIGHTS]
     };
   }
