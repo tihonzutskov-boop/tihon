@@ -38,7 +38,6 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const loadData = async () => {
-      setIsLoading(true);
       try {
         const fetchedGyms = await api.fetchGyms();
         setGyms(fetchedGyms);
@@ -51,21 +50,26 @@ const App: React.FC = () => {
         setLibraryExercises(fetchedExercises);
       } catch (e) {
         console.error("Failed to load gyms", e);
-      } finally {
-        setIsLoading(false);
       }
     };
-    loadData();
 
     // Restore an existing session (httpOnly cookie) on page load/refresh.
-    api.fetchMe().then(existingUser => {
+    const restoreSession = async () => {
+      const existingUser = await api.fetchMe();
       if (existingUser) {
         setUser(existingUser);
         setCurrentView(existingUser.role === 'admin' ? 'admin' : 'dashboard');
-        loadMyPlan();
-        loadMyQuestionnaire();
+        await Promise.all([loadMyPlan(), loadMyQuestionnaire()]);
       }
-    });
+    };
+
+    // Both must finish before the loading gate lifts — otherwise the
+    // gym-data fetch (usually faster) clears isLoading first and briefly
+    // renders the landing page before the session check flips currentView
+    // to dashboard/admin, showing a flash of the marketing page to a
+    // user who is actually already logged in.
+    setIsLoading(true);
+    Promise.all([loadData(), restoreSession()]).finally(() => setIsLoading(false));
   }, []);
 
   const loadMyQuestionnaire = async () => {
