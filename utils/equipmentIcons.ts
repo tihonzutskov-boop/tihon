@@ -325,8 +325,10 @@ export function getZoneThemeStyle(zone: { type?: string | EquipmentType; name?: 
   // An admin-picked color (via the zone editor's Color Code field) always
   // wins over the auto-detected theme below — otherwise picking a color
   // has no visible effect for any zone whose name/type happens to match
-  // one of the keyword categories, which is nearly all of them.
-  if (zone.color && zone.color.startsWith('#') && zone.color.toLowerCase() !== '#ffffff' && zone.color.toLowerCase() !== '#000000') {
+  // one of the keyword categories, which is nearly all of them. No zone
+  // in this app is ever created with color unset, so every hex value
+  // (including black/white) is treated as a deliberate choice.
+  if (zone.color && zone.color.startsWith('#')) {
     return {
       fill: zone.color + 'bb',
       stroke: zone.color,

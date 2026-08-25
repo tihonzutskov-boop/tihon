@@ -1368,6 +1368,9 @@ const GymMap: React.FC<GymMapProps> = ({
 
                 // Zone style matching screenshot
                 const zoneStyle = getZoneThemeStyle(zone);
+                const zoneLabel = getGymTranslation(zone.name, lang);
+                const hasZoneLabel = !!zoneLabel.trim();
+                const showZoneIcon = !isThumbnail && zone.height >= 70 && (!zone.machines || zone.machines.length === 0 || isAmenity);
 
                 return (
                   <g
@@ -1470,14 +1473,17 @@ const GymMap: React.FC<GymMapProps> = ({
                         already get visual richness from the machine footprints
                         themselves. */}
                     {(() => {
-                      const showZoneIcon = !isThumbnail && zone.height >= 70 && (!zone.machines || zone.machines.length === 0 || isAmenity);
                       if (!showZoneIcon) return null;
                       const ZoneIcon = getEquipmentIcon(zone.icon, zone.name, zone.type);
                       if (!ZoneIcon) return null;
                       const iconSize = zone.width < 110 || zone.height < 90 ? 20 : 26;
+                      // With no label to sit above, center the icon in the
+                      // zone instead of leaving it offset with empty space
+                      // below where the name would otherwise be.
+                      const iconY = hasZoneLabel ? zone.y + zone.height / 2 - iconSize * 0.9 : zone.y + zone.height / 2;
                       return (
                         <g
-                          transform={`translate(${zone.x + zone.width / 2}, ${zone.y + zone.height / 2 - iconSize * 0.9})`}
+                          transform={`translate(${zone.x + zone.width / 2}, ${iconY})`}
                           className="pointer-events-none transition-opacity duration-300 ease-in-out"
                           style={{ opacity: labelOpacity }}
                         >
@@ -1493,7 +1499,7 @@ const GymMap: React.FC<GymMapProps> = ({
                         label stays legible even when a zone's fill is dimmed. */}
                     <text
                       x={zone.x + zone.width / 2}
-                      y={zone.y + zone.height / 2 + (!isThumbnail && zone.height >= 70 && (!zone.machines || zone.machines.length === 0 || isAmenity) ? 14 : 0)}
+                      y={zone.y + zone.height / 2 + (showZoneIcon && hasZoneLabel ? 14 : 0)}
                       fill={zoneStyle.textColor || '#ffffff'}
                       fontSize={zone.width < 110 || zone.height < 55 ? '12' : '14'}
                       fontWeight="600"
@@ -1502,7 +1508,7 @@ const GymMap: React.FC<GymMapProps> = ({
                       className="pointer-events-none select-none drop-shadow-sm font-sans transition-opacity duration-300 ease-in-out"
                       style={{ opacity: labelOpacity }}
                     >
-                      {getGymTranslation(zone.name, lang)}
+                      {zoneLabel}
                     </text>
 
                     {/* Layout Edit Mode selected indicator pill */}

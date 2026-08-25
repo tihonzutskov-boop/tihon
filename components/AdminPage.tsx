@@ -1357,7 +1357,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
                            </div>
 
                            <div className="pt-2">
-                             {selectedZone ? ( <ToolButton onClick={() => setEditMode('machine')} icon={Dumbbell} label="Edit Machines" description={`Manage equipment in ${selectedZone.name}`} variant="highlight" /> ) : ( <div className="p-3 rounded-xl border border-dashed border-slate-800 text-center"><p className="text-[10px] text-slate-500">Select a zone on the map to edit its machines.</p></div> )}
+                             {selectedZone && selectedZone.type !== EquipmentType.STUDIO ? ( <ToolButton onClick={() => setEditMode('machine')} icon={Dumbbell} label="Edit Machines" description={`Manage equipment in ${selectedZone.name}`} variant="highlight" /> ) : !selectedZone ? ( <div className="p-3 rounded-xl border border-dashed border-slate-800 text-center"><p className="text-[10px] text-slate-500">Select a zone on the map to edit its machines.</p></div> ) : null}
                            </div>
                         </div>
                     ) : editMode === 'room' ? (
