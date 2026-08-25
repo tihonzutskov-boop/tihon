@@ -278,12 +278,12 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, 
                     </div>
                   ))}
                 </div>
-                {selectedEntry.status === 'today' && (
+                {selectedEntry.status !== 'rest' && (
                   <button
                     onClick={() => onStartWorkout(selectedEntry.dayIndex, sessionGymId)}
                     className="w-full mt-4 py-2.5 bg-lime-500 hover:bg-lime-400 text-slate-950 font-bold rounded-xl text-xs uppercase tracking-wider transition-colors"
                   >
-                    Start coaching session
+                    {selectedEntry.status === 'done' ? 'Redo this session' : 'Start coaching session'}
                   </button>
                 )}
               </div>
