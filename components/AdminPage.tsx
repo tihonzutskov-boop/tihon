@@ -673,17 +673,31 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
   };
 
   const addWaterStation = () => {
-    const newZone: GymZone = { 
-      id: `zone-water-${Date.now()}`, 
-      name: 'Water Station', 
-      type: EquipmentType.FACILITY, 
-      x: 60, y: 60, width: 70, height: 70, 
-      color: '#06b6d4', 
-      icon: 'Droplets', 
-      description: 'Filtered water refill fountain & cup dispenser.', 
+    const newZone: GymZone = {
+      id: `zone-water-${Date.now()}`,
+      name: 'Water Station',
+      type: EquipmentType.FACILITY,
+      x: 60, y: 60, width: 70, height: 70,
+      color: '#06b6d4',
+      icon: 'Droplets',
+      description: 'Filtered water refill fountain & cup dispenser.',
       machines: [
         { id: `m-water-${Date.now()}`, name: 'Water Fountain', x: 10, y: 10, width: 50, height: 50, icon: 'Droplets', longDescription: 'Filtered cold water refill fountain.' }
-      ] 
+      ]
+    };
+    update({ ...gym, zones: [...gym.zones, newZone] }, true); setSelectedZoneId(newZone.id);
+  };
+
+  const addClasses = () => {
+    const newZone: GymZone = {
+      id: `zone-classes-${Date.now()}`,
+      name: 'Classes',
+      type: EquipmentType.STUDIO,
+      x: 60, y: 60, width: 160, height: 130,
+      color: '#e11d8f',
+      icon: 'Users',
+      description: 'Group fitness studio for classes such as yoga, spin & HIIT.',
+      machines: []
     };
     update({ ...gym, zones: [...gym.zones, newZone] }, true); setSelectedZoneId(newZone.id);
   };
@@ -1338,6 +1352,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, onSave, o
                                <ToolButton onClick={addLockers} icon={Lock} label="Locker Rooms" description="Changing rooms & lockers" />
                                <ToolButton onClick={addRestrooms} icon={Bath} label="Restrooms & Bathrooms" description="Toilets & shower rooms" />
                                <ToolButton onClick={addWaterStation} icon={Droplets} label="Water Station" description="Filtered water fountain" />
+                               <ToolButton onClick={addClasses} icon={Users} label="Classes" description="Group fitness studio" />
                              </div>
                            </div>
 

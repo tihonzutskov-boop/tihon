@@ -1439,8 +1439,13 @@ const GymMap: React.FC<GymMapProps> = ({
                     {/* Soft blurred machine footprints — real position & size within
                         the zone, previewed before zooming in. Hidden once this zone
                         is the one being focused/zoomed, since the real machines take
-                        over rendering at that point. */}
-                    {!isFocused && !isThumbnail && zone.machines && zone.machines.length > 0 && (
+                        over rendering at that point. Also hidden for amenity zones
+                        (Reception, Lockers, Water Station, Classes, etc.) — those
+                        typically carry one placeholder "machine" spanning nearly the
+                        whole zone (e.g. a Water Fountain fixture), which reads as an
+                        odd blurry blob rather than a useful preview; the zone icon
+                        below represents them better. */}
+                    {!isFocused && !isThumbnail && !isAmenity && zone.machines && zone.machines.length > 0 && (
                       <g style={{ pointerEvents: 'none', opacity: zoneOpacity }} className="transition-opacity duration-300 ease-in-out">
                         {zone.machines.map((machine, mIdx) => (
                           <rect
@@ -1458,11 +1463,15 @@ const GymMap: React.FC<GymMapProps> = ({
                     )}
 
                     {/* Zone icon — shown when a zone has no individual machines
-                        placed in it (e.g. Locker Room, Front Desk, Showers), so
-                        the tile isn't just a colored box with a name label and
-                        nothing else. Zones with machines already get visual
-                        richness from the machine footprints/icons themselves. */}
-                    {!isThumbnail && (!zone.machines || zone.machines.length === 0) && zone.height >= 70 && (() => {
+                        placed in it (e.g. Front Desk), or is an amenity zone even
+                        with a placeholder machine (e.g. Water Station, Classes),
+                        so the tile isn't just a colored box with a name label and
+                        nothing else. Zones with real machines (strength/cardio/etc.)
+                        already get visual richness from the machine footprints
+                        themselves. */}
+                    {(() => {
+                      const showZoneIcon = !isThumbnail && zone.height >= 70 && (!zone.machines || zone.machines.length === 0 || isAmenity);
+                      if (!showZoneIcon) return null;
                       const ZoneIcon = getEquipmentIcon(zone.icon, zone.name, zone.type);
                       if (!ZoneIcon) return null;
                       const iconSize = zone.width < 110 || zone.height < 90 ? 20 : 26;
@@ -1484,7 +1493,7 @@ const GymMap: React.FC<GymMapProps> = ({
                         label stays legible even when a zone's fill is dimmed. */}
                     <text
                       x={zone.x + zone.width / 2}
-                      y={zone.y + zone.height / 2 + ((!zone.machines || zone.machines.length === 0) && zone.height >= 70 ? 14 : 0)}
+                      y={zone.y + zone.height / 2 + (!isThumbnail && zone.height >= 70 && (!zone.machines || zone.machines.length === 0 || isAmenity) ? 14 : 0)}
                       fill={zoneStyle.textColor || '#ffffff'}
                       fontSize={zone.width < 110 || zone.height < 55 ? '12' : '14'}
                       fontWeight="600"

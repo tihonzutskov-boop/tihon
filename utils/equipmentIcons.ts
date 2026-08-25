@@ -94,6 +94,7 @@ export const MACHINE_ICONS_LIST = [
   { name: 'Lock', label: 'Locker Rooms', icon: Lock },
   { name: 'Bath', label: 'Restrooms / Toilets', icon: Bath },
   { name: 'Droplets', label: 'Water Station', icon: Droplets },
+  { name: 'Users', label: 'Group Fitness / Classes', icon: Users },
   { name: 'Activity', label: 'General Activity', icon: Activity },
   { name: 'Timer', label: 'Interval Timer', icon: Timer },
 ];
@@ -126,7 +127,12 @@ export function isAmenityZone(zone: { type?: string | EquipmentType; name?: stri
       text.includes('exit') ||
       text.includes('corridor') ||
       text.includes('facility') ||
-      text.includes('lounge')
+      text.includes('lounge') ||
+      text.includes('class') ||
+      text.includes('studio') ||
+      text.includes('yoga') ||
+      text.includes('pilates') ||
+      text.includes('zumba')
     );
   }
 
@@ -146,6 +152,7 @@ export function isAmenityZone(zone: { type?: string | EquipmentType; name?: stri
     EquipmentType.OFFICE,
     EquipmentType.STORAGE,
     EquipmentType.CAFE,
+    EquipmentType.STUDIO,
   ];
 
   if (type && amenityTypes.includes(type as EquipmentType)) {
@@ -177,7 +184,12 @@ export function isAmenityZone(zone: { type?: string | EquipmentType; name?: stri
     name.includes('exit') ||
     name.includes('lounge') ||
     name.includes('infirmary') ||
-    name.includes('first aid')
+    name.includes('first aid') ||
+    name.includes('class') ||
+    name.includes('studio') ||
+    name.includes('yoga') ||
+    name.includes('pilates') ||
+    name.includes('zumba')
   );
 }
 
@@ -410,7 +422,25 @@ export function getZoneThemeStyle(zone: { type?: string | EquipmentType; name?: 
     };
   }
 
-  // 6. Amenities: Front Desk, Lockers, Restrooms, Toilets, Showers -> Deep Slate Navy
+  // 6. Group Fitness Studio / Classes -> Rose / Magenta
+  if (
+    type === EquipmentType.STUDIO ||
+    name.includes('class') ||
+    name.includes('studio') ||
+    name.includes('yoga') ||
+    name.includes('pilates') ||
+    name.includes('zumba') ||
+    name.includes('spin room')
+  ) {
+    return {
+      fill: '#5b1f3d',
+      stroke: '#e11d8f',
+      dashStroke: '#f472b6',
+      textColor: '#ffffff'
+    };
+  }
+
+  // 7. Amenities: Front Desk, Lockers, Restrooms, Toilets, Showers, Water Station -> Deep Slate Navy
   if (
     type === EquipmentType.RECEPTION ||
     type === EquipmentType.CHANGING ||
@@ -421,7 +451,10 @@ export function getZoneThemeStyle(zone: { type?: string | EquipmentType; name?: 
     name.includes('locker') ||
     name.includes('toilet') ||
     name.includes('restroom') ||
-    name.includes('bath')
+    name.includes('bath') ||
+    name.includes('water') ||
+    name.includes('hydration') ||
+    name.includes('fountain')
   ) {
     return {
       fill: '#243447',
@@ -596,9 +629,9 @@ export const ZONE_TAXONOMY_CONFIG: Record<string, {
     iconName: 'Bath'
   },
   [EquipmentType.FACILITY]: {
-    color: '#475569', // Slate
-    borderColor: '#475569',
-    label: 'Amenities',
+    color: '#06b6d4', // Cyan
+    borderColor: '#06b6d4',
+    label: 'Water Station',
     iconName: 'Droplets'
   },
   [EquipmentType.CORRIDOR]: {
@@ -606,6 +639,12 @@ export const ZONE_TAXONOMY_CONFIG: Record<string, {
     borderColor: '#94a3b8',
     label: 'Walkways',
     iconName: 'Footprints'
+  },
+  [EquipmentType.STUDIO]: {
+    color: '#e11d8f', // Rose / Magenta
+    borderColor: '#e11d8f',
+    label: 'Classes',
+    iconName: 'Users'
   }
 };
 
@@ -705,6 +744,9 @@ export function getEquipmentIcon(iconName?: string, name?: string, type?: string
   if (text.includes('water') || text.includes('fountain') || text.includes('drink') || text.includes('hydration')) {
     return Droplets;
   }
+  if (text.includes('class') || text.includes('studio') || text.includes('yoga') || text.includes('pilates') || text.includes('zumba')) {
+    return Users;
+  }
   if (text.includes('treadmill') || text.includes('tread') || text.includes('run') || text.includes('walk')) {
     return Activity;
   }
@@ -743,6 +785,7 @@ export function getEquipmentIcon(iconName?: string, name?: string, type?: string
   if (type === EquipmentType.CHANGING) return Lock;
   if (type === EquipmentType.TOILETS) return Bath;
   if (type === EquipmentType.FACILITY) return Droplets;
+  if (type === EquipmentType.STUDIO) return Users;
 
   return Dumbbell;
 }
