@@ -5,6 +5,7 @@ import { searchAndFilterExercises, getExerciseLocations } from '../utils/exercis
 import { getEquipmentIcon, isBeginnerFriendly } from '../utils/equipmentIcons';
 import { getEquipmentIconComponent } from './EquipmentLibrary';
 import { getExerciseRequiredEquipmentIds, getZoneEquipmentIds } from '../utils/equipmentMatcher';
+import EditTutorialModal from './EditTutorialModal';
 import {
   Search, MapPin, Dumbbell, Edit3, Trash2, Plus, X, Loader2, KeyRound, Box, Sparkles, Globe, Layers, Check, Flame, ShieldCheck, Film
 } from 'lucide-react';
@@ -287,6 +288,8 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
   const [formError, setFormError] = useState('');
   const [savingExercise, setSavingExercise] = useState(false);
   const [equipmentPickerSearch, setEquipmentPickerSearch] = useState('');
+  const [showTutorialEditor, setShowTutorialEditor] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
 
   useEffect(() => {
     if (lang && lang !== libLang) {
@@ -320,6 +323,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     setFormCategory(ex.category);
     setFormError('');
     setEquipmentPickerSearch('');
+    setJustSaved(false);
     setIsExerciseModalOpen(true);
   };
 
@@ -330,6 +334,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     setFormCategory('Compound (Strength)');
     setFormError('');
     setEquipmentPickerSearch('');
+    setJustSaved(false);
     setIsExerciseModalOpen(true);
   };
 
@@ -339,7 +344,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     );
   };
 
-  const handleAddNewExercise = async (newEx: Omit<LibraryExercise, 'id'>) => {
+  const handleAddNewExercise = async (newEx: Omit<LibraryExercise, 'id'>): Promise<LibraryExercise> => {
     const exerciseToSave: LibraryExercise = {
       ...newEx,
       id: `ex-${Date.now()}`,
@@ -350,9 +355,10 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
       throw new Error(result.error ? `Not saved to the server: ${result.error}` : 'Not saved to the server — check your connection.');
     }
     setLibraryExercises(prev => [...prev, exerciseToSave]);
+    return exerciseToSave;
   };
 
-  const handleSaveExerciseEdit = async (updatedEx: LibraryExercise) => {
+  const handleSaveExerciseEdit = async (updatedEx: LibraryExercise): Promise<LibraryExercise> => {
     const fullUpdated: LibraryExercise = {
       ...updatedEx,
       requiredEquipmentIds: selectedEquipmentIds
@@ -362,6 +368,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
       throw new Error(result.error ? `Not saved to the server: ${result.error}` : 'Not saved to the server — check your connection.');
     }
     setLibraryExercises(prev => prev.map(ex => ex.id === fullUpdated.id ? fullUpdated : ex));
+    return fullUpdated;
   };
   
   const handleDeleteExercise = async (id: string) => {
@@ -843,7 +850,14 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                   ? handleSaveExerciseEdit({ ...editingExercise, ...exData })
                   : handleAddNewExercise(exData)
                 )
-                  .then(() => setIsExerciseModalOpen(false))
+                  .then((savedEx) => {
+                    // Stay open on the saved exercise instead of closing —
+                    // this is what makes "Add Tutorial" reachable right
+                    // after registering a new exercise, not just when
+                    // reopening it later from the library list.
+                    setEditingExercise(savedEx);
+                    setJustSaved(true);
+                  })
                   .catch((err: any) => setFormError(err?.message || 'Failed to save. Please try again.'))
                   .finally(() => setSavingExercise(false));
              }} className="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -936,9 +950,26 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                     </select>
                   </div>
 
-                  <p className="text-[10px] text-slate-500 leading-relaxed -mt-1">
-                    Video, step-by-step instructions, and the GIF now live in the Tutorials editor — save this exercise first, then open &ldquo;Tutorials&rdquo; to add them.
-                  </p>
+                  {editingExercise ? (
+                    <div className="p-3 rounded-xl border border-lime-500/20 bg-lime-500/5 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        {justSaved && <p className="text-[10.5px] text-lime-400 font-bold mb-0.5">✓ Saved</p>}
+                        <p className="text-[10px] text-slate-500 leading-relaxed">Video, step-by-step instructions, and the GIF live in the Tutorials editor.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowTutorialEditor(true)}
+                        className="flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2 bg-lime-500 hover:bg-lime-400 rounded-lg text-[11px] font-bold text-slate-950 transition-colors"
+                      >
+                        <Film className="w-3.5 h-3.5" />
+                        {editingExercise.tutorialVideoUrl ? 'Edit Tutorial' : 'Add Tutorial'}
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-slate-500 leading-relaxed -mt-1">
+                      Video, step-by-step instructions, and the GIF live in the Tutorials editor — save this exercise first, then add one.
+                    </p>
+                  )}
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {/* Difficulty Modifiers: How to make it harder */}
@@ -984,7 +1015,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                 </div>
 
                 <div className="p-4 border-t border-slate-800 bg-slate-900 flex justify-end space-x-3 flex-shrink-0">
-                   <button type="button" onClick={() => setIsExerciseModalOpen(false)} className="px-5 py-2.5 bg-slate-950 hover:bg-slate-800 rounded-xl text-xs font-bold text-slate-400 border border-slate-800 transition-colors min-h-[44px]">{t.discardBtn}</button>
+                   <button type="button" onClick={() => setIsExerciseModalOpen(false)} className="px-5 py-2.5 bg-slate-950 hover:bg-slate-800 rounded-xl text-xs font-bold text-slate-400 border border-slate-800 transition-colors min-h-[44px]">{justSaved ? 'Close' : t.discardBtn}</button>
                    <button type="submit" disabled={savingExercise} className="px-5 py-2.5 bg-lime-500 hover:bg-lime-400 rounded-xl text-xs font-bold text-slate-950 shadow-md shadow-lime-500/20 min-h-[44px] disabled:opacity-60">
                      {savingExercise ? 'Saving…' : editingExercise ? t.saveBtn : t.publishBtn}
                    </button>
@@ -992,6 +1023,25 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
              </form>
           </div>
         </div>
+      )}
+
+      {showTutorialEditor && editingExercise && (
+        <EditTutorialModal
+          exercise={editingExercise}
+          onClose={() => setShowTutorialEditor(false)}
+          onSave={async (updated) => {
+            const result = await api.saveExercise(updated);
+            setLibraryExercises(prev => prev.map(ex => ex.id === updated.id ? updated : ex));
+            setEditingExercise(updated);
+            if (!result.ok) {
+              throw new Error(
+                result.error
+                  ? `Saved on this device only — the server rejected it: ${result.error}`
+                  : 'Saved on this device only — could not reach the server.'
+              );
+            }
+          }}
+        />
       )}
 
     </div>
