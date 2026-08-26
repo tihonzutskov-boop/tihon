@@ -327,10 +327,13 @@ export function getZoneThemeStyle(zone: { type?: string | EquipmentType; name?: 
   // has no visible effect for any zone whose name/type happens to match
   // one of the keyword categories, which is nearly all of them. No zone
   // in this app is ever created with color unset, so every hex value
-  // (including black/white) is treated as a deliberate choice.
+  // (including black/white) is treated as a deliberate choice. Fill is a
+  // plain opaque hex — the glass-vs-solid transparency for training vs.
+  // amenity zones is applied uniformly via fillOpacity where this is
+  // consumed (GymMap.tsx), not baked into the color itself.
   if (zone.color && zone.color.startsWith('#')) {
     return {
-      fill: zone.color + 'bb',
+      fill: zone.color,
       stroke: zone.color,
       dashStroke: zone.color,
       textColor: '#ffffff'

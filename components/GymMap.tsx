@@ -801,6 +801,13 @@ const GymMap: React.FC<GymMapProps> = ({
             <pattern id="amenityHatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
               <line x1="0" y1="0" x2="0" y2="8" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" />
             </pattern>
+            {/* Diagonal sheen for the "glass" training-zone fill — a soft
+                highlight sweep implying a glossy translucent panel. */}
+            <linearGradient id="zoneGlassSheen" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.14" />
+              <stop offset="35%" stopColor="#ffffff" stopOpacity="0.03" />
+              <stop offset="60%" stopColor="#ffffff" stopOpacity="0" />
+            </linearGradient>
           </defs>
           
           {!isThumbnail && isEditable && (
@@ -1356,19 +1363,41 @@ const GymMap: React.FC<GymMapProps> = ({
                       />
                     )}
 
-                    {/* Main Fully Coloured Zone Card matching screenshot */}
+                    {/* Main Zone Card. Training zones (open floor — nothing
+                        physically separates them) get a translucent
+                        "glass" fill so the floor grid shows through, plus
+                        a soft glow on the border. Amenity zones (real
+                        walled rooms — lockers, reception) stay fully
+                        opaque/matte, since nothing behind them should be
+                        visible. */}
                     <rect
                       x={zone.x}
                       y={zone.y}
                       width={zone.width}
                       height={zone.height}
                       fill={zoneStyle.fill}
+                      fillOpacity={isAmenity ? 1 : 0.42}
                       stroke={isSelected ? '#38bdf8' : zoneStyle.stroke}
                       strokeWidth={isThumbnail ? 2 : (isSelected || isFocused ? 2.5 : 1.5)}
                       rx="8"
                       className="transition-all duration-300 ease-in-out shadow-sm"
-                      style={{ opacity: zoneOpacity }}
+                      style={{
+                        opacity: zoneOpacity,
+                        filter: !isAmenity && !isThumbnail ? `drop-shadow(0 0 7px ${zoneStyle.stroke}66)` : undefined,
+                      }}
                     />
+                    {!isAmenity && (
+                      <rect
+                        x={zone.x}
+                        y={zone.y}
+                        width={zone.width}
+                        height={zone.height}
+                        fill="url(#zoneGlassSheen)"
+                        rx="8"
+                        className="pointer-events-none transition-opacity duration-300 ease-in-out"
+                        style={{ opacity: zoneOpacity }}
+                      />
+                    )}
 
                     {/* Inner Dashed Accent Border for Workout Zones, Solid for Amenities */}
                     <rect
