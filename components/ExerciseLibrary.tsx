@@ -430,14 +430,25 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
       return [{ label: null as string | null, items: sorted }];
     }
     const key = groupMode === 'category' ? 'category' : 'targetMuscle';
-    const groups = new Map<string, typeof filteredExercises>();
+    // Group by a normalized (trimmed, case-insensitive) key so two
+    // exercises the admin intends as the same category don't get split
+    // into separate headers over a stray space or capitalization
+    // difference — targetMuscle/category are free-text fields, not a
+    // locked dropdown, so this drift happens easily. The header itself
+    // still displays using the first-seen exact casing.
+    const groups = new Map<string, { label: string; items: typeof filteredExercises }>();
     filteredExercises.forEach(entry => {
-      const k = (entry.raw as any)[key] || 'Other';
-      groups.set(k, [...(groups.get(k) || []), entry]);
+      const raw = (((entry.raw as any)[key] || 'Other') as string).trim() || 'Other';
+      const normalized = raw.toLowerCase();
+      const existing = groups.get(normalized);
+      if (existing) {
+        existing.items.push(entry);
+      } else {
+        groups.set(normalized, { label: raw, items: [entry] });
+      }
     });
-    return Array.from(groups.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([label, items]) => ({ label, items }));
+    return Array.from(groups.values())
+      .sort((a, b) => a.label.localeCompare(b.label));
   }, [filteredExercises, groupMode]);
 
   // All muscle/category values used across saved exercises, plus the base
