@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { LibraryExercise, TutorialStep } from '../types';
-import { X, UploadCloud, Play, Pause, Plus, ArrowUp, ArrowDown, Trash2, Timer, Flame, ShieldCheck } from 'lucide-react';
+import { X, UploadCloud, Play, Pause, Plus, ArrowUp, ArrowDown, Trash2, Timer } from 'lucide-react';
 
 interface EditTutorialModalProps {
   exercise: LibraryExercise;
@@ -26,8 +26,6 @@ const EditTutorialModal: React.FC<EditTutorialModalProps> = ({ exercise, onClose
   const [currentTime, setCurrentTime] = useState(0);
   const [videoPlaying, setVideoPlaying] = useState(false);
   const [captionFading, setCaptionFading] = useState(false);
-  const [harder, setHarder] = useState(exercise.makeHarder || '');
-  const [easier, setEasier] = useState(exercise.makeEasier || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -162,8 +160,6 @@ const EditTutorialModal: React.FC<EditTutorialModalProps> = ({ exercise, onClose
         tutorialVideoUrl: videoUrl,
         tutorialVideoFileName: videoFileName,
         steps: cleanSteps,
-        makeHarder: harder.trim(),
-        makeEasier: easier.trim(),
       });
       onClose();
     } catch (err: any) {
@@ -341,22 +337,6 @@ const EditTutorialModal: React.FC<EditTutorialModalProps> = ({ exercise, onClose
             <button type="button" onClick={addStep} className="w-full mt-2 py-2 border border-dashed border-slate-700 rounded-lg text-slate-400 text-[11px] font-bold hover:border-lime-500/40 hover:text-lime-400 transition-colors flex items-center justify-center gap-1">
               <Plus className="w-3.5 h-3.5" /> Add Step
             </button>
-          </div>
-
-          {/* Harder / Easier */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="p-3 rounded-xl border border-amber-500/20 bg-slate-950/30">
-              <label className="block text-[10px] text-amber-400 font-bold uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                <Flame className="w-3.5 h-3.5" /> Harder
-              </label>
-              <textarea value={harder} onChange={e => setHarder(e.target.value)} rows={3} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white outline-none focus:border-amber-500/50 resize-none" />
-            </div>
-            <div className="p-3 rounded-xl border border-emerald-500/20 bg-slate-950/30">
-              <label className="block text-[10px] text-emerald-400 font-bold uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5" /> Easier
-              </label>
-              <textarea value={easier} onChange={e => setEasier(e.target.value)} rows={3} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white outline-none focus:border-emerald-500/50 resize-none" />
-            </div>
           </div>
 
           {error && <div className="p-3 rounded-xl bg-red-950/30 border border-red-800/40 text-xs text-red-400">{error}</div>}
