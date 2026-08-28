@@ -320,17 +320,17 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                 <div className="flex gap-1.5">
                   <button
                     onClick={playPrevTutorialStep}
-                    disabled={tutorialStepIdx === 0}
+                    disabled={tutorialStepIdx === 0 || tutorialPlaying}
                     className="px-3.5 py-2 rounded-lg text-[11px] font-extrabold bg-slate-800 border border-slate-700 text-white active:scale-95 disabled:opacity-30 disabled:active:scale-100 transition-all duration-150"
                   >
                     ←
                   </button>
                   <button
                     onClick={playNextTutorialStep}
-                    disabled={tutorialStepIdx >= tutorialSteps.length - 1}
+                    disabled={tutorialStepIdx >= tutorialSteps.length - 1 || tutorialPlaying}
                     className="flex-1 py-2 rounded-lg text-[11px] font-extrabold bg-lime-500 text-slate-950 active:scale-95 disabled:opacity-30 disabled:active:scale-100 transition-all duration-150"
                   >
-                    Next Step →
+                    {tutorialPlaying ? 'Playing…' : 'Next Step →'}
                   </button>
                 </div>
               </div>

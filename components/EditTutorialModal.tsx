@@ -250,8 +250,8 @@ const EditTutorialModal: React.FC<EditTutorialModalProps> = ({ exercise, onClose
                       </p>
                     </div>
                     <div className="flex gap-1.5">
-                      <button onClick={previewPrev} disabled={clampPreviewIdx === 0} className="px-3 py-1.5 rounded-lg text-[10.5px] font-extrabold bg-white/10 border border-white/20 text-white disabled:opacity-30">←</button>
-                      <button onClick={previewNext} disabled={clampPreviewIdx >= steps.length - 1} className="flex-1 py-1.5 rounded-lg text-[10.5px] font-extrabold bg-lime-500 text-slate-950 disabled:opacity-30">Next Step →</button>
+                      <button onClick={previewPrev} disabled={clampPreviewIdx === 0 || captionFading} className="px-3 py-1.5 rounded-lg text-[10.5px] font-extrabold bg-white/10 border border-white/20 text-white disabled:opacity-30">←</button>
+                      <button onClick={previewNext} disabled={clampPreviewIdx >= steps.length - 1 || captionFading} className="flex-1 py-1.5 rounded-lg text-[10.5px] font-extrabold bg-lime-500 text-slate-950 disabled:opacity-30">{captionFading ? 'Playing…' : 'Next Step →'}</button>
                     </div>
                   </div>
                 </div>
