@@ -241,14 +241,14 @@ const EditTutorialModal: React.FC<EditTutorialModalProps> = ({ exercise, onClose
                         ))}
                       </div>
                     </div>
-                    <p className="text-xs font-bold text-white leading-snug mb-2">
-                      <span
-                        className="bg-black/45 rounded px-1.5 py-0.5"
-                        style={{ boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone' } as React.CSSProperties}
-                      >
+                    <div className="flex items-start gap-2.5 bg-slate-900/70 backdrop-blur-md border border-white/10 rounded-xl px-3 py-2.5 mb-2">
+                      <div className="flex-shrink-0 w-6 h-6 rounded-full bg-lime-400 text-slate-950 text-[11px] font-black flex items-center justify-center">
+                        {clampPreviewIdx + 1}
+                      </div>
+                      <p className="text-xs font-bold text-white leading-snug">
                         {steps[clampPreviewIdx]?.text?.trim() || 'Type a step below to see it here…'}
-                      </span>
-                    </p>
+                      </p>
+                    </div>
                     <div className="flex gap-1.5">
                       <button onClick={previewPrev} disabled={clampPreviewIdx === 0} className="px-3 py-1.5 rounded-lg text-[10.5px] font-extrabold bg-white/10 border border-white/20 text-white disabled:opacity-30">←</button>
                       <button onClick={previewNext} disabled={clampPreviewIdx >= steps.length - 1} className="flex-1 py-1.5 rounded-lg text-[10.5px] font-extrabold bg-lime-500 text-slate-950 disabled:opacity-30">Next Step →</button>

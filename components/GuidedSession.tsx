@@ -294,14 +294,14 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                     ))}
                   </div>
                 </div>
-                <p className="text-[13px] font-bold text-white leading-snug mb-2.5">
-                  <span
-                    className="bg-black/45 rounded px-1.5 py-0.5"
-                    style={{ boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone' } as React.CSSProperties}
-                  >
+                <div className="flex items-start gap-2.5 bg-slate-900/70 backdrop-blur-md border border-white/10 rounded-xl px-3 py-2.5 mb-2.5">
+                  <div className="flex-shrink-0 w-6 h-6 rounded-full bg-lime-400 text-slate-950 text-[11px] font-black flex items-center justify-center">
+                    {tutorialStepIdx + 1}
+                  </div>
+                  <p className="text-[13px] font-bold text-white leading-snug">
                     {tutorialSteps[tutorialStepIdx]?.text}
-                  </span>
-                </p>
+                  </p>
+                </div>
                 <div className="flex gap-1.5">
                   <button
                     onClick={playPrevTutorialStep}
