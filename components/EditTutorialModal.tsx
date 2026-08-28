@@ -26,6 +26,12 @@ const EditTutorialModal: React.FC<EditTutorialModalProps> = ({ exercise, onClose
   const [currentTime, setCurrentTime] = useState(0);
   const [videoPlaying, setVideoPlaying] = useState(false);
   const [captionFading, setCaptionFading] = useState(false);
+  // Mirrors captionFading synchronously — the disabled attribute on the
+  // preview nav buttons only reflects state once React re-renders, so a
+  // fast double-click before that commits could still reach the handler
+  // and attach a second timeupdate listener. Refs update immediately, so
+  // checking this at the top of previewNext/previewPrev closes that gap.
+  const captionFadingRef = useRef(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -117,16 +123,19 @@ const EditTutorialModal: React.FC<EditTutorialModalProps> = ({ exercise, onClose
   };
 
   const previewNext = () => {
+    if (captionFadingRef.current) return;
     if (clampPreviewIdx >= steps.length - 1) return;
     const video = videoRef.current;
     const target = steps[clampPreviewIdx + 1];
     if (video && target && target.time != null) {
       const targetTime = target.time;
+      captionFadingRef.current = true;
       setCaptionFading(true);
       const onTime = () => {
         if (video.currentTime >= targetTime) {
           video.pause();
           video.removeEventListener('timeupdate', onTime);
+          captionFadingRef.current = false;
           setPreviewStepIdx(i => i + 1);
           setCaptionFading(false);
         }
@@ -138,6 +147,7 @@ const EditTutorialModal: React.FC<EditTutorialModalProps> = ({ exercise, onClose
     }
   };
   const previewPrev = () => {
+    if (captionFadingRef.current) return;
     if (clampPreviewIdx <= 0) return;
     const prevIdx = clampPreviewIdx - 1;
     const video = videoRef.current;

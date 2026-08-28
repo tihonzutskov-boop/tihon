@@ -49,10 +49,18 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
 
   const [tutorialStepIdx, setTutorialStepIdx] = useState(0);
   const [tutorialPlaying, setTutorialPlaying] = useState(false);
+  // The disabled attribute on the nav buttons only reflects tutorialPlaying
+  // once React re-renders — a second click fired before that commits (e.g.
+  // a fast double-tap) still reaches the handler and can attach a second
+  // timeupdate listener, letting the step jump ahead unpredictably. This
+  // ref updates synchronously, so the guard below closes that gap
+  // regardless of render timing.
+  const tutorialPlayingRef = useRef(false);
   const tutorialVideoRef = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     setTutorialStepIdx(0);
     setTutorialPlaying(false);
+    tutorialPlayingRef.current = false;
   }, [exIdx]);
 
   // Exercises built in the plan-template builder (Coaching > Catalog) are
@@ -146,16 +154,19 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   const hasTutorialVideo = !!(libraryExercise?.tutorialVideoUrl && tutorialSteps.length > 0);
 
   const playNextTutorialStep = () => {
+    if (tutorialPlayingRef.current) return;
     if (tutorialStepIdx >= tutorialSteps.length - 1) return;
     const video = tutorialVideoRef.current;
     const next = tutorialSteps[tutorialStepIdx + 1];
     if (video && next && next.time != null) {
       const target = next.time;
+      tutorialPlayingRef.current = true;
       setTutorialPlaying(true);
       const onTime = () => {
         if (video.currentTime >= target) {
           video.pause();
           video.removeEventListener('timeupdate', onTime);
+          tutorialPlayingRef.current = false;
           setTutorialStepIdx(i => i + 1);
           setTutorialPlaying(false);
         }
@@ -167,6 +178,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
     }
   };
   const playPrevTutorialStep = () => {
+    if (tutorialPlayingRef.current) return;
     if (tutorialStepIdx <= 0) return;
     const prevIdx = tutorialStepIdx - 1;
     const video = tutorialVideoRef.current;
