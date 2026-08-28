@@ -214,7 +214,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
           <div className="flex-shrink-0 p-4 border-t border-slate-800 bg-slate-900/70">
             <button
               onClick={() => go(1)}
-              className="w-full py-3.5 rounded-xl text-sm font-extrabold bg-lime-500 hover:bg-lime-400 text-slate-950 transition-colors"
+              className="w-full py-3.5 rounded-xl text-sm font-extrabold bg-lime-500 hover:bg-lime-400 active:scale-95 text-slate-950 transition-all duration-150"
             >
               I found it — Continue
             </button>
@@ -262,6 +262,12 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-5 py-5 max-w-lg mx-auto w-full">
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-5">
+          <div className="p-5 pb-4">
+            <p className="text-[11px] font-extrabold text-lime-400 uppercase tracking-wide mb-1.5">
+              {exercise.targetMuscle} · {stage.label}
+            </p>
+            <h2 className="text-xl font-extrabold text-white">{exercise.name}</h2>
+          </div>
           {stage.key === 'tutorial' && hasTutorialVideo ? (
             <>
               {/* Caption + Next Step used to sit as an absolute overlay on
@@ -315,14 +321,14 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                   <button
                     onClick={playPrevTutorialStep}
                     disabled={tutorialStepIdx === 0}
-                    className="px-3.5 py-2 rounded-lg text-[11px] font-extrabold bg-slate-800 border border-slate-700 text-white disabled:opacity-30 transition-opacity"
+                    className="px-3.5 py-2 rounded-lg text-[11px] font-extrabold bg-slate-800 border border-slate-700 text-white active:scale-95 disabled:opacity-30 disabled:active:scale-100 transition-all duration-150"
                   >
                     ←
                   </button>
                   <button
                     onClick={playNextTutorialStep}
                     disabled={tutorialStepIdx >= tutorialSteps.length - 1}
-                    className="flex-1 py-2 rounded-lg text-[11px] font-extrabold bg-lime-500 text-slate-950 disabled:opacity-30 transition-opacity"
+                    className="flex-1 py-2 rounded-lg text-[11px] font-extrabold bg-lime-500 text-slate-950 active:scale-95 disabled:opacity-30 disabled:active:scale-100 transition-all duration-150"
                   >
                     Next Step →
                   </button>
@@ -350,11 +356,6 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
             </div>
           )}
           <div className="p-5">
-            <p className="text-[11px] font-extrabold text-lime-400 uppercase tracking-wide mb-1.5">
-              {exercise.targetMuscle} · {stage.label}
-            </p>
-            <h2 className="text-xl font-extrabold text-white mb-3">{exercise.name}</h2>
-
             {stage.key === 'locate' && zone && (
               <div className="mb-3">
                 <span className="text-[11.5px] font-bold px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300">{zone.name}</span>
@@ -461,13 +462,13 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
             <button
               onClick={() => go(-1)}
               disabled={current === 0}
-              className="flex-1 py-3 rounded-xl text-sm font-extrabold bg-slate-800 border border-slate-700 text-slate-300 disabled:opacity-40 hover:bg-slate-700 transition-colors"
+              className="flex-1 py-3 rounded-xl text-sm font-extrabold bg-slate-800 border border-slate-700 text-slate-300 active:scale-95 disabled:opacity-40 disabled:active:scale-100 hover:bg-slate-700 transition-all duration-150"
             >
               ← Previous
             </button>
             <button
               onClick={() => (isLastStage ? onFinish() : go(1))}
-              className="flex-1 py-3 rounded-xl text-sm font-extrabold bg-lime-500 hover:bg-lime-400 text-slate-950 transition-colors"
+              className="flex-1 py-3 rounded-xl text-sm font-extrabold bg-lime-500 hover:bg-lime-400 active:scale-95 text-slate-950 transition-all duration-150"
             >
               {isLastStage ? 'Finish session' : stage.key === 'tutorial' ? 'Next exercise →' : 'Next →'}
             </button>
