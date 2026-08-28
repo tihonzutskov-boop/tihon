@@ -233,17 +233,19 @@ const EditTutorialModal: React.FC<EditTutorialModalProps> = ({ exercise, onClose
                     </div>
                   )}
                   <div className={`absolute inset-x-0 bottom-0 p-3 transition-opacity duration-200 ${captionFading ? 'opacity-0' : 'opacity-100'}`}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[9px] font-extrabold uppercase tracking-wide text-white/60">Step {clampPreviewIdx + 1} of {steps.length}</span>
-                      <div className="flex gap-1">
-                        {steps.map((_, i) => (
-                          <span key={i} className={`h-[3px] rounded-full transition-all ${i === clampPreviewIdx ? 'w-4 bg-lime-400' : i < clampPreviewIdx ? 'w-2.5 bg-lime-500/60' : 'w-2.5 bg-white/25'}`} />
-                        ))}
+                    <div className="bg-black/65 backdrop-blur-[2px] rounded-xl px-3 py-2.5 mb-2">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[9px] font-extrabold uppercase tracking-wide text-white/60">Step {clampPreviewIdx + 1} of {steps.length}</span>
+                        <div className="flex gap-1">
+                          {steps.map((_, i) => (
+                            <span key={i} className={`h-[3px] rounded-full transition-all ${i === clampPreviewIdx ? 'w-4 bg-lime-400' : i < clampPreviewIdx ? 'w-2.5 bg-lime-500/60' : 'w-2.5 bg-white/25'}`} />
+                          ))}
+                        </div>
                       </div>
+                      <p className="text-xs font-bold text-white leading-snug">
+                        {steps[clampPreviewIdx]?.text?.trim() || 'Type a step below to see it here…'}
+                      </p>
                     </div>
-                    <p className="text-xs font-bold text-white leading-snug mb-2" style={{ textShadow: '0 2px 8px rgba(0,0,0,0.7)' }}>
-                      {steps[clampPreviewIdx]?.text?.trim() || 'Type a step below to see it here…'}
-                    </p>
                     <div className="flex gap-1.5">
                       <button onClick={previewPrev} disabled={clampPreviewIdx === 0} className="px-3 py-1.5 rounded-lg text-[10.5px] font-extrabold bg-white/10 border border-white/20 text-white disabled:opacity-30">←</button>
                       <button onClick={previewNext} disabled={clampPreviewIdx >= steps.length - 1} className="flex-1 py-1.5 rounded-lg text-[10.5px] font-extrabold bg-lime-500 text-slate-950 disabled:opacity-30">Next Step →</button>
