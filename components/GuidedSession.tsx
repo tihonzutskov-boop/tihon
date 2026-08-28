@@ -279,26 +279,29 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                 </div>
               )}
               <div className={`absolute inset-x-0 bottom-0 p-3.5 transition-opacity duration-200 ${tutorialPlaying ? 'opacity-0' : 'opacity-100'}`}>
-                <div className="bg-black/65 backdrop-blur-[2px] rounded-xl px-3 py-2.5 mb-2.5">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[9px] font-extrabold uppercase tracking-wide text-white/60">
-                      Step {tutorialStepIdx + 1} of {tutorialSteps.length}
-                    </span>
-                    <div className="flex gap-1">
-                      {tutorialSteps.map((_, i) => (
-                        <span
-                          key={i}
-                          className={`h-[3px] rounded-full transition-all ${
-                            i === tutorialStepIdx ? 'w-4 bg-lime-400' : i < tutorialStepIdx ? 'w-2.5 bg-lime-500/60' : 'w-2.5 bg-white/25'
-                          }`}
-                        />
-                      ))}
-                    </div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[9px] font-extrabold uppercase tracking-wide text-white/60" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
+                    Step {tutorialStepIdx + 1} of {tutorialSteps.length}
+                  </span>
+                  <div className="flex gap-1">
+                    {tutorialSteps.map((_, i) => (
+                      <span
+                        key={i}
+                        className={`h-[3px] rounded-full transition-all ${
+                          i === tutorialStepIdx ? 'w-4 bg-lime-400' : i < tutorialStepIdx ? 'w-2.5 bg-lime-500/60' : 'w-2.5 bg-white/25'
+                        }`}
+                      />
+                    ))}
                   </div>
-                  <p className="text-[13px] font-bold text-white leading-snug">
-                    {tutorialSteps[tutorialStepIdx]?.text}
-                  </p>
                 </div>
+                <p className="text-[13px] font-bold text-white leading-snug mb-2.5">
+                  <span
+                    className="bg-black/45 rounded px-1.5 py-0.5"
+                    style={{ boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone' } as React.CSSProperties}
+                  >
+                    {tutorialSteps[tutorialStepIdx]?.text}
+                  </span>
+                </p>
                 <div className="flex gap-1.5">
                   <button
                     onClick={playPrevTutorialStep}
