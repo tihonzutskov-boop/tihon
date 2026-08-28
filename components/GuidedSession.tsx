@@ -263,38 +263,47 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
       <div className="flex-1 overflow-y-auto px-5 py-5 max-w-lg mx-auto w-full">
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-5">
           {stage.key === 'tutorial' && hasTutorialVideo ? (
-            <div className="relative aspect-video border-b border-slate-800 bg-black overflow-hidden">
-              <video
-                ref={tutorialVideoRef}
-                src={libraryExercise!.tutorialVideoUrl}
-                muted
-                playsInline
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/92 via-black/40 to-transparent pointer-events-none" />
-              {tutorialPlaying && (
-                <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 text-[9px] font-extrabold uppercase tracking-wide text-white bg-lime-500/25 border border-lime-500/60 px-2 py-1 rounded-full">
-                  <span className="w-1.5 h-1.5 rounded-full bg-lime-400 animate-pulse" />
-                  Playing&hellip;
-                </div>
-              )}
-              <div className={`absolute inset-x-0 bottom-0 p-3.5 transition-opacity duration-200 ${tutorialPlaying ? 'opacity-0' : 'opacity-100'}`}>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[9px] font-extrabold uppercase tracking-wide text-white/60" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
+            <>
+              {/* Caption + Next Step used to sit as an absolute overlay on
+                  top of the video — on a phone that overlay was tall
+                  enough to cover a large part of the frame. It now sits
+                  below the video in normal flow so the clip stays fully
+                  visible; only the compact step indicator stays as a
+                  corner overlay since it doesn't obscure anything. */}
+              <div className="relative aspect-video border-b border-slate-800 bg-black overflow-hidden">
+                <video
+                  ref={tutorialVideoRef}
+                  src={libraryExercise!.tutorialVideoUrl}
+                  muted
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/5 to-transparent pointer-events-none" />
+                <div className="absolute top-2.5 inset-x-2.5 flex items-center justify-between">
+                  <span className="text-[9px] font-extrabold uppercase tracking-wide text-white/80" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
                     Step {tutorialStepIdx + 1} of {tutorialSteps.length}
                   </span>
-                  <div className="flex gap-1">
-                    {tutorialSteps.map((_, i) => (
-                      <span
-                        key={i}
-                        className={`h-[3px] rounded-full transition-all ${
-                          i === tutorialStepIdx ? 'w-4 bg-lime-400' : i < tutorialStepIdx ? 'w-2.5 bg-lime-500/60' : 'w-2.5 bg-white/25'
-                        }`}
-                      />
-                    ))}
-                  </div>
+                  {tutorialPlaying ? (
+                    <div className="flex items-center gap-1.5 text-[9px] font-extrabold uppercase tracking-wide text-white bg-lime-500/25 border border-lime-500/60 px-2 py-1 rounded-full">
+                      <span className="w-1.5 h-1.5 rounded-full bg-lime-400 animate-pulse" />
+                      Playing&hellip;
+                    </div>
+                  ) : (
+                    <div className="flex gap-1">
+                      {tutorialSteps.map((_, i) => (
+                        <span
+                          key={i}
+                          className={`h-[3px] rounded-full transition-all ${
+                            i === tutorialStepIdx ? 'w-4 bg-lime-400' : i < tutorialStepIdx ? 'w-2.5 bg-lime-500/60' : 'w-2.5 bg-white/25'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-start gap-2.5 bg-slate-900/70 backdrop-blur-md border border-white/10 rounded-xl px-3 py-2.5 mb-2.5">
+              </div>
+              <div className="p-3.5 border-b border-slate-800">
+                <div className="flex items-start gap-2.5 bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-2.5 mb-2.5">
                   <div className="flex-shrink-0 w-6 h-6 rounded-full bg-lime-400 text-slate-950 text-[11px] font-black flex items-center justify-center">
                     {tutorialStepIdx + 1}
                   </div>
@@ -306,7 +315,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                   <button
                     onClick={playPrevTutorialStep}
                     disabled={tutorialStepIdx === 0}
-                    className="px-3.5 py-2 rounded-lg text-[11px] font-extrabold bg-white/10 border border-white/20 text-white disabled:opacity-30 transition-opacity"
+                    className="px-3.5 py-2 rounded-lg text-[11px] font-extrabold bg-slate-800 border border-slate-700 text-white disabled:opacity-30 transition-opacity"
                   >
                     ←
                   </button>
@@ -319,7 +328,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                   </button>
                 </div>
               </div>
-            </div>
+            </>
           ) : (
             <div className="h-44 border-b border-slate-800 flex items-center justify-center overflow-hidden bg-gradient-to-br from-slate-800 to-slate-900">
               {stage.key === 'identify' ? (
