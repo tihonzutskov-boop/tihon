@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Gym, LibraryExercise, Language, EquipmentItem } from '../types';
 import { api, DEFAULT_EQUIPMENT } from '../services/api';
 import { searchAndFilterExercises, getExerciseLocations } from '../utils/exerciseMatcher';
@@ -290,6 +290,13 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
   const [equipmentPickerSearch, setEquipmentPickerSearch] = useState('');
   const [showTutorialEditor, setShowTutorialEditor] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
+  const exerciseFormRef = useRef<HTMLFormElement>(null);
+  // Set right before requestSubmit() when "Add Tutorial" is clicked on a
+  // brand-new exercise — the save still has to go through the normal
+  // submit flow (native required-field validation included), this just
+  // tells that flow's .then() to also open the Tutorial editor once the
+  // save succeeds.
+  const openTutorialAfterSaveRef = useRef(false);
 
   useEffect(() => {
     if (lang && lang !== libLang) {
@@ -823,7 +830,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                 </button>
              </div>
              
-             <form onSubmit={(e) => {
+             <form ref={exerciseFormRef} onSubmit={(e) => {
                 e.preventDefault();
                 const formData = new FormData(e.currentTarget);
 
@@ -866,8 +873,15 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                     // reopening it later from the library list.
                     setEditingExercise(savedEx);
                     setJustSaved(true);
+                    if (openTutorialAfterSaveRef.current) {
+                      openTutorialAfterSaveRef.current = false;
+                      setShowTutorialEditor(true);
+                    }
                   })
-                  .catch((err: any) => setFormError(err?.message || 'Failed to save. Please try again.'))
+                  .catch((err: any) => {
+                    openTutorialAfterSaveRef.current = false;
+                    setFormError(err?.message || 'Failed to save. Please try again.');
+                  })
                   .finally(() => setSavingExercise(false));
              }} className="flex-1 flex flex-col min-h-0 overflow-hidden">
                 <div className="p-6 space-y-4 overflow-y-auto flex-1">
@@ -975,9 +989,21 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                       </button>
                     </div>
                   ) : (
-                    <p className="text-[10px] text-slate-500 leading-relaxed -mt-1">
-                      Video, step-by-step instructions, and the GIF live in the Tutorials editor — save this exercise first, then add one.
-                    </p>
+                    <div className="p-3 rounded-xl border border-slate-800 bg-slate-950/30 flex items-center justify-between gap-3">
+                      <p className="text-[10px] text-slate-500 leading-relaxed">Video, step-by-step instructions, and the GIF live in the Tutorials editor. Saves this exercise first, then opens it.</p>
+                      <button
+                        type="button"
+                        disabled={savingExercise}
+                        onClick={() => {
+                          openTutorialAfterSaveRef.current = true;
+                          exerciseFormRef.current?.requestSubmit();
+                        }}
+                        className="flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-[11px] font-bold text-white transition-colors disabled:opacity-60"
+                      >
+                        <Film className="w-3.5 h-3.5" />
+                        Add Tutorial
+                      </button>
+                    </div>
                   )}
 
                   <div>
