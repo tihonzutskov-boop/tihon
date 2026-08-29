@@ -53,8 +53,8 @@ const LIB_UI: Record<Language, any> = {
     unassignedOpt: 'Auto-detect from equipment in zone',
     ytLinkLabel: 'Exercise Movement Video URL / YouTube Shorts',
     ytLinkHelp: 'Add a video demonstration showing how to perform this movement (YouTube, Shorts, or MP4 link).',
-    stepInstructionsLabel: 'Step-By-Step Movement Execution & Form Guidance',
-    instructionsPlace: 'Explain body alignment, starting posture, movement path, tempo, breathing cues, and safety tips for performing this movement...',
+    exerciseNotesLabel: 'General Notes',
+    exerciseNotesPlace: 'Explain body alignment, starting posture, movement path, tempo, breathing cues, and safety tips for performing this movement...',
     howToMakeHarderLabel: 'How to make it harder (Progression)',
     howToMakeEasierLabel: 'How to make it easier (Regression / Variation)',
     makeHarderPlaceholder: 'e.g. Increase weight, slow down tempo (3s eccentric), pause at peak contraction, or elevate feet...',
@@ -101,8 +101,8 @@ const LIB_UI: Record<Language, any> = {
     unassignedOpt: 'Tuvasta automaatselt tsooni varustuse järgi',
     ytLinkLabel: 'YouTube Shortsi / video viide',
     ytLinkHelp: 'Toetab YouTube Shortsi linke ja tavalisi YouTube videolinke.',
-    stepInstructionsLabel: 'Samm-sammulised liikumise ja tehnika juhised',
-    instructionsPlace: 'Selgita algasendit, liigutuse faase, hingamist ja olulisi detaile...',
+    exerciseNotesLabel: 'Üldised märkused',
+    exerciseNotesPlace: 'Selgita algasendit, liigutuse faase, hingamist ja olulisi detaile...',
     howToMakeHarderLabel: 'Kuidas muuta raskemaks (Raskem variatsioon)',
     howToMakeEasierLabel: 'Kuidas muuta kergemaks (Kergem variatsioon)',
     makeHarderPlaceholder: 'nt. Suurenda raskust, aeglusta tempot (3 sek allalaskmine), lisa paus tipus...',
@@ -149,8 +149,8 @@ const LIB_UI: Record<Language, any> = {
     unassignedOpt: 'Определять автоматически по инвентарю',
     ytLinkLabel: 'Ссылка на YouTube Shorts / видео',
     ytLinkHelp: 'Поддерживаются ссылки YouTube Shorts и обычные видео YouTube.',
-    stepInstructionsLabel: 'Пошаговая техника выполнения и наставления',
-    instructionsPlace: 'Опишите исходное положение, фазу контроля, дыхание...',
+    exerciseNotesLabel: 'Общие заметки',
+    exerciseNotesPlace: 'Опишите исходное положение, фазу контроля, дыхание...',
     howToMakeHarderLabel: 'Как усложнить (Прогрессия)',
     howToMakeEasierLabel: 'Как облегчить (Регрессия / Вариация)',
     makeHarderPlaceholder: 'напр., Увеличить вес, замедлить темп (3 сек опускание), добавить паузу в пиковой точке...',
@@ -981,15 +981,15 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                   )}
 
                   <div>
-                    <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">{t.stepInstructionsLabel}</label>
+                    <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">{t.exerciseNotesLabel}</label>
                     <textarea
                       name="instructions"
                       rows={3}
                       defaultValue={editingExercise?.instructions || ''}
-                      placeholder={t.instructionsPlace}
+                      placeholder={t.exerciseNotesPlace}
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-700 focus:outline-none focus:border-lime-500/50 transition-colors resize-none"
                     />
-                    <p className="text-[10px] text-slate-500 mt-1">Optional — only shown to trainees when filled in.</p>
+                    <p className="text-[10px] text-slate-500 mt-1">Optional — a short note shown to trainees. Not the same as the numbered, timestamped Tutorial steps in the Tutorials editor.</p>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
