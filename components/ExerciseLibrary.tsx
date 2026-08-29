@@ -845,10 +845,8 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                   equipmentRequired: reqString,
                   requiredEquipmentIds: selectedEquipmentIds,
                   category: formCategory,
-                  // Instructions / GIF / video URL are no longer editable here — that
-                  // content now lives in the Tutorials editor. Carry over whatever an
-                  // exercise already had rather than wiping it.
-                  instructions: editingExercise?.instructions || '',
+                  // GIF / video URL are edited in the Tutorials editor, not here.
+                  instructions: ((formData.get('instructions') as string) || '').trim(),
                   equipmentId: zoneRaw === 'auto' ? '' : zoneRaw,
                   videoUrl: editingExercise?.videoUrl || '',
                   imageUrl: editingExercise?.imageUrl || '',
@@ -981,6 +979,18 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                       Video, step-by-step instructions, and the GIF live in the Tutorials editor — save this exercise first, then add one.
                     </p>
                   )}
+
+                  <div>
+                    <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">{t.stepInstructionsLabel}</label>
+                    <textarea
+                      name="instructions"
+                      rows={3}
+                      defaultValue={editingExercise?.instructions || ''}
+                      placeholder={t.instructionsPlace}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-700 focus:outline-none focus:border-lime-500/50 transition-colors resize-none"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1">Optional — only shown to trainees when filled in.</p>
+                  </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {/* Difficulty Modifiers: How to make it harder */}
