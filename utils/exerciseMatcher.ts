@@ -329,8 +329,9 @@ export function getExerciseLocations(
     primaryZone = machineMatched || matchedZones[0];
   }
 
-  if (exercise.machineId && matchedMachinesList.some(m => m.machine.id === exercise.machineId)) {
-    const found = matchedMachinesList.find(m => m.machine.id === exercise.machineId);
+  const exerciseMachineId = 'machineId' in exercise ? exercise.machineId : undefined;
+  if (exerciseMachineId && matchedMachinesList.some(m => m.machine.id === exerciseMachineId)) {
+    const found = matchedMachinesList.find(m => m.machine.id === exerciseMachineId);
     if (found) primaryMachine = found.machine;
   } else if (primaryZone && primaryZone.machines && primaryZone.machines.length > 0) {
     const foundInZone = matchedMachinesList.find(m => m.zone.id === primaryZone!.id);
@@ -387,8 +388,9 @@ export function isExerciseAvailableInZone(
   if (keywordMatch && typeMatch) return true;
 
   // 3. Equipment required matching
-  if (exercise.equipmentRequired) {
-    const reqNorm = normalizeText(exercise.equipmentRequired);
+  const equipmentRequired = 'equipmentRequired' in exercise ? exercise.equipmentRequired : undefined;
+  if (equipmentRequired) {
+    const reqNorm = normalizeText(equipmentRequired);
     if (reqNorm && reqNorm !== 'none' && reqNorm !== 'bodyweight' && fullZoneText.includes(reqNorm)) {
       return true;
     }

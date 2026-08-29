@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { EquipmentItem, Gym, GymZone, LibraryExercise, Language } from '../types';
+import { EquipmentItem, Gym, GymZone, LibraryExercise, Language, GymMachine } from '../types';
 import { translations, getGymTranslation } from '../translations';
 import { 
   Dumbbell, Search, Plus, Edit2, Trash2, Check, X, 
@@ -119,7 +119,7 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
   gym,
   equipmentList = DEFAULT_EQUIPMENT,
   exercises = [],
-  onEquipmentChange = () => {},
+  onEquipmentChange = (_updatedList: EquipmentItem[]) => {},
   onGymChange,
   onSelectEquipmentForZone,
   onSelectMachine,

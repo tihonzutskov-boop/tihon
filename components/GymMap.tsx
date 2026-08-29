@@ -182,7 +182,7 @@ interface GymMapProps {
 
 const GymMap: React.FC<GymMapProps> = ({ 
   zones, 
-  dimensions = { width: 780, height: 580 },
+  dimensions = { width: 780, height: 580, walls: [], hallways: [], nodes: [] },
   entrance = { side: 'bottom', offset: 50, width: 80 },
   floorColor = '#1e293b',
   annexes = [],
@@ -217,7 +217,7 @@ const GymMap: React.FC<GymMapProps> = ({
   
   isThumbnail = false,
   manualView,
-  lang = 'en',
+  lang = 'en' as Language,
   hideSearch = false
 }) => {
   const containerRef = React.useRef<HTMLDivElement>(null);
