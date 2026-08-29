@@ -193,13 +193,9 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
             </h3>
 
             <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4 space-y-3">
-              {exercise.notes ? (
+              {exercise.notes && (
                 <p className="text-sm text-slate-200 leading-relaxed font-medium">
                   {exercise.notes}
-                </p>
-              ) : (
-                <p className="text-sm text-slate-400 italic">
-                  {t.noInstructions || 'Perform with controlled tempo and full range of motion.'}
                 </p>
               )}
 

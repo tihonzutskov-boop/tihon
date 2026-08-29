@@ -144,7 +144,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   const isLastStage = current === total - 1;
   const pct = Math.round(((current + 1) / total) * 100);
 
-  const instructions = libraryExercise?.instructions || exercise.notes || 'No instructions added yet.';
+  const instructions = libraryExercise?.instructions || exercise.notes;
   const gifUrl = libraryExercise?.imageUrl;
   const harder = libraryExercise?.makeHarder || exercise.makeHarder;
   const easier = libraryExercise?.makeEasier || exercise.makeEasier;
@@ -374,7 +374,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
               </div>
             )}
 
-            {!(stage.key === 'tutorial' && hasTutorialVideo) && (
+            {!(stage.key === 'tutorial' && hasTutorialVideo) && (stage.key !== 'tutorial' || instructions) && (
               <p className="text-sm text-slate-400 leading-relaxed">
                 {stage.key === 'locate' && zone && `Head to the ${zone.name}. Follow the map above — it marks exactly where this machine sits on the gym floor.`}
                 {stage.key === 'locate' && !zone && 'This exercise has no zone set — ask an admin to link it in the plan editor.'}
