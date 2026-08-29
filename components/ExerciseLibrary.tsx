@@ -5,6 +5,7 @@ import { searchAndFilterExercises, getExerciseLocations } from '../utils/exercis
 import { getEquipmentIcon, isBeginnerFriendly } from '../utils/equipmentIcons';
 import { getEquipmentIconComponent } from './EquipmentLibrary';
 import { getExerciseRequiredEquipmentIds, getZoneEquipmentIds } from '../utils/equipmentMatcher';
+import { getYouTubeVideoId } from '../utils/youtubeEmbed';
 import EditTutorialModal from './EditTutorialModal';
 import {
   Search, MapPin, Dumbbell, Edit3, Trash2, Plus, X, Loader2, KeyRound, Box, Sparkles, Globe, Layers, Check, Flame, ShieldCheck, Film
@@ -280,6 +281,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
   const [formMuscle, setFormMuscle] = useState('Legs/Quads');
   const [formCategory, setFormCategory] = useState('Compound (Strength)');
   const [formExerciseType, setFormExerciseType] = useState<'standard' | 'video'>('standard');
+  const [formVideoUrl, setFormVideoUrl] = useState('');
   const [formError, setFormError] = useState('');
   const [savingExercise, setSavingExercise] = useState(false);
   const [equipmentPickerSearch, setEquipmentPickerSearch] = useState('');
@@ -324,6 +326,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     setFormMuscle(ex.targetMuscle);
     setFormCategory(ex.category);
     setFormExerciseType(ex.exerciseType === 'video' ? 'video' : 'standard');
+    setFormVideoUrl(ex.exerciseType === 'video' ? ex.videoUrl || '' : '');
     setFormError('');
     setEquipmentPickerSearch('');
     setJustSaved(false);
@@ -336,6 +339,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     setFormMuscle('Legs/Quads');
     setFormCategory('Compound (Strength)');
     setFormExerciseType('standard');
+    setFormVideoUrl('');
     setFormError('');
     setEquipmentPickerSearch('');
     setJustSaved(false);
@@ -963,7 +967,27 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                     <div className="space-y-4">
                       <div>
                         <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">YouTube URL <span className="text-red-500">*</span></label>
-                        <input required={formExerciseType === 'video'} name="videoUrl" type="text" defaultValue={editingExercise?.videoUrl || ''} placeholder="https://youtube.com/watch?v=..." className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-red-500/50 transition-colors min-h-[44px]" />
+                        <input
+                          required={formExerciseType === 'video'}
+                          name="videoUrl"
+                          type="text"
+                          value={formVideoUrl}
+                          onChange={(e) => setFormVideoUrl(e.target.value)}
+                          placeholder="https://youtube.com/watch?v=..."
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-red-500/50 transition-colors min-h-[44px]"
+                        />
+                        {getYouTubeVideoId(formVideoUrl) && (
+                          <div className="mt-2 flex items-center gap-2.5 bg-slate-950 border border-slate-800 rounded-xl p-2">
+                            <img
+                              src={`https://img.youtube.com/vi/${getYouTubeVideoId(formVideoUrl)}/hqdefault.jpg`}
+                              alt=""
+                              className="w-20 h-11 object-cover rounded-lg flex-shrink-0 bg-slate-900"
+                            />
+                            <span className="text-[10px] font-bold text-lime-400 flex items-center gap-1">
+                              <Check className="w-3 h-3" /> Video found
+                            </span>
+                          </div>
+                        )}
                       </div>
                       <div>
                         <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Duration</label>
