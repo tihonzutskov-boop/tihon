@@ -190,6 +190,8 @@ export interface LibraryExercise {
   tutorialVideoUrl?: string;      // Uploaded tutorial video file (data URI) — a real <video>, separate from videoUrl, so it supports timestamp-based seeking
   tutorialVideoFileName?: string; // Original filename of the uploaded tutorial video
   steps?: TutorialStep[];         // Step-by-step tutorial breakdown, each optionally pinned to a tutorialVideoUrl timestamp
+  exerciseType?: 'standard' | 'video'; // 'video' = a YouTube follow-along (warmup, mobility, cooldown) with no equipment/sets — undefined behaves as 'standard'
+  videoDurationLabel?: string;         // Free-text duration for a video exercise (e.g. "10 min"), shown to trainees — admin-entered since we don't fetch real video metadata
 }
 
 export type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';

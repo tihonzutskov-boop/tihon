@@ -279,6 +279,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
   const [selectedEquipmentIds, setSelectedEquipmentIds] = useState<string[]>([]);
   const [formMuscle, setFormMuscle] = useState('Legs/Quads');
   const [formCategory, setFormCategory] = useState('Compound (Strength)');
+  const [formExerciseType, setFormExerciseType] = useState<'standard' | 'video'>('standard');
   const [formError, setFormError] = useState('');
   const [savingExercise, setSavingExercise] = useState(false);
   const [equipmentPickerSearch, setEquipmentPickerSearch] = useState('');
@@ -322,6 +323,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     setSelectedEquipmentIds(existingIds);
     setFormMuscle(ex.targetMuscle);
     setFormCategory(ex.category);
+    setFormExerciseType(ex.exerciseType === 'video' ? 'video' : 'standard');
     setFormError('');
     setEquipmentPickerSearch('');
     setJustSaved(false);
@@ -333,6 +335,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     setSelectedEquipmentIds([]);
     setFormMuscle('Legs/Quads');
     setFormCategory('Compound (Strength)');
+    setFormExerciseType('standard');
     setFormError('');
     setEquipmentPickerSearch('');
     setJustSaved(false);
@@ -637,6 +640,11 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                               🌱
                             </span>
                           )}
+                          {raw.exerciseType === 'video' && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/30 text-[8.5px] font-bold tracking-wide uppercase">
+                              <Film className="w-2.5 h-2.5" /> Video
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                           <button
@@ -661,7 +669,11 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                       </h3>
 
                       <div className="flex items-center gap-1.5 flex-wrap mb-2">
-                        {requiredItems.length > 0 ? (
+                        {raw.exerciseType === 'video' ? (
+                          <span className="text-[9.5px] px-1.5 py-0.5 rounded-md bg-slate-800/80 border border-slate-700/60 text-slate-300">
+                            {raw.videoDurationLabel || 'Follow-along video'}
+                          </span>
+                        ) : requiredItems.length > 0 ? (
                           <>
                             {requiredItems.slice(0, 2).map(req => {
                               const IconComp = getEquipmentIconComponent(req.icon);
@@ -682,9 +694,15 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                       </div>
 
                       <div className="flex items-center justify-between pt-2.5 border-t border-slate-850/60">
-                        <span className={`text-[9.5px] font-bold flex items-center gap-1 ${isMapped ? 'text-slate-500' : 'text-amber-400'}`}>
-                          {isMapped ? <><MapPin className="w-2.5 h-2.5" /> {t.mapAlign}</> : '⚠️ Needs review'}
-                        </span>
+                        {raw.exerciseType === 'video' ? (
+                          <span className="text-[9.5px] font-bold text-slate-500 flex items-center gap-1">
+                            <Film className="w-2.5 h-2.5" /> YouTube follow-along
+                          </span>
+                        ) : (
+                          <span className={`text-[9.5px] font-bold flex items-center gap-1 ${isMapped ? 'text-slate-500' : 'text-amber-400'}`}>
+                            {isMapped ? <><MapPin className="w-2.5 h-2.5" /> {t.mapAlign}</> : '⚠️ Needs review'}
+                          </span>
+                        )}
                         {!!(ex.tutorialVideoUrl && ex.steps && ex.steps.length > 0) && (
                           <span className="text-[8.5px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-lime-500/10 text-lime-400 flex items-center gap-1">
                             <Film className="w-2.5 h-2.5" /> Tutorial
@@ -827,36 +845,56 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
              <form ref={exerciseFormRef} onSubmit={(e) => {
                 e.preventDefault();
                 const formData = new FormData(e.currentTarget);
+                const isVideo = formExerciseType === 'video';
 
-                if (selectedEquipmentIds.length === 0) {
+                // Video exercises are a YouTube follow-along, not an
+                // equipment-based movement — nothing to pick from the
+                // Equipment Library.
+                if (!isVideo && selectedEquipmentIds.length === 0) {
                   setFormError('Select at least one equipment item (use "Open Floor / Mat Area" for bodyweight moves).');
                   return;
                 }
                 setFormError('');
 
-                // Construct human readable equipment label
-                const selectedEqItems = selectedEquipmentIds.map(id => equipmentMap.get(id)?.name).filter(Boolean);
-                const reqString = selectedEqItems.join(', ') || 'None (Bodyweight)';
-
-                const zoneRaw = formData.get('equipmentId') as string;
-
-                const exData = {
+                const exData = isVideo ? {
                   name: formData.get('name') as string,
                   targetMuscle: formMuscle,
-                  equipmentRequired: reqString,
-                  requiredEquipmentIds: selectedEquipmentIds,
+                  equipmentRequired: 'None (Video)',
+                  requiredEquipmentIds: [],
                   category: formCategory,
-                  // GIF / video URL are edited in the Tutorials editor. Notes
-                  // are now a coach-authored, per-plan field edited from the
-                  // Coaching page (Exercise.notes) — carry over whatever this
-                  // library exercise already had rather than editing it here.
                   instructions: editingExercise?.instructions || '',
-                  equipmentId: zoneRaw === 'auto' ? '' : zoneRaw,
-                  videoUrl: editingExercise?.videoUrl || '',
+                  equipmentId: '',
+                  videoUrl: ((formData.get('videoUrl') as string) || '').trim(),
+                  videoDurationLabel: ((formData.get('videoDurationLabel') as string) || '').trim(),
                   imageUrl: editingExercise?.imageUrl || '',
-                  makeHarder: ((formData.get('makeHarder') as string) || '').trim(),
-                  makeEasier: ((formData.get('makeEasier') as string) || '').trim()
-                };
+                  makeHarder: '',
+                  makeEasier: '',
+                  exerciseType: 'video' as const
+                } : (() => {
+                  // Construct human readable equipment label
+                  const selectedEqItems = selectedEquipmentIds.map(id => equipmentMap.get(id)?.name).filter(Boolean);
+                  const reqString = selectedEqItems.join(', ') || 'None (Bodyweight)';
+                  const zoneRaw = formData.get('equipmentId') as string;
+                  return {
+                    name: formData.get('name') as string,
+                    targetMuscle: formMuscle,
+                    equipmentRequired: reqString,
+                    requiredEquipmentIds: selectedEquipmentIds,
+                    category: formCategory,
+                    // GIF / video URL are edited in the Tutorials editor. Notes
+                    // are now a coach-authored, per-plan field edited from the
+                    // Coaching page (Exercise.notes) — carry over whatever this
+                    // library exercise already had rather than editing it here.
+                    instructions: editingExercise?.instructions || '',
+                    equipmentId: zoneRaw === 'auto' ? '' : zoneRaw,
+                    videoUrl: editingExercise?.videoUrl || '',
+                    videoDurationLabel: '',
+                    imageUrl: editingExercise?.imageUrl || '',
+                    makeHarder: ((formData.get('makeHarder') as string) || '').trim(),
+                    makeEasier: ((formData.get('makeEasier') as string) || '').trim(),
+                    exerciseType: 'standard' as const
+                  };
+                })();
 
                 setSavingExercise(true);
                 (editingExercise
@@ -882,9 +920,32 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                   .finally(() => setSavingExercise(false));
              }} className="flex-1 flex flex-col min-h-0 overflow-hidden">
                 <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                  <div className="flex gap-2 bg-slate-950 border border-slate-800 rounded-xl p-1">
+                    <button
+                      type="button"
+                      onClick={() => setFormExerciseType('standard')}
+                      className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 rounded-lg text-[11.5px] font-bold transition-colors ${
+                        formExerciseType === 'standard' ? 'bg-slate-800 text-lime-400' : 'text-slate-500 hover:text-slate-300'
+                      }`}
+                    >
+                      <span>🏋️ Standard Exercise</span>
+                      <span className="text-[9px] font-semibold text-slate-500">Equipment, sets &amp; reps</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormExerciseType('video')}
+                      className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 rounded-lg text-[11.5px] font-bold transition-colors ${
+                        formExerciseType === 'video' ? 'bg-slate-800 text-red-400' : 'text-slate-500 hover:text-slate-300'
+                      }`}
+                    >
+                      <span>▶ Video / Follow-Along</span>
+                      <span className="text-[9px] font-semibold text-slate-500">YouTube link, no equipment needed</span>
+                    </button>
+                  </div>
+
                   <div>
                     <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">{t.exNameLabel} <span className="text-red-500">*</span></label>
-                    <input required name="name" type="text" defaultValue={editingExercise?.name || ''} placeholder="e.g., Incline Dumbbell Bench Press" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-lime-500/50 transition-colors min-h-[44px]" />
+                    <input required name="name" type="text" defaultValue={editingExercise?.name || ''} placeholder={formExerciseType === 'video' ? 'e.g., 10-Min Dynamic Warmup' : 'e.g., Incline Dumbbell Bench Press'} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-lime-500/50 transition-colors min-h-[44px]" />
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -898,7 +959,26 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                     </div>
                   </div>
 
+                  {formExerciseType === 'video' && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">YouTube URL <span className="text-red-500">*</span></label>
+                        <input required={formExerciseType === 'video'} name="videoUrl" type="text" defaultValue={editingExercise?.videoUrl || ''} placeholder="https://youtube.com/watch?v=..." className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-red-500/50 transition-colors min-h-[44px]" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Duration</label>
+                        <input name="videoDurationLabel" type="text" defaultValue={editingExercise?.videoDurationLabel || ''} placeholder="e.g., 10 min" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-red-500/50 transition-colors min-h-[44px]" />
+                      </div>
+                      <div className="flex items-start gap-2 p-3 rounded-xl bg-red-500/5 border border-red-500/15 text-[10.5px] text-slate-400 leading-relaxed">
+                        <Film className="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" />
+                        <span>Equipment, target zone, sets/reps, and Harder/Easier are skipped for video exercises — trainees just watch and follow along.</span>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Interactive Equipment Multi-Selector from Equipment Library */}
+                  {formExerciseType === 'standard' && (
+                  <>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider">
@@ -1038,6 +1118,8 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                       />
                     </div>
                   </div>
+                  </>
+                  )}
 
                   {formError && (
                     <div className="p-3 rounded-xl bg-red-950/30 border border-red-800/40 text-xs text-red-400">

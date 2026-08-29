@@ -64,8 +64,16 @@ const exerciseReps = (ex: Exercise): number => {
   return sets.reduce((a, s) => a + (parseFloat(s.reps) || 0), 0);
 };
 
+// A picked video exercise has no cardioMinutes and no setDetails at all
+// (unlike a manually-added strength exercise, which always starts with
+// blank set rows) — that combination is the signal it's a follow-along
+// with nothing to log, so summarize it by its duration label instead.
 const exerciseSummary = (ex: Exercise): string =>
-  ex.isCardio ? `${ex.cardioMinutes || 0} min` : `${ex.setDetails?.length || 0} sets · ${exerciseVolume(ex).toLocaleString()} kg`;
+  ex.isCardio
+    ? `${ex.cardioMinutes || 0} min`
+    : !ex.setDetails
+    ? `▶ ${ex.reps || 'Video'}`
+    : `${ex.setDetails.length} sets · ${exerciseVolume(ex).toLocaleString()} kg`;
 
 // Days created before blocks existed (or edited outside the builder) have no
 // `blocks` array — treat every exercise as its own Single Exercise block.
@@ -175,7 +183,8 @@ const SessionBuilder: React.FC<SessionBuilderProps> = ({
     updateExercise(exId, { setDetails: sets, sets: sets.length, reps: sets[0]?.reps || '' });
   };
   const pickExercise = (exId: string, le: LibraryExercise) => {
-    const cardio = isCardioCategory(le);
+    const video = le.exerciseType === 'video';
+    const cardio = !video && isCardioCategory(le);
     const cardioMinutes = exercisesById.get(exId)?.cardioMinutes || 20;
     updateExercise(exId, {
       name: le.name,
@@ -186,11 +195,20 @@ const SessionBuilder: React.FC<SessionBuilderProps> = ({
       makeEasier: le.makeEasier,
       libraryExerciseId: le.id,
       isCardio: cardio,
-      ...(cardio ? { cardioMinutes, sets: 1, reps: `${cardioMinutes} min`, setDetails: undefined } : {}),
+      // A video exercise has nothing to log — one pass-through "set" so the
+      // rest of the day's duration/volume math doesn't have to special-case it.
+      ...(video ? { sets: 1, reps: le.videoDurationLabel || '', setDetails: undefined, cardioMinutes: undefined }
+        : cardio ? { cardioMinutes, sets: 1, reps: `${cardioMinutes} min`, setDetails: undefined }
+        : {}),
     });
     setPickerForExId(null);
     setPickerSearch('');
     setPickerMuscleFilter('All');
+  };
+  const isVideoExercise = (ex: Exercise): boolean => {
+    if (!ex.libraryExerciseId) return false;
+    const le = libraryExercises.find(l => l.id === ex.libraryExerciseId);
+    return le?.exerciseType === 'video';
   };
   const toggleCardioMode = (exId: string) => {
     const ex = exercisesById.get(exId);
@@ -212,6 +230,7 @@ const SessionBuilder: React.FC<SessionBuilderProps> = ({
     if (!ex) return null;
     const sets = ex.setDetails || [];
     const color = ex.targetMuscle ? muscleColor(ex.targetMuscle) : '#94a3b8';
+    const video = isVideoExercise(ex);
 
     return (
       <div key={exId} className={nested ? 'bg-slate-900 border border-slate-800 rounded-xl p-3 mb-2.5' : 'px-4 pb-4'}>
@@ -238,93 +257,102 @@ const SessionBuilder: React.FC<SessionBuilderProps> = ({
           <Search className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
         </button>
 
-        <div className="flex items-center justify-between mb-2">
-          {ex.isCardio ? (
-            <span className="text-[9px] font-extrabold uppercase tracking-wide px-2 py-1 rounded-full bg-sky-500/15 text-sky-400">Cardio</span>
-          ) : (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => changeSetCount(exId, -1)}
-                className="w-6 h-6 rounded-md border border-slate-700 bg-slate-800 text-slate-400 hover:border-lime-500 hover:text-lime-400 flex items-center justify-center transition-colors"
-              >
-                <Minus className="w-3 h-3" />
-              </button>
-              <span className="text-[11px] font-extrabold text-slate-300 min-w-[54px]">{sets.length} Sets</span>
-              <button
-                type="button"
-                onClick={() => changeSetCount(exId, 1)}
-                className="w-6 h-6 rounded-md border border-slate-700 bg-slate-800 text-slate-400 hover:border-lime-500 hover:text-lime-400 flex items-center justify-center transition-colors"
-              >
-                <Plus className="w-3 h-3" />
-              </button>
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={() => toggleCardioMode(exId)}
-            className="text-[10px] font-bold text-slate-500 hover:text-lime-400 transition-colors underline"
-          >
-            {ex.isCardio ? 'Switch to sets/reps' : 'Track as cardio (duration only)'}
-          </button>
-        </div>
-
-        {ex.isCardio ? (
-          <div className="flex items-center gap-2.5">
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Duration</label>
-            <input
-              type="number"
-              min={0}
-              value={ex.cardioMinutes ?? 0}
-              onChange={e => updateCardioMinutes(exId, e.target.value)}
-              className="w-20 bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-center text-[11.5px] font-bold text-white outline-none focus:border-lime-500 transition-colors"
-            />
-            <span className="text-[11px] font-bold text-slate-500">min</span>
+        {video ? (
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-red-500/5 border border-red-500/15">
+            <Play className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+            <span className="text-[11px] font-bold text-slate-300">YouTube follow-along{ex.reps ? ` · ${ex.reps}` : ''} — no sets to log</span>
           </div>
         ) : (
           <>
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="text-[9px] font-extrabold text-slate-500 uppercase tracking-wide">
-                  <th className="text-center w-6 pb-1.5">#</th>
-                  <th className="text-left pb-1.5 px-2">Reps</th>
-                  <th className="text-left pb-1.5 px-2">Weight (kg)</th>
-                  <th className="text-left pb-1.5 px-2">Rest (sec)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sets.map((s, i) => (
-                  <tr key={i}>
-                    <td className="text-center text-[11px] font-extrabold text-slate-500 py-0.5">{i + 1}</td>
-                    <td className="px-2 py-0.5">
-                      <input
-                        value={s.reps}
-                        onChange={e => updateSet(exId, i, 'reps', e.target.value)}
-                        placeholder="—"
-                        className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-center text-[11.5px] font-bold text-white outline-none focus:border-lime-500 transition-colors"
-                      />
-                    </td>
-                    <td className="px-2 py-0.5">
-                      <input
-                        value={s.weight}
-                        onChange={e => updateSet(exId, i, 'weight', e.target.value)}
-                        placeholder="—"
-                        className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-center text-[11.5px] font-bold text-white outline-none focus:border-lime-500 transition-colors"
-                      />
-                    </td>
-                    <td className="px-2 py-0.5">
-                      <input
-                        value={s.restSec}
-                        onChange={e => updateSet(exId, i, 'restSec', e.target.value)}
-                        placeholder="60"
-                        className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-center text-[11.5px] font-bold text-white outline-none focus:border-lime-500 transition-colors"
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="text-right text-[10.5px] font-extrabold text-slate-400 mt-1.5">{exerciseVolume(ex).toLocaleString()} kg</p>
+            <div className="flex items-center justify-between mb-2">
+              {ex.isCardio ? (
+                <span className="text-[9px] font-extrabold uppercase tracking-wide px-2 py-1 rounded-full bg-sky-500/15 text-sky-400">Cardio</span>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => changeSetCount(exId, -1)}
+                    className="w-6 h-6 rounded-md border border-slate-700 bg-slate-800 text-slate-400 hover:border-lime-500 hover:text-lime-400 flex items-center justify-center transition-colors"
+                  >
+                    <Minus className="w-3 h-3" />
+                  </button>
+                  <span className="text-[11px] font-extrabold text-slate-300 min-w-[54px]">{sets.length} Sets</span>
+                  <button
+                    type="button"
+                    onClick={() => changeSetCount(exId, 1)}
+                    className="w-6 h-6 rounded-md border border-slate-700 bg-slate-800 text-slate-400 hover:border-lime-500 hover:text-lime-400 flex items-center justify-center transition-colors"
+                  >
+                    <Plus className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => toggleCardioMode(exId)}
+                className="text-[10px] font-bold text-slate-500 hover:text-lime-400 transition-colors underline"
+              >
+                {ex.isCardio ? 'Switch to sets/reps' : 'Track as cardio (duration only)'}
+              </button>
+            </div>
+
+            {ex.isCardio ? (
+              <div className="flex items-center gap-2.5">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Duration</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={ex.cardioMinutes ?? 0}
+                  onChange={e => updateCardioMinutes(exId, e.target.value)}
+                  className="w-20 bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-center text-[11.5px] font-bold text-white outline-none focus:border-lime-500 transition-colors"
+                />
+                <span className="text-[11px] font-bold text-slate-500">min</span>
+              </div>
+            ) : (
+              <>
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="text-[9px] font-extrabold text-slate-500 uppercase tracking-wide">
+                      <th className="text-center w-6 pb-1.5">#</th>
+                      <th className="text-left pb-1.5 px-2">Reps</th>
+                      <th className="text-left pb-1.5 px-2">Weight (kg)</th>
+                      <th className="text-left pb-1.5 px-2">Rest (sec)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sets.map((s, i) => (
+                      <tr key={i}>
+                        <td className="text-center text-[11px] font-extrabold text-slate-500 py-0.5">{i + 1}</td>
+                        <td className="px-2 py-0.5">
+                          <input
+                            value={s.reps}
+                            onChange={e => updateSet(exId, i, 'reps', e.target.value)}
+                            placeholder="—"
+                            className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-center text-[11.5px] font-bold text-white outline-none focus:border-lime-500 transition-colors"
+                          />
+                        </td>
+                        <td className="px-2 py-0.5">
+                          <input
+                            value={s.weight}
+                            onChange={e => updateSet(exId, i, 'weight', e.target.value)}
+                            placeholder="—"
+                            className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-center text-[11.5px] font-bold text-white outline-none focus:border-lime-500 transition-colors"
+                          />
+                        </td>
+                        <td className="px-2 py-0.5">
+                          <input
+                            value={s.restSec}
+                            onChange={e => updateSet(exId, i, 'restSec', e.target.value)}
+                            placeholder="60"
+                            className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-center text-[11.5px] font-bold text-white outline-none focus:border-lime-500 transition-colors"
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="text-right text-[10.5px] font-extrabold text-slate-400 mt-1.5">{exerciseVolume(ex).toLocaleString()} kg</p>
+              </>
+            )}
           </>
         )}
 
@@ -670,7 +698,11 @@ const SessionBuilder: React.FC<SessionBuilderProps> = ({
                             >
                               {le.targetMuscle}
                             </span>
-                            {le.videoUrl && (
+                            {le.exerciseType === 'video' ? (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/30 text-[8.5px] font-bold uppercase tracking-wide flex-shrink-0">
+                                <Play className="w-2.5 h-2.5 fill-current" /> Video
+                              </span>
+                            ) : le.videoUrl && (
                               <span className="w-5 h-5 rounded-full bg-lime-500/10 text-lime-400 flex items-center justify-center flex-shrink-0">
                                 <Play className="w-2.5 h-2.5 fill-current" />
                               </span>

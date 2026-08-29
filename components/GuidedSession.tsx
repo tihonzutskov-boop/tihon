@@ -3,6 +3,7 @@ import { X, ArrowLeft, Check, Plus, Minus, Dumbbell, PlayCircle } from 'lucide-r
 import { WorkoutDay, Gym, EquipmentItem, LibraryExercise, Exercise } from '../types';
 import GymMap from './GymMap';
 import { getExerciseLocations } from '../utils/exerciseMatcher';
+import { getYouTubeEmbedUrl } from '../utils/youtubeEmbed';
 
 interface GuidedSessionProps {
   day: WorkoutDay;
@@ -13,11 +14,17 @@ interface GuidedSessionProps {
   onFinish: () => void;
 }
 
-type StageKey = 'locate' | 'identify' | 'tutorial';
-const STAGES: { key: StageKey; label: string }[] = [
+type StageKey = 'locate' | 'identify' | 'tutorial' | 'video';
+const STANDARD_STAGES: { key: StageKey; label: string }[] = [
   { key: 'locate', label: 'Locate' },
   { key: 'identify', label: 'Identify' },
   { key: 'tutorial', label: 'Tutorial' },
+];
+// A video exercise (YouTube follow-along — warmups, mobility, cooldowns) has
+// no equipment to locate or identify, so it gets a single stage instead of
+// the usual three.
+const VIDEO_STAGES: { key: StageKey; label: string }[] = [
+  { key: 'video', label: 'Follow Along' },
 ];
 
 interface SetRow {
@@ -38,13 +45,39 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
     });
     return map;
   }, [day.blocks]);
-  const total = exercises.length * 3;
+  // Video exercises get a single stage instead of the standard three, so the
+  // stage list per exercise (and therefore the flat step count) is variable
+  // rather than always exercises.length * 3.
+  const stagesByExIdx = useMemo(
+    () =>
+      exercises.map(ex => {
+        const le = ex.libraryExerciseId ? libraryExercises.find(l => l.id === ex.libraryExerciseId) : undefined;
+        return le?.exerciseType === 'video' ? VIDEO_STAGES : STANDARD_STAGES;
+      }),
+    [exercises, libraryExercises]
+  );
+  const startIndexByExIdx = useMemo(() => {
+    const starts: number[] = [];
+    let acc = 0;
+    stagesByExIdx.forEach(stages => {
+      starts.push(acc);
+      acc += stages.length;
+    });
+    return starts;
+  }, [stagesByExIdx]);
+  const steps = useMemo(() => {
+    const flat: { exIdx: number; stageKey: StageKey }[] = [];
+    stagesByExIdx.forEach((stages, i) => stages.forEach(s => flat.push({ exIdx: i, stageKey: s.key })));
+    return flat;
+  }, [stagesByExIdx]);
+
+  const total = steps.length;
   const [current, setCurrent] = useState(0);
   const [setState, setSetState] = useState<Record<number, SetRow[]>>({});
 
-  const exIdx = Math.floor(current / 3);
-  const stageIdx = current % 3;
-  const stage = STAGES[stageIdx];
+  const curStep = steps[current];
+  const exIdx = curStep?.exIdx ?? 0;
+  const stage = curStep ? stagesByExIdx[curStep.exIdx].find(s => s.key === curStep.stageKey)! : STANDARD_STAGES[0];
   const exercise: Exercise | undefined = exercises[exIdx];
 
   const [tutorialStepIdx, setTutorialStepIdx] = useState(0);
@@ -254,13 +287,13 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
           <div className="h-full bg-lime-500 rounded-full transition-all duration-200" style={{ width: `${pct}%` }} />
         </div>
         <div className="flex gap-1.5">
-          {STAGES.map((s, i) => (
+          {stagesByExIdx[exIdx].map((s, i) => (
             <div
               key={s.key}
               className={`flex-1 text-center py-1.5 rounded-lg text-[10.5px] font-extrabold uppercase tracking-wide border ${
-                i < stageIdx
+                i < stagesByExIdx[exIdx].findIndex(st => st.key === stage.key)
                   ? 'text-lime-400 border-lime-500/30 bg-lime-500/5'
-                  : i === stageIdx
+                  : s.key === stage.key
                   ? 'text-lime-400 border-lime-500 bg-lime-500/10'
                   : 'text-slate-500 border-slate-800 bg-slate-900'
               }`}
@@ -280,7 +313,17 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
             </p>
             <h2 className="text-xl font-extrabold text-white">{exercise.name}</h2>
           </div>
-          {stage.key === 'tutorial' && hasTutorialVideo ? (
+          {stage.key === 'video' ? (
+            <div className="relative aspect-video border-b border-slate-800 bg-black overflow-hidden">
+              <iframe
+                src={getYouTubeEmbedUrl(libraryExercise?.videoUrl)}
+                title={exercise.name}
+                className="w-full h-full border-0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+          ) : stage.key === 'tutorial' && hasTutorialVideo ? (
             <>
               {/* Caption + Next Step used to sit as an absolute overlay on
                   top of the video — on a phone that overlay was tall
@@ -374,12 +417,21 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
               </div>
             )}
 
-            {!(stage.key === 'tutorial' && hasTutorialVideo) && (stage.key !== 'tutorial' || instructions) && (
-              <p className="text-sm text-slate-400 leading-relaxed">
+            {stage.key === 'video' && (
+              <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-3">
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Follow along with the full video before moving on — there's nothing to log for this one.
+                </p>
+              </div>
+            )}
+
+            {!(stage.key === 'tutorial' && hasTutorialVideo) && (stage.key !== 'tutorial' || instructions) && (stage.key !== 'video' || instructions) && (
+              <p className={`text-sm text-slate-400 leading-relaxed ${stage.key === 'video' ? 'mt-3' : ''}`}>
                 {stage.key === 'locate' && zone && `Head to the ${zone.name}. Follow the map above — it marks exactly where this machine sits on the gym floor.`}
                 {stage.key === 'locate' && !zone && 'This exercise has no zone set — ask an admin to link it in the plan editor.'}
                 {stage.key === 'identify' && (equipmentItem?.description || 'Look for the machine matching this name on the gym floor.')}
                 {stage.key === 'tutorial' && instructions}
+                {stage.key === 'video' && instructions}
               </p>
             )}
 
@@ -482,7 +534,13 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
               onClick={() => (isLastStage ? onFinish() : go(1))}
               className="flex-1 py-3 rounded-xl text-sm font-extrabold bg-lime-500 hover:bg-lime-400 active:scale-95 text-slate-950 transition-all duration-150"
             >
-              {isLastStage ? 'Finish session' : stage.key === 'tutorial' ? 'Next exercise →' : 'Next →'}
+              {isLastStage
+                ? 'Finish session'
+                : stage.key === 'video'
+                ? 'Mark Complete →'
+                : stage.key === 'tutorial'
+                ? 'Next exercise →'
+                : 'Next →'}
             </button>
           </div>
         )}
@@ -508,6 +566,11 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                       {doneEx ? <Check className="w-3 h-3" /> : i + 1}
                     </span>
                     <span>{e.name}</span>
+                    {stagesByExIdx[i][0]?.key === 'video' && (
+                      <span className="text-[8.5px] font-extrabold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-400">
+                        ▶ Video
+                      </span>
+                    )}
                     {blockTypeByExerciseId[e.id] && (
                       <span className={`text-[8.5px] font-extrabold uppercase tracking-wide px-1.5 py-0.5 rounded-full ${
                         blockTypeByExerciseId[e.id] === 'warmup' ? 'bg-amber-500/15 text-amber-400' : 'bg-sky-500/15 text-sky-400'
@@ -517,8 +580,8 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                     )}
                   </div>
                   <div className="flex gap-1.5 ml-7">
-                    {STAGES.map((s, si) => {
-                      const abs = i * 3 + si;
+                    {stagesByExIdx[i].map((s, si) => {
+                      const abs = startIndexByExIdx[i] + si;
                       const subDone = abs < current;
                       const subActive = abs === current;
                       return (

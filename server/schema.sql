@@ -95,6 +95,12 @@ ALTER TABLE exercises ADD COLUMN IF NOT EXISTS tutorial_video_url TEXT;
 ALTER TABLE exercises ADD COLUMN IF NOT EXISTS tutorial_video_file_name VARCHAR(255);
 ALTER TABLE exercises ADD COLUMN IF NOT EXISTS steps JSONB DEFAULT '[]';
 
+-- 'video' exercises are a YouTube follow-along (warmup, mobility, cooldown)
+-- with no equipment/sets — they reuse the video_url column above for the
+-- YouTube link and just add a free-text duration label for display.
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS exercise_type VARCHAR(20);
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS video_duration_label VARCHAR(50);
+
 CREATE TABLE IF NOT EXISTS workout_logs (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
