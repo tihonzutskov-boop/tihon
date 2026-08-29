@@ -327,6 +327,17 @@ const SessionBuilder: React.FC<SessionBuilderProps> = ({
             <p className="text-right text-[10.5px] font-extrabold text-slate-400 mt-1.5">{exerciseVolume(ex).toLocaleString()} kg</p>
           </>
         )}
+
+        <div className="mt-3">
+          <label className="block text-[9.5px] font-bold text-slate-500 uppercase tracking-wide mb-1">Coach's note</label>
+          <textarea
+            value={ex.notes || ''}
+            onChange={e => updateExercise(exId, { notes: e.target.value })}
+            rows={2}
+            placeholder="Optional — a cue, modification, or reminder just for this exercise in this plan…"
+            className="w-full bg-slate-950 border border-slate-700 rounded-md px-2.5 py-2 text-[11.5px] text-white placeholder-slate-600 outline-none focus:border-lime-500 transition-colors resize-none"
+          />
+        </div>
       </div>
     );
   };
