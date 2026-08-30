@@ -356,7 +356,10 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     const exerciseToSave: LibraryExercise = {
       ...newEx,
       id: `ex-${Date.now()}`,
-      requiredEquipmentIds: selectedEquipmentIds
+      // Video exercises set their own default (the mat/turf area) without
+      // ever touching the equipment picker, so selectedEquipmentIds — which
+      // only reflects that picker's state — would wipe it out here.
+      requiredEquipmentIds: newEx.exerciseType === 'video' ? newEx.requiredEquipmentIds : selectedEquipmentIds
     };
     const result = await api.createExercise(exerciseToSave);
     if (!result.ok) {
@@ -369,7 +372,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
   const handleSaveExerciseEdit = async (updatedEx: LibraryExercise): Promise<LibraryExercise> => {
     const fullUpdated: LibraryExercise = {
       ...updatedEx,
-      requiredEquipmentIds: selectedEquipmentIds
+      requiredEquipmentIds: updatedEx.exerciseType === 'video' ? updatedEx.requiredEquipmentIds : selectedEquipmentIds
     };
     const result = await api.saveExercise(fullUpdated);
     if (!result.ok) {
@@ -863,8 +866,14 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                 const exData = isVideo ? {
                   name: formData.get('name') as string,
                   targetMuscle: formMuscle,
-                  equipmentRequired: 'None (Video)',
-                  requiredEquipmentIds: [],
+                  // Not truly "no equipment" — a follow-along video still
+                  // needs floor space, so it defaults to the mat/turf area.
+                  // equipmentId stays auto (unset) so it resolves against
+                  // whichever zone actually has that equipment in the
+                  // trainee's own gym, same as a standard exercise left on
+                  // "Auto-detect from equipment in zone".
+                  equipmentRequired: 'Open Floor / Mat Area',
+                  requiredEquipmentIds: ['eq-floor-mat'],
                   category: formCategory,
                   instructions: editingExercise?.instructions || '',
                   equipmentId: '',
