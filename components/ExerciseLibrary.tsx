@@ -1122,10 +1122,8 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                       <label className="block text-[10px] text-amber-400 font-bold uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
                         <Flame className="w-3.5 h-3.5 text-amber-400" />
                         <span>{t.howToMakeHarderLabel}</span>
-                        <span className="text-red-500">*</span>
                       </label>
                       <textarea
-                        required
                         name="makeHarder"
                         rows={2}
                         defaultValue={editingExercise?.makeHarder || ''}
@@ -1139,10 +1137,8 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                       <label className="block text-[10px] text-emerald-400 font-bold uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
                         <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
                         <span>{t.howToMakeEasierLabel}</span>
-                        <span className="text-red-500">*</span>
                       </label>
                       <textarea
-                        required
                         name="makeEasier"
                         rows={2}
                         defaultValue={editingExercise?.makeEasier || ''}
@@ -1151,6 +1147,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                       />
                     </div>
                   </div>
+                  <p className="text-[10px] text-slate-500 -mt-2">Optional — leave either blank if it doesn't apply. Only shown to trainees when filled in.</p>
                   </>
                   )}
 
