@@ -679,7 +679,11 @@ app.get('/api/exercises', async (req, res) => {
       tutorialVideoFileName: row.tutorial_video_file_name || '',
       steps: row.steps || [],
       exerciseType: row.exercise_type || 'standard',
-      videoDurationLabel: row.video_duration_label || ''
+      videoDurationLabel: row.video_duration_label || '',
+      harderExerciseId: row.harder_exercise_id || '',
+      easierExerciseId: row.easier_exercise_id || '',
+      harderTutorial: row.harder_tutorial || {},
+      easierTutorial: row.easier_tutorial || {}
     }));
     res.json(exercises);
   } catch (err) {
@@ -692,12 +696,12 @@ app.get('/api/exercises', async (req, res) => {
 
 // POST Create Exercise
 app.post('/api/exercises', requireAdmin, async (req, res) => {
-  const { id, name, targetMuscle, equipmentRequired, requiredEquipmentIds, category, instructions, equipmentId, videoUrl, imageUrl, makeHarder, makeEasier, tutorialVideoUrl, tutorialVideoFileName, steps, exerciseType, videoDurationLabel } = req.body;
+  const { id, name, targetMuscle, equipmentRequired, requiredEquipmentIds, category, instructions, equipmentId, videoUrl, imageUrl, makeHarder, makeEasier, tutorialVideoUrl, tutorialVideoFileName, steps, exerciseType, videoDurationLabel, harderExerciseId, easierExerciseId, harderTutorial, easierTutorial } = req.body;
   let client;
   try {
     client = await pool.connect();
     await client.query(
-      'INSERT INTO exercises (id, name, target_muscle, equipment_required, required_equipment_ids, category, instructions, equipment_id, video_url, image_url, make_harder, make_easier, tutorial_video_url, tutorial_video_file_name, steps, exercise_type, video_duration_label) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)',
+      'INSERT INTO exercises (id, name, target_muscle, equipment_required, required_equipment_ids, category, instructions, equipment_id, video_url, image_url, make_harder, make_easier, tutorial_video_url, tutorial_video_file_name, steps, exercise_type, video_duration_label, harder_exercise_id, easier_exercise_id, harder_tutorial, easier_tutorial) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)',
       [
         id,
         name,
@@ -715,7 +719,11 @@ app.post('/api/exercises', requireAdmin, async (req, res) => {
         tutorialVideoFileName || '',
         JSON.stringify(steps || []),
         exerciseType || 'standard',
-        videoDurationLabel || ''
+        videoDurationLabel || '',
+        harderExerciseId || '',
+        easierExerciseId || '',
+        JSON.stringify(harderTutorial || {}),
+        JSON.stringify(easierTutorial || {})
       ]
     );
     res.json({ success: true, id });
@@ -730,17 +738,17 @@ app.post('/api/exercises', requireAdmin, async (req, res) => {
 // PUT Update Exercise
 app.put('/api/exercises/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
-  const { name, targetMuscle, equipmentRequired, requiredEquipmentIds, category, instructions, equipmentId, videoUrl, imageUrl, makeHarder, makeEasier, tutorialVideoUrl, tutorialVideoFileName, steps, exerciseType, videoDurationLabel } = req.body;
+  const { name, targetMuscle, equipmentRequired, requiredEquipmentIds, category, instructions, equipmentId, videoUrl, imageUrl, makeHarder, makeEasier, tutorialVideoUrl, tutorialVideoFileName, steps, exerciseType, videoDurationLabel, harderExerciseId, easierExerciseId, harderTutorial, easierTutorial } = req.body;
   let client;
   try {
     client = await pool.connect();
     // Upsert: the item being "updated" may be one of the client-side default
     // exercises that was never actually inserted into the database yet.
     await client.query(
-      `INSERT INTO exercises (id, name, target_muscle, equipment_required, required_equipment_ids, category, instructions, equipment_id, video_url, image_url, make_harder, make_easier, tutorial_video_url, tutorial_video_file_name, steps, exercise_type, video_duration_label)
-       VALUES ($17, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      `INSERT INTO exercises (id, name, target_muscle, equipment_required, required_equipment_ids, category, instructions, equipment_id, video_url, image_url, make_harder, make_easier, tutorial_video_url, tutorial_video_file_name, steps, exercise_type, video_duration_label, harder_exercise_id, easier_exercise_id, harder_tutorial, easier_tutorial)
+       VALUES ($21, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
        ON CONFLICT (id) DO UPDATE SET
-         name=$1, target_muscle=$2, equipment_required=$3, required_equipment_ids=$4, category=$5, instructions=$6, equipment_id=$7, video_url=$8, image_url=$9, make_harder=$10, make_easier=$11, tutorial_video_url=$12, tutorial_video_file_name=$13, steps=$14, exercise_type=$15, video_duration_label=$16`,
+         name=$1, target_muscle=$2, equipment_required=$3, required_equipment_ids=$4, category=$5, instructions=$6, equipment_id=$7, video_url=$8, image_url=$9, make_harder=$10, make_easier=$11, tutorial_video_url=$12, tutorial_video_file_name=$13, steps=$14, exercise_type=$15, video_duration_label=$16, harder_exercise_id=$17, easier_exercise_id=$18, harder_tutorial=$19, easier_tutorial=$20`,
       [
         name,
         targetMuscle || '',
@@ -758,6 +766,10 @@ app.put('/api/exercises/:id', requireAdmin, async (req, res) => {
         JSON.stringify(steps || []),
         exerciseType || 'standard',
         videoDurationLabel || '',
+        harderExerciseId || '',
+        easierExerciseId || '',
+        JSON.stringify(harderTutorial || {}),
+        JSON.stringify(easierTutorial || {}),
         id
       ]
     );

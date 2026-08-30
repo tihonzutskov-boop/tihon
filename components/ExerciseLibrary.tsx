@@ -7,6 +7,7 @@ import { getEquipmentIconComponent } from './EquipmentLibrary';
 import { getExerciseRequiredEquipmentIds, getZoneEquipmentIds } from '../utils/equipmentMatcher';
 import { getYouTubeVideoId } from '../utils/youtubeEmbed';
 import EditTutorialModal from './EditTutorialModal';
+import VariationTutorialField, { VariationState, blankVariationState, variationStateFromExercise } from './VariationTutorialField';
 import {
   Search, MapPin, Dumbbell, Edit3, Trash2, Plus, X, Loader2, KeyRound, Box, Sparkles, Globe, Layers, Check, Flame, ShieldCheck, Film
 } from 'lucide-react';
@@ -281,6 +282,8 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
   const [formMuscle, setFormMuscle] = useState('Legs/Quads');
   const [formCategory, setFormCategory] = useState('Compound (Strength)');
   const [formExerciseType, setFormExerciseType] = useState<'standard' | 'video'>('standard');
+  const [formHarderVariation, setFormHarderVariation] = useState<VariationState>(blankVariationState());
+  const [formEasierVariation, setFormEasierVariation] = useState<VariationState>(blankVariationState());
   const [formVideoUrl, setFormVideoUrl] = useState('');
   const [formError, setFormError] = useState('');
   const [savingExercise, setSavingExercise] = useState(false);
@@ -327,6 +330,8 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     setFormCategory(ex.category);
     setFormExerciseType(ex.exerciseType === 'video' ? 'video' : 'standard');
     setFormVideoUrl(ex.exerciseType === 'video' ? ex.videoUrl || '' : '');
+    setFormHarderVariation(variationStateFromExercise(ex, 'harder'));
+    setFormEasierVariation(variationStateFromExercise(ex, 'easier'));
     setFormError('');
     setEquipmentPickerSearch('');
     setJustSaved(false);
@@ -340,6 +345,8 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     setFormCategory('Compound (Strength)');
     setFormExerciseType('standard');
     setFormVideoUrl('');
+    setFormHarderVariation(blankVariationState());
+    setFormEasierVariation(blankVariationState());
     setFormError('');
     setEquipmentPickerSearch('');
     setJustSaved(false);
@@ -882,6 +889,10 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                   imageUrl: editingExercise?.imageUrl || '',
                   makeHarder: '',
                   makeEasier: '',
+                  harderExerciseId: '',
+                  easierExerciseId: '',
+                  harderTutorial: {},
+                  easierTutorial: {},
                   exerciseType: 'video' as const
                 } : (() => {
                   // Construct human readable equipment label
@@ -905,6 +916,14 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                     imageUrl: editingExercise?.imageUrl || '',
                     makeHarder: ((formData.get('makeHarder') as string) || '').trim(),
                     makeEasier: ((formData.get('makeEasier') as string) || '').trim(),
+                    harderExerciseId: formHarderVariation.mode === 'link' ? formHarderVariation.linkedId : '',
+                    easierExerciseId: formEasierVariation.mode === 'link' ? formEasierVariation.linkedId : '',
+                    harderTutorial: formHarderVariation.mode === 'quick'
+                      ? { videoUrl: formHarderVariation.videoUrl.trim(), steps: formHarderVariation.steps.map(s => s.trim()).filter(Boolean) }
+                      : {},
+                    easierTutorial: formEasierVariation.mode === 'quick'
+                      ? { videoUrl: formEasierVariation.videoUrl.trim(), steps: formEasierVariation.steps.map(s => s.trim()).filter(Boolean) }
+                      : {},
                     exerciseType: 'standard' as const
                   };
                 })();
@@ -1130,6 +1149,13 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                         placeholder={t.makeHarderPlaceholder}
                         className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-700 focus:outline-none focus:border-amber-500/50 transition-colors resize-none"
                       />
+                      <VariationTutorialField
+                        value={formHarderVariation}
+                        onChange={setFormHarderVariation}
+                        libraryExercises={libraryExercises}
+                        excludeId={editingExercise?.id}
+                        accentColor="#fb923c"
+                      />
                     </div>
 
                     {/* Difficulty Modifiers: How to make it easier */}
@@ -1144,6 +1170,13 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                         defaultValue={editingExercise?.makeEasier || ''}
                         placeholder={t.makeEasierPlaceholder}
                         className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-700 focus:outline-none focus:border-emerald-500/50 transition-colors resize-none"
+                      />
+                      <VariationTutorialField
+                        value={formEasierVariation}
+                        onChange={setFormEasierVariation}
+                        libraryExercises={libraryExercises}
+                        excludeId={editingExercise?.id}
+                        accentColor="#34d399"
                       />
                     </div>
                   </div>

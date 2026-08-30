@@ -101,6 +101,14 @@ ALTER TABLE exercises ADD COLUMN IF NOT EXISTS steps JSONB DEFAULT '[]';
 ALTER TABLE exercises ADD COLUMN IF NOT EXISTS exercise_type VARCHAR(20);
 ALTER TABLE exercises ADD COLUMN IF NOT EXISTS video_duration_label VARCHAR(50);
 
+-- A Harder/Easier variation gets a tutorial one of two ways: link to another
+-- exercise's own full entry (harder/easier_exercise_id), or a lightweight
+-- inline tutorial of just a YouTube link + plain steps (harder/easier_tutorial).
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS harder_exercise_id VARCHAR(255);
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS easier_exercise_id VARCHAR(255);
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS harder_tutorial JSONB DEFAULT '{}';
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS easier_tutorial JSONB DEFAULT '{}';
+
 CREATE TABLE IF NOT EXISTS workout_logs (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

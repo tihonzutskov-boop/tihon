@@ -174,6 +174,16 @@ export interface TutorialStep {
   time?: number | null; // seconds into tutorialVideoUrl where playback should pause for this step
 }
 
+// A variation (Harder/Easier) can get its own tutorial two ways: link to
+// another LibraryExercise that already has a full entry (and maybe its own
+// tutorial), or — when the variation isn't really a different movement —
+// a lightweight inline tutorial of just a pasted YouTube link and plain
+// text steps, with no per-step timestamp sync.
+export interface VariationTutorial {
+  videoUrl?: string;
+  steps?: string[];
+}
+
 export interface LibraryExercise {
   id: string;
   name: string;
@@ -192,6 +202,10 @@ export interface LibraryExercise {
   steps?: TutorialStep[];         // Step-by-step tutorial breakdown, each optionally pinned to a tutorialVideoUrl timestamp
   exerciseType?: 'standard' | 'video'; // 'video' = a YouTube follow-along (warmup, mobility, cooldown) with no equipment/sets — undefined behaves as 'standard'
   videoDurationLabel?: string;         // Free-text duration for a video exercise (e.g. "10 min"), shown to trainees — admin-entered since we don't fetch real video metadata
+  harderExerciseId?: string;  // Link mode: another LibraryExercise.id that's "the harder version" of this one
+  easierExerciseId?: string;  // Link mode: another LibraryExercise.id that's "the easier version" of this one
+  harderTutorial?: VariationTutorial; // Quick tutorial mode for the harder variation
+  easierTutorial?: VariationTutorial; // Quick tutorial mode for the easier variation
 }
 
 export type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';

@@ -90,10 +90,12 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   // regardless of render timing.
   const tutorialPlayingRef = useRef(false);
   const tutorialVideoRef = useRef<HTMLVideoElement>(null);
+  const [variationOverlay, setVariationOverlay] = useState<'harder' | 'easier' | null>(null);
   useEffect(() => {
     setTutorialStepIdx(0);
     setTutorialPlaying(false);
     tutorialPlayingRef.current = false;
+    setVariationOverlay(null);
   }, [exIdx]);
 
   // Exercises built in the plan-template builder (Coaching > Catalog) are
@@ -182,6 +184,30 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   const harder = libraryExercise?.makeHarder || exercise.makeHarder;
   const easier = libraryExercise?.makeEasier || exercise.makeEasier;
   const allSetsDone = rows.length > 0 && rows.every(r => r.done);
+
+  // A Harder/Easier variation can carry its own tutorial two ways: a quick
+  // inline one (YouTube link + plain steps, entered right on the field) or
+  // a link to another library exercise that has its own tutorial. Quick
+  // wins if both are somehow set, since it's the more specific choice.
+  const resolveVariationMedia = (which: 'harder' | 'easier') => {
+    const linkedId = which === 'harder' ? libraryExercise?.harderExerciseId : libraryExercise?.easierExerciseId;
+    const quick = which === 'harder' ? libraryExercise?.harderTutorial : libraryExercise?.easierTutorial;
+    if (quick?.videoUrl) {
+      return { source: 'youtube' as const, videoUrl: quick.videoUrl, steps: quick.steps || [], name: null as string | null };
+    }
+    if (linkedId) {
+      const linked = libraryExercises.find(le => le.id === linkedId);
+      if (linked?.tutorialVideoUrl) {
+        return { source: 'native' as const, videoUrl: linked.tutorialVideoUrl, steps: (linked.steps || []).map(s => s.text), name: linked.name };
+      }
+      if (linked?.videoUrl) {
+        return { source: 'youtube' as const, videoUrl: linked.videoUrl, steps: [] as string[], name: linked.name };
+      }
+    }
+    return null;
+  };
+  const harderMedia = resolveVariationMedia('harder');
+  const easierMedia = resolveVariationMedia('easier');
 
   const tutorialSteps = libraryExercise?.steps || [];
   const hasTutorialVideo = !!(libraryExercise?.tutorialVideoUrl && tutorialSteps.length > 0);
@@ -435,18 +461,34 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
               </p>
             )}
 
-            {stage.key === 'tutorial' && (harder || easier) && (
+            {stage.key === 'tutorial' && (harder || easier || harderMedia || easierMedia) && (
               <div className="grid grid-cols-2 gap-2.5 mt-4">
-                {harder && (
+                {(harder || harderMedia) && (
                   <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-3">
                     <p className="text-[10px] font-extrabold text-orange-400 uppercase tracking-wide mb-1">Harder</p>
-                    <p className="text-xs text-slate-300 leading-relaxed">{harder}</p>
+                    {harder && <p className="text-xs text-slate-300 leading-relaxed">{harder}</p>}
+                    {harderMedia && (
+                      <button
+                        onClick={() => setVariationOverlay('harder')}
+                        className={`w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-orange-500/15 text-orange-400 text-[10px] font-extrabold active:scale-95 transition-all duration-150 ${harder ? 'mt-2' : ''}`}
+                      >
+                        <PlayCircle className="w-3 h-3" /> Watch tutorial
+                      </button>
+                    )}
                   </div>
                 )}
-                {easier && (
+                {(easier || easierMedia) && (
                   <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-3">
                     <p className="text-[10px] font-extrabold text-sky-400 uppercase tracking-wide mb-1">Easier</p>
-                    <p className="text-xs text-slate-300 leading-relaxed">{easier}</p>
+                    {easier && <p className="text-xs text-slate-300 leading-relaxed">{easier}</p>}
+                    {easierMedia && (
+                      <button
+                        onClick={() => setVariationOverlay('easier')}
+                        className={`w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-sky-500/15 text-sky-400 text-[10px] font-extrabold active:scale-95 transition-all duration-150 ${easier ? 'mt-2' : ''}`}
+                      >
+                        <PlayCircle className="w-3 h-3" /> Watch tutorial
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -607,6 +649,62 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
           </div>
         </div>
       </div>
+
+      {/* Variation tutorial overlay — Harder/Easier's own video + steps,
+          from either a quick inline tutorial or a linked library exercise. */}
+      {variationOverlay && (() => {
+        const media = variationOverlay === 'harder' ? harderMedia : easierMedia;
+        if (!media) return null;
+        const tone = variationOverlay === 'harder' ? 'orange' : 'sky';
+        return (
+          <div className="absolute inset-0 z-20 bg-slate-950 flex flex-col">
+            <div className="flex-shrink-0 flex items-center gap-2 px-4 py-3.5 border-b border-slate-800 bg-slate-900/70">
+              <button
+                onClick={() => setVariationOverlay(null)}
+                className="flex items-center gap-1.5 text-sm font-bold text-slate-400 hover:text-white transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" /> {exercise.name}
+              </button>
+              <span className={`ml-auto text-[9px] font-extrabold uppercase tracking-wide px-2.5 py-1 rounded-full ${tone === 'orange' ? 'bg-orange-500/15 text-orange-400' : 'bg-sky-500/15 text-sky-400'}`}>
+                {variationOverlay === 'harder' ? 'Harder variation' : 'Easier variation'}
+              </span>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <div className="relative aspect-video bg-black">
+                {media.source === 'native' ? (
+                  <video src={media.videoUrl} controls playsInline className="w-full h-full object-cover" />
+                ) : (
+                  <iframe
+                    src={getYouTubeEmbedUrl(media.videoUrl)}
+                    title={media.name || `${variationOverlay} variation tutorial`}
+                    className="w-full h-full border-0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                )}
+              </div>
+              <div className="p-5">
+                {media.name && <h3 className="text-lg font-extrabold text-white mb-1">{media.name}</h3>}
+                <p className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wide mb-4">
+                  {media.name ? `${variationOverlay === 'harder' ? 'Harder' : 'Easier'} version of ${exercise.name}` : 'Quick tutorial'}
+                </p>
+                {media.steps.length > 0 && (
+                  <div className="space-y-2.5">
+                    {media.steps.map((s, i) => (
+                      <div key={i} className="flex items-start gap-2.5 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5">
+                        <div className={`flex-shrink-0 w-6 h-6 rounded-full text-slate-950 text-[11px] font-black flex items-center justify-center ${tone === 'orange' ? 'bg-orange-400' : 'bg-sky-400'}`}>
+                          {i + 1}
+                        </div>
+                        <p className="text-[13px] font-bold text-white leading-snug">{s}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
