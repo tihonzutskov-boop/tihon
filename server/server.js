@@ -286,8 +286,14 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
     let assignedPlan = false;
     const goals = answers.goals || [];
     if (goals.length > 0) {
+      // Without an ORDER BY, Postgres doesn't guarantee row order — if more
+      // than one template shares a goal, .find() below would pick whichever
+      // one the scan happened to return first, not necessarily the one the
+      // admin actually intends (e.g. the one they just edited). Newest
+      // first is at least deterministic and favors the actively-maintained
+      // template over an old leftover.
       const candidates = await pool.query(
-        'SELECT * FROM plan_templates WHERE goal = ANY($1::text[])',
+        'SELECT * FROM plan_templates WHERE goal = ANY($1::text[]) ORDER BY created_at DESC',
         [goals]
       );
       let match = null;
