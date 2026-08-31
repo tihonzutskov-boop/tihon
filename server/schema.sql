@@ -155,3 +155,8 @@ CREATE TABLE IF NOT EXISTS plan_templates (
 -- Target single-session length in minutes, set by the admin per template and
 -- enforced as a hard cap in the session builder (existing rows default to 45).
 ALTER TABLE plan_templates ADD COLUMN IF NOT EXISTS duration_min INTEGER NOT NULL DEFAULT 45;
+
+-- Which catalog template (if any) a user's plan was assigned from, so
+-- editing that template can push the update to everyone still using it.
+-- NULL for plans predating this column, or never matched to a template.
+ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS source_template_id VARCHAR(100) REFERENCES plan_templates(id) ON DELETE SET NULL;

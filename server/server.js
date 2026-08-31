@@ -249,6 +249,27 @@ const WEEKDAY_SPREADS = {
 };
 const WEEKDAY_ORDER = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
+// Spreads a template's days across the week, preferring the days the user
+// actually picked (kept in calendar order regardless of click order) when
+// they cover the day count, otherwise falling back to the generic spread
+// for that count. When existingDays is passed — resyncing an already-
+// assigned plan after the coach edited the template — each day's own id
+// and weekday are carried over wherever the template still has a day at
+// that index, so a trainee's calendar placement (and anything keyed off
+// that day id) isn't disturbed just because the exercises changed; only
+// genuinely new days (the template grew) get freshly generated ones.
+const assignWeekdaysToTemplateDays = (templateDays, preferredDays, existingDays) => {
+  const dayCount = Math.min(Math.max(templateDays.length, 1), 7);
+  const userDays = Array.isArray(preferredDays)
+    ? WEEKDAY_ORDER.filter(d => preferredDays.includes(d))
+    : [];
+  const spread = userDays.length >= dayCount ? userDays.slice(0, dayCount) : (WEEKDAY_SPREADS[dayCount] || []);
+  return templateDays.map((d, i) => {
+    const existing = existingDays?.[i];
+    return { ...d, id: existing?.id || `day-${Date.now()}-${i}`, weekday: existing?.weekday || spread[i] };
+  });
+};
+
 app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
   const { answers } = req.body;
   try {
@@ -276,24 +297,12 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
         if (match) break;
       }
       if (match) {
-        const dayCount = Math.min(Math.max(match.days.length, 1), 7);
-        // Prefer the specific days the user picked in the questionnaire,
-        // kept in calendar order regardless of click order so Day 1/Day
-        // 2/... map onto the week predictably. Only usable when it covers
-        // the matched template's actual day count — otherwise (a mismatch
-        // between what was picked and what the fallback-matched template
-        // needs) fall back to the generic spread, same as before this
-        // existed.
-        const userDays = Array.isArray(answers.preferredDays)
-          ? WEEKDAY_ORDER.filter(d => answers.preferredDays.includes(d))
-          : [];
-        const spread = userDays.length >= dayCount ? userDays.slice(0, dayCount) : (WEEKDAY_SPREADS[dayCount] || []);
-        const days = match.days.map((d, i) => ({ ...d, id: `day-${Date.now()}-${i}`, weekday: spread[i] }));
+        const days = assignWeekdaysToTemplateDays(match.days, answers.preferredDays, null);
         await pool.query(
-          `INSERT INTO user_plans (user_id, name, days, updated_at)
-           VALUES ($1, $2, $3, now())
-           ON CONFLICT (user_id) DO UPDATE SET name=$2, days=$3, updated_at=now()`,
-          [req.user.id, match.name, JSON.stringify(days)]
+          `INSERT INTO user_plans (user_id, name, days, source_template_id, updated_at)
+           VALUES ($1, $2, $3, $4, now())
+           ON CONFLICT (user_id) DO UPDATE SET name=$2, days=$3, source_template_id=$4, updated_at=now()`,
+          [req.user.id, match.name, JSON.stringify(days), match.id]
         );
         assignedPlan = true;
       }
@@ -392,14 +401,35 @@ app.post('/api/plan-templates', requireAdmin, async (req, res) => {
 
 app.put('/api/plan-templates/:id', requireAdmin, async (req, res) => {
   const { name, goal, daysPerWeek, durationMin, days } = req.body;
+  const templateDays = days || [];
   try {
     await pool.query(
       `INSERT INTO plan_templates (id, name, goal, days_per_week, duration_min, days)
        VALUES ($6, $1, $2, $3, $4, $5)
        ON CONFLICT (id) DO UPDATE SET name=$1, goal=$2, days_per_week=$3, duration_min=$4, days=$5`,
-      [name, goal, daysPerWeek, durationMin || 45, JSON.stringify(days || []), req.params.id]
+      [name, goal, daysPerWeek, durationMin || 45, JSON.stringify(templateDays), req.params.id]
     );
-    res.json({ success: true });
+
+    // Push this edit to every client whose plan was assigned from this
+    // template, so adding/changing an exercise here doesn't leave already-
+    // matched clients stuck looking at a stale snapshot from whenever they
+    // first submitted their questionnaire.
+    const dependents = await pool.query(
+      `SELECT up.user_id, up.days, tq.answers->'preferredDays' AS preferred_days
+       FROM user_plans up
+       LEFT JOIN training_questionnaires tq ON tq.user_id = up.user_id
+       WHERE up.source_template_id = $1`,
+      [req.params.id]
+    );
+    for (const row of dependents.rows) {
+      const resyncedDays = assignWeekdaysToTemplateDays(templateDays, row.preferred_days, row.days);
+      await pool.query(
+        `UPDATE user_plans SET name = $1, days = $2, updated_at = now() WHERE user_id = $3`,
+        [name, JSON.stringify(resyncedDays), row.user_id]
+      );
+    }
+
+    res.json({ success: true, syncedClients: dependents.rows.length });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error saving plan template' });
