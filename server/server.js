@@ -298,8 +298,20 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
       );
       let match = null;
       for (const goal of goals) {
-        match = candidates.rows.find(t => t.goal === goal && t.days_per_week === answers.daysPerWeek)
-             || candidates.rows.find(t => t.goal === goal);
+        const forGoal = candidates.rows.filter(t => t.goal === goal);
+        if (forGoal.length === 0) continue;
+        // No template covers the exact days/week the client asked for —
+        // pick whichever comes closest instead of an arbitrary one, so a
+        // client wanting 4 days/week doesn't get silently matched to some
+        // unrelated 1-day template just because it happened to be newest.
+        // Ties keep candidates' current (newest-first) order.
+        const requested = parseInt(answers.daysPerWeek, 10);
+        match = forGoal.find(t => t.days_per_week === answers.daysPerWeek)
+          || forGoal.reduce((best, t) => {
+            const diff = Math.abs(parseInt(t.days_per_week, 10) - requested);
+            const bestDiff = Math.abs(parseInt(best.days_per_week, 10) - requested);
+            return diff < bestDiff ? t : best;
+          }, forGoal[0]);
         if (match) break;
       }
       if (match) {
