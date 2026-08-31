@@ -1,16 +1,35 @@
 import React, { useEffect, useState } from 'react';
-import { PlanTemplate, WorkoutDay, LibraryExercise, CoachingClient, BlueprintDay } from '../types';
+import { PlanTemplate, WorkoutDay, LibraryExercise, CoachingClient, BlueprintDay, GenerationFailureRecord } from '../types';
 import { QUESTIONNAIRE_GOALS } from '../constants';
 import { api } from '../services/api';
 import SessionBuilder from './SessionBuilder';
 import BlueprintDayEditor from './BlueprintDayEditor';
-import { ClipboardList, Loader2, X, ChevronRight, Plus } from 'lucide-react';
+import { ClipboardList, Loader2, X, ChevronRight, Plus, AlertTriangle } from 'lucide-react';
+
+// Engine failure reasons, phrased as what an admin can actually act on.
+const FAILURE_LABELS: Record<string, string> = {
+  no_gym: 'Client did not select a gym',
+  no_candidate_for_slot: 'No eligible exercise for a required movement',
+  cannot_fit_duration: 'Required work exceeds the session length',
+  no_blueprint_days: 'Blueprint has no days',
+  validation_failed: 'Generated plan failed validation',
+};
+
+// The concrete next step for each failure, so the queue is actionable
+// rather than just a list of what went wrong.
+const FAILURE_FIXES: Record<string, string> = {
+  no_gym: 'Ask the client to resubmit the questionnaire and pick a gym.',
+  no_candidate_for_slot: 'Tag more exercises for this movement pattern in the Exercise Library, or add the missing equipment to this gym.',
+  cannot_fit_duration: 'Shorten the required work for this goal, or the client needs a longer session.',
+  no_blueprint_days: 'The matched template is in blueprint mode but has no days — add days or switch it back to fixed.',
+  validation_failed: 'A generated plan broke a safety or structure rule. The detail above says which.',
+};
 
 const DURATIONS = [30, 45, 60, 90];
 
 const DAYS_OPTIONS = ['1', '2', '3', '4'];
 
-type View = 'catalog' | 'clients';
+type View = 'catalog' | 'clients' | 'issues';
 
 const hasScheduledPlan = (client: CoachingClient) => !!client.plan && client.plan.days.some(d => d.weekday);
 
@@ -59,6 +78,7 @@ const AdminCoaching: React.FC = () => {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
+  const [failures, setFailures] = useState<GenerationFailureRecord[]>([]);
 
   const [editingTemplate, setEditingTemplate] = useState<PlanTemplate | null>(null);
   const [wizardStep, setWizardStep] = useState<1 | 2>(1); // 1 = questionnaire (category/days/duration), 2 = session builder
@@ -70,10 +90,11 @@ const AdminCoaching: React.FC = () => {
   const [newExInstructions, setNewExInstructions] = useState('');
 
   useEffect(() => {
-    Promise.all([api.fetchPlanTemplates(), api.fetchExercises(), api.fetchCoachingClients()]).then(([t, e, c]) => {
+    Promise.all([api.fetchPlanTemplates(), api.fetchExercises(), api.fetchCoachingClients(), api.fetchGenerationFailures()]).then(([t, e, c, f]) => {
       setTemplates(t);
       setLibraryExercises(e);
       setClients(c);
+      setFailures(f);
       setLoading(false);
     });
   }, []);
@@ -213,6 +234,11 @@ const AdminCoaching: React.FC = () => {
     }
   };
 
+  const resolveFailure = async (id: number) => {
+    const result = await api.resolveGenerationFailure(id);
+    if (result.ok) setFailures(prev => prev.filter(f => f.id !== id));
+  };
+
   const resetClientQuestionnaire = async (client: CoachingClient) => {
     if (!window.confirm(`Reset ${client.name}'s questionnaire? They'll lose their current answers${client.plan ? ' and assigned plan' : ''} and see the "build your training plan" prompt again next time they open the dashboard.`)) {
       return;
@@ -274,6 +300,14 @@ const AdminCoaching: React.FC = () => {
             >
               Clients{clients.length > 0 ? ` · ${clients.length}` : ''}
             </button>
+            <button
+              onClick={() => setView('issues')}
+              className={`flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold transition-all ${
+                view === 'issues' ? 'bg-slate-800 text-white' : failures.length > 0 ? 'text-amber-400 hover:text-amber-300' : 'text-slate-400 hover:text-slate-300'
+              }`}
+            >
+              Issues{failures.length > 0 ? ` · ${failures.length}` : ''}
+            </button>
           </div>
         </div>
 
@@ -308,7 +342,44 @@ const AdminCoaching: React.FC = () => {
           </div>
         )}
 
-        {view === 'catalog' ? templateGroups.map(group => {
+        {view === 'issues' ? (
+          <>
+            <div className="p-3 border-b border-slate-800/40">
+              <p className="text-xs text-slate-400">
+                {failures.length === 0
+                  ? 'No generation issues'
+                  : `${failures.length} plan${failures.length === 1 ? '' : 's'} could not be generated`}
+              </p>
+            </div>
+            {failures.length === 0 ? (
+              <div className="p-6 text-center text-xs text-slate-500 leading-relaxed">
+                Every client who submitted a questionnaire got a plan.
+              </div>
+            ) : (
+              <div className="p-3 space-y-1.5">
+                {failures.map(f => (
+                  <div key={f.id} className="p-2.5 rounded-xl border border-amber-500/25 bg-amber-500/[0.04]">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                      <span className="text-xs font-bold text-white truncate">{f.userName}</span>
+                    </div>
+                    <p className="text-[10.5px] font-bold text-amber-400 mb-1">{FAILURE_LABELS[f.reason] || f.reason}</p>
+                    {f.detail && <p className="text-[10px] text-slate-400 leading-relaxed mb-2">{f.detail}</p>}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[9.5px] text-slate-600">{new Date(f.createdAt).toLocaleDateString()}</span>
+                      <button
+                        onClick={() => resolveFailure(f.id)}
+                        className="px-2.5 py-1 rounded-md bg-slate-800 border border-slate-700 text-[10px] font-bold text-slate-300 hover:text-white hover:border-slate-500 transition-colors"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        ) : view === 'catalog' ? templateGroups.map(group => {
           const open = openGoals.has(group.goal);
           return (
             <div key={group.goal} className="border-b border-slate-800/40">
@@ -406,7 +477,51 @@ const AdminCoaching: React.FC = () => {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
-        {view === 'clients' ? (
+        {view === 'issues' ? (
+          <div className="max-w-2xl">
+            <h2 className="text-lg font-bold text-white mb-1">Generation issues</h2>
+            <p className="text-xs text-slate-500 mb-5 leading-relaxed">
+              When the generator can't build a plan it safely can stand behind, it stops rather than delivering a
+              questionable one. Those cases land here.
+            </p>
+
+            {failures.length === 0 ? (
+              <div className="p-5 rounded-2xl border border-slate-800 bg-slate-900">
+                <p className="text-sm text-slate-300 mb-1">Nothing needs attention.</p>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Every client who submitted a questionnaire received a generated plan.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {failures.map(f => (
+                  <div key={f.id} className="p-4 rounded-2xl border border-amber-500/25 bg-amber-500/[0.04]">
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-white">{f.userName}</p>
+                        <p className="text-[11px] text-slate-500">{f.userEmail}</p>
+                      </div>
+                      <button
+                        onClick={() => resolveFailure(f.id)}
+                        className="flex-shrink-0 px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-[11px] font-bold text-slate-300 hover:text-white hover:border-slate-500 transition-colors"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                    <p className="text-[11px] font-bold text-amber-400 mb-1.5">{FAILURE_LABELS[f.reason] || f.reason}</p>
+                    {f.detail && <p className="text-xs text-slate-400 leading-relaxed mb-3">{f.detail}</p>}
+                    <div className="flex flex-wrap gap-1.5">
+                      {f.gymId && <Tag>Gym: {f.gymId}</Tag>}
+                      {f.templateId && <Tag>Template: {f.templateId}</Tag>}
+                      <Tag>{new Date(f.createdAt).toLocaleString()}</Tag>
+                    </div>
+                    <p className="text-[10.5px] text-slate-500 mt-3 leading-relaxed">{FAILURE_FIXES[f.reason] || 'Review this client manually.'}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : view === 'clients' ? (
           !selectedClient ? (
             <div className="h-full flex flex-col items-center justify-center text-center text-slate-500">
               <ClipboardList className="w-8 h-8 mb-3 opacity-40" />

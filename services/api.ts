@@ -1,5 +1,5 @@
 
-import { Gym, User, LibraryExercise, EquipmentItem, GymZone, GymMachine, EquipmentType, WorkoutDay, QuestionnaireAnswers, PlanTemplate, CoachingClient } from '../types';
+import { Gym, User, LibraryExercise, EquipmentItem, GymZone, GymMachine, EquipmentType, WorkoutDay, QuestionnaireAnswers, PlanTemplate, CoachingClient, GenerationFailureRecord } from '../types';
 import { DEFAULT_GYM } from '../constants';
 
 // Relative path: works same-origin in production (Express serves the built
@@ -306,6 +306,32 @@ export const api = {
   async resetClientQuestionnaire(userId: number): Promise<{ ok: boolean; error?: string }> {
     try {
       const response = await fetch(`${API_BASE}/coaching/clients/${userId}/questionnaire`, { method: 'DELETE' });
+      if (response.ok) return { ok: true };
+      let message = `Server responded with ${response.status}`;
+      try {
+        const body = await response.json();
+        if (body?.error) message = body.error;
+      } catch { /* not JSON */ }
+      return { ok: false, error: message };
+    } catch (error: any) {
+      return { ok: false, error: error?.message || 'Network error' };
+    }
+  },
+
+  async fetchGenerationFailures(): Promise<GenerationFailureRecord[]> {
+    try {
+      const response = await fetch(`${API_BASE}/coaching/generation-failures`);
+      if (!response.ok) return [];
+      const data = await response.json();
+      return data.failures;
+    } catch {
+      return [];
+    }
+  },
+
+  async resolveGenerationFailure(id: number): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const response = await fetch(`${API_BASE}/coaching/generation-failures/${id}/resolve`, { method: 'PUT' });
       if (response.ok) return { ok: true };
       let message = `Server responded with ${response.status}`;
       try {

@@ -254,6 +254,21 @@ export interface WorkoutPlan {
   totalDurationMinutes: number;
 }
 
+// A generation attempt the engine refused to complete — it fails closed
+// rather than delivering a questionable plan, and these surface for a human
+// instead of being silently swallowed.
+export interface GenerationFailureRecord {
+  id: number;
+  userId: number;
+  userName: string;
+  userEmail: string;
+  templateId: string | null;
+  gymId: string | null;
+  reason: string;
+  detail: string | null;
+  createdAt: string;
+}
+
 export interface QuestionnaireAnswers {
   age: number;
   heightCm: number;
