@@ -4,7 +4,7 @@
 import type {
   LibraryExercise, Gym, ExerciseSlot, BlueprintDay, PlanTemplate,
   ExperienceLevel, JointStressArea, WorkoutDay, Exercise, SetDetail,
-  MovementPattern,
+  MovementPattern, MuscleGroup,
 } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -88,16 +88,19 @@ export const eligibleExercises = (library: LibraryExercise[], ctx: EligibilityCo
 // Split selection
 // ---------------------------------------------------------------------------
 
-export type SplitName = 'full_body' | 'upper_lower';
+export type SplitName = 'full_body' | 'upper_lower' | 'push_pull_legs';
 
-// Centralized so split logic never leaks into UI or query code. Kept
-// deliberately small for the MVP — more goal/experience-specific splits slot
-// in here without touching anything downstream.
+// Centralized so split logic never leaks into UI or query code. Cycles the
+// pattern to fill however many days were asked for, rather than slicing a
+// fixed-length list — slicing silently returned fewer days than requested
+// above 4, which validation would then reject as a day-count mismatch.
 export const selectSplit = (daysPerWeek: number): { split: SplitName; dayNames: string[] } => {
-  if (daysPerWeek >= 4) {
-    return { split: 'upper_lower', dayNames: ['Upper', 'Lower', 'Upper', 'Lower'].slice(0, daysPerWeek) };
-  }
-  return { split: 'full_body', dayNames: Array.from({ length: Math.max(daysPerWeek, 1) }, (_, i) => `Full Body ${i + 1}`) };
+  const n = Math.max(daysPerWeek, 1);
+  const cycle = (base: string[]) => Array.from({ length: n }, (_, i) => base[i % base.length]);
+
+  if (n >= 5) return { split: 'push_pull_legs', dayNames: cycle(['Push', 'Pull', 'Legs']) };
+  if (n >= 4) return { split: 'upper_lower', dayNames: cycle(['Upper', 'Lower']) };
+  return { split: 'full_body', dayNames: Array.from({ length: n }, (_, i) => `Full Body ${i + 1}`) };
 };
 
 // ---------------------------------------------------------------------------
@@ -156,6 +159,38 @@ const LOWER: SlotSpec[] = [
   { pattern: 'core', kind: 'isolation', optional: true },
 ];
 
+const PUSH: SlotSpec[] = [
+  { pattern: 'horizontal_push', kind: 'compound' },
+  { pattern: 'vertical_push', kind: 'compound' },
+  { pattern: 'horizontal_push', kind: 'isolation', optional: true },
+];
+
+const PULL: SlotSpec[] = [
+  { pattern: 'vertical_pull', kind: 'compound' },
+  { pattern: 'horizontal_pull', kind: 'compound' },
+  { pattern: 'horizontal_pull', kind: 'isolation', optional: true },
+];
+
+const LEGS: SlotSpec[] = [
+  { pattern: 'squat', kind: 'compound' },
+  { pattern: 'hinge', kind: 'compound' },
+  { pattern: 'lunge', kind: 'compound', optional: true },
+  { pattern: 'core', kind: 'isolation', optional: true },
+];
+
+// Every day opens with a short mobility warm-up. Optional so a very short
+// session can still be produced, but first in the order so it's trained
+// first when it is included.
+const WARMUP: SlotSpec = { pattern: 'mobility', kind: 'isolation', optional: true };
+
+const DAY_TEMPLATES: { match: (name: string) => boolean; slots: SlotSpec[] }[] = [
+  { match: n => n.startsWith('Upper'), slots: UPPER },
+  { match: n => n.startsWith('Lower'), slots: LOWER },
+  { match: n => n.startsWith('Push'), slots: PUSH },
+  { match: n => n.startsWith('Pull'), slots: PULL },
+  { match: n => n.startsWith('Legs'), slots: LEGS },
+];
+
 // Goals centered on calorie burn / work capacity get a conditioning finisher.
 const GOALS_WITH_CONDITIONING = new Set(['Weight loss', 'Endurance']);
 
@@ -167,10 +202,11 @@ export const buildDefaultBlueprint = (goal: string, daysPerWeek: number): Bluepr
   const rx = GOAL_PRESCRIPTION[goal] || GOAL_PRESCRIPTION[DEFAULT_GOAL];
 
   return dayNames.map((name, dayIdx) => {
-    const base = name.startsWith('Upper') ? UPPER : name.startsWith('Lower') ? LOWER : FULL_BODY;
-    const specs: SlotSpec[] = GOALS_WITH_CONDITIONING.has(goal)
+    const base = DAY_TEMPLATES.find(t => t.match(name))?.slots || FULL_BODY;
+    const withFinisher: SlotSpec[] = GOALS_WITH_CONDITIONING.has(goal)
       ? [...base, { pattern: 'conditioning', kind: 'isolation', optional: true }]
       : base;
+    const specs: SlotSpec[] = [WARMUP, ...withFinisher];
 
     return {
       id: `defbp-${dayIdx}`,
@@ -184,7 +220,12 @@ export const buildDefaultBlueprint = (goal: string, daysPerWeek: number): Bluepr
         // Conditioning is neither compound nor isolation in the library's
         // taxonomy — leaving the category unset lets any cardio-tagged
         // exercise fill it rather than none.
-        exerciseCategory: spec.pattern === 'conditioning' ? undefined : rx[spec.kind].exerciseCategory,
+        // Conditioning and mobility work sit outside the compound/isolation
+        // split, so leaving the category unset lets any exercise tagged for
+        // that pattern fill the slot rather than none.
+        exerciseCategory: (spec.pattern === 'conditioning' || spec.pattern === 'mobility')
+          ? undefined
+          : rx[spec.kind].exerciseCategory,
       })),
     };
   });
@@ -200,6 +241,8 @@ export const SCORING = {
   experienceFit: 15,
   alreadyUsedInPlan: -100, // effectively prevents reuse, but stays a score so a
                            // slot with no alternative can still be filled
+  perRepeatedMuscle: -6,   // nudges toward variety when two candidates would
+                           // otherwise train the same thing twice in a day
 };
 
 const GOAL_PREFERS_COMPOUND = new Set(['Muscle gain', 'General fitness']);
@@ -209,6 +252,7 @@ export const scoreCandidate = (
   slot: ExerciseSlot,
   profile: GenerationProfile,
   alreadyUsedIds: Set<string>,
+  musclesAlreadyTrained: Set<MuscleGroup> = new Set(),
 ): number => {
   let score = 0;
   if (slot.exerciseCategory && ex.exerciseCategory === slot.exerciseCategory) score += SCORING.categoryMatch;
@@ -216,6 +260,10 @@ export const scoreCandidate = (
   // An exercise pitched at exactly the user's level beats one pitched below it.
   if (ex.minExperience === profile.experience) score += SCORING.experienceFit;
   if (alreadyUsedIds.has(ex.id)) score += SCORING.alreadyUsedInPlan;
+  // Untagged exercises simply score 0 here rather than being penalized —
+  // missing muscle tags shouldn't disadvantage an otherwise good pick.
+  const repeats = (ex.primaryMuscles || []).filter(m => musclesAlreadyTrained.has(m)).length;
+  score += repeats * SCORING.perRepeatedMuscle;
   return score;
 };
 
@@ -227,12 +275,13 @@ export const selectForSlot = (
   pool: LibraryExercise[],
   profile: GenerationProfile,
   alreadyUsedIds: Set<string>,
+  musclesAlreadyTrained: Set<MuscleGroup> = new Set(),
 ): LibraryExercise | null => {
   const candidates = pool.filter(ex => ex.movementPattern === slot.movementPattern);
   if (candidates.length === 0) return null;
 
   return candidates
-    .map(ex => ({ ex, score: scoreCandidate(ex, slot, profile, alreadyUsedIds) }))
+    .map(ex => ({ ex, score: scoreCandidate(ex, slot, profile, alreadyUsedIds, musclesAlreadyTrained) }))
     .sort((a, b) => (b.score - a.score) || a.ex.id.localeCompare(b.ex.id))[0].ex;
 };
 
@@ -342,10 +391,11 @@ export const generatePlan = (
     // Reuse is discouraged within a day, not across the week — the same
     // compound legitimately recurs on a Tuesday and a Friday.
     const usedInDay = new Set<string>();
+    const musclesInDay = new Set<MuscleGroup>();
     const picked: { le: LibraryExercise; slot: ExerciseSlot; score: number }[] = [];
 
     for (const slot of [...bpDay.slots].sort((a, b) => a.priority - b.priority)) {
-      const le = selectForSlot(slot, pool, profile, usedInDay);
+      const le = selectForSlot(slot, pool, profile, usedInDay, musclesInDay);
       if (!le) {
         if (slot.optional) continue; // an optional slot with no candidate is simply skipped
         return {
@@ -355,6 +405,7 @@ export const generatePlan = (
         };
       }
       usedInDay.add(le.id);
+      (le.primaryMuscles || []).forEach(m => musclesInDay.add(m));
       picked.push({ le, slot, score: scoreCandidate(le, slot, profile, new Set()) });
     }
 
@@ -425,7 +476,12 @@ export const generatePlan = (
 export interface ValidationResult {
   valid: boolean;
   errors: string[];
+  warnings: string[];
 }
+
+// Muscle groups a balanced week should touch. Deliberately the big movers
+// only — flagging a week for missing calves would be noise, not signal.
+const CORE_COVERAGE: MuscleGroup[] = ['Chest', 'Back', 'Quads', 'Hamstrings'];
 
 export const validatePlan = (
   days: WorkoutDay[],
@@ -471,5 +527,23 @@ export const validatePlan = (
     }
   });
 
-  return { valid: errors.length === 0, errors };
+  // Weekly balance. Reported as warnings, not errors: an unbalanced week is
+  // worth an admin's attention, but it's a better outcome than refusing to
+  // give the client any plan at all. Only checked once enough of the library
+  // is tagged for the answer to mean anything.
+  const warnings: string[] = [];
+  const tagged = library.filter(le => (le.primaryMuscles || []).length > 0);
+  if (tagged.length > 0) {
+    const trained = new Set<MuscleGroup>();
+    days.forEach(day => day.exercises.forEach(ex => {
+      const le = ex.libraryExerciseId ? byId.get(ex.libraryExerciseId) : undefined;
+      (le?.primaryMuscles || []).forEach(m => trained.add(m));
+    }));
+    const missing = CORE_COVERAGE.filter(m => !trained.has(m));
+    if (missing.length > 0) {
+      warnings.push(`Week does not train: ${missing.join(', ')}`);
+    }
+  }
+
+  return { valid: errors.length === 0, errors, warnings };
 };

@@ -177,6 +177,11 @@ ALTER TABLE exercises ADD COLUMN IF NOT EXISTS exercise_category VARCHAR(30);
 ALTER TABLE exercises ADD COLUMN IF NOT EXISTS min_experience VARCHAR(20);
 ALTER TABLE exercises ADD COLUMN IF NOT EXISTS joint_stress JSONB DEFAULT '[]';
 ALTER TABLE exercises ADD COLUMN IF NOT EXISTS generation_enabled BOOLEAN DEFAULT false;
+-- Structured muscle tags (the free-text target_muscle above is display copy
+-- and can't be reasoned about). Used for weekly balance checks and to avoid
+-- stacking exercises that train the same thing.
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS primary_muscles JSONB DEFAULT '[]';
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS secondary_muscles JSONB DEFAULT '[]';
 
 -- A template carrying blueprint_days is a *blueprint*: the generator
 -- resolves its slots per user instead of copying days verbatim. NULL means

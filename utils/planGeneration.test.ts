@@ -310,8 +310,11 @@ describe('default blueprints', () => {
   });
 
   it('prescribes heavier low-rep work for muscle gain than for endurance', () => {
-    const gain = buildDefaultBlueprint('Muscle gain', 3)[0].slots[0];
-    const endure = buildDefaultBlueprint('Endurance', 3)[0].slots[0];
+    // Compare the main compound work, not the warm-up that now opens each day.
+    const firstCompound = (goal: string) =>
+      buildDefaultBlueprint(goal, 3)[0].slots.find(s => s.exerciseCategory === 'compound')!;
+    const gain = firstCompound('Muscle gain');
+    const endure = firstCompound('Endurance');
     expect(gain.repsMax).toBeLessThan(endure.repsMin);
     expect(gain.restSeconds).toBeGreaterThan(endure.restSeconds);
   });
@@ -381,5 +384,99 @@ describe('default blueprints', () => {
     const result = generatePlan(template, library, gym([]), profile({ daysPerWeek: 1 }));
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.days[0].exercises).toHaveLength(3);
+  });
+});
+
+// --- expanded splits, warm-ups, and muscle tags ------------------------------
+
+describe('split coverage at higher day counts', () => {
+  it('produces exactly as many days as requested, including above 4', () => {
+    [1, 2, 3, 4, 5, 6].forEach(n => {
+      expect(selectSplit(n).dayNames).toHaveLength(n);
+      expect(buildDefaultBlueprint('Muscle gain', n)).toHaveLength(n);
+    });
+  });
+
+  it('switches to push/pull/legs at 5+ days', () => {
+    expect(selectSplit(5).split).toBe('push_pull_legs');
+    expect(selectSplit(6).dayNames).toEqual(['Push', 'Pull', 'Legs', 'Push', 'Pull', 'Legs']);
+  });
+});
+
+describe('warm-up slots', () => {
+  it('opens every day with an optional mobility slot', () => {
+    ['Muscle gain', 'Weight loss', 'Endurance', 'General fitness'].forEach(goal => {
+      buildDefaultBlueprint(goal, 4).forEach(day => {
+        expect(day.slots[0].movementPattern).toBe('mobility');
+        expect(day.slots[0].optional).toBe(true);
+      });
+    });
+  });
+
+  it('leaves the warm-up uncategorized so any mobility exercise can fill it', () => {
+    expect(buildDefaultBlueprint('Muscle gain', 3)[0].slots[0].exerciseCategory).toBeUndefined();
+  });
+
+  it('still generates when no mobility exercise is tagged', () => {
+    const library = [
+      exercise({ id: 'squat', name: 'Squat', movementPattern: 'squat' }),
+      exercise({ id: 'push', name: 'Push-up', movementPattern: 'horizontal_push' }),
+      exercise({ id: 'row', name: 'Row', movementPattern: 'horizontal_pull' }),
+    ];
+    const tpl: PlanTemplate = {
+      id: 't', name: 'T', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 60, days: [],
+      blueprintDays: buildDefaultBlueprint('Muscle gain', 1),
+    };
+    const result = generatePlan(tpl, library, gym([]), profile({ daysPerWeek: 1 }));
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe('muscle tags', () => {
+  it('prefers an exercise that trains something not yet hit that day', () => {
+    const chestAgain = exercise({ id: 'a-chest', name: 'Another Press', primaryMuscles: ['Chest'] });
+    const freshBack = exercise({ id: 'z-back', name: 'Row Variant', primaryMuscles: ['Back'] });
+    // 'a-chest' sorts first on id, so only the muscle penalty can flip this.
+    const picked = selectForSlot(
+      slot({ id: 's1' }), [chestAgain, freshBack], profile(), new Set(), new Set(['Chest'] as any)
+    );
+    expect(picked?.id).toBe('z-back');
+  });
+
+  it('does not penalize exercises that have no muscle tags yet', () => {
+    const untagged = exercise({ id: 'a', name: 'Untagged' });
+    const tagged = exercise({ id: 'b', name: 'Tagged', primaryMuscles: ['Chest'] });
+    const picked = selectForSlot(
+      slot({ id: 's1' }), [untagged, tagged], profile(), new Set(), new Set(['Chest'] as any)
+    );
+    expect(picked?.id).toBe('a');
+  });
+
+  it('warns when a week misses a major muscle group', () => {
+    const library = [exercise({ id: 'push', name: 'Push-up', primaryMuscles: ['Chest'] })];
+    const days = [{
+      id: 'd1', name: 'Day 1',
+      exercises: [{
+        id: 'x', name: 'Push-up', targetMuscle: 'Chest', sets: 3, reps: '8-12',
+        equipmentId: 'manual', libraryExerciseId: 'push',
+        setDetails: [{ reps: '10', weight: '', restSec: 60 }],
+      }],
+    }];
+    const result = validatePlan(days, library, gym([]), profile({ daysPerWeek: 1 }));
+    expect(result.valid).toBe(true); // a gap is a warning, never a reason to withhold a plan
+    expect(result.warnings.some(w => w.includes('Back'))).toBe(true);
+  });
+
+  it('stays silent about balance while the library is still untagged', () => {
+    const library = [exercise({ id: 'push', name: 'Push-up' })];
+    const days = [{
+      id: 'd1', name: 'Day 1',
+      exercises: [{
+        id: 'x', name: 'Push-up', targetMuscle: 'Chest', sets: 3, reps: '8-12',
+        equipmentId: 'manual', libraryExerciseId: 'push',
+        setDetails: [{ reps: '10', weight: '', restSec: 60 }],
+      }],
+    }];
+    expect(validatePlan(days, library, gym([]), profile({ daysPerWeek: 1 })).warnings).toHaveLength(0);
   });
 });

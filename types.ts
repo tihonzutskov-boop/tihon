@@ -202,6 +202,19 @@ export type ExperienceLevel = 'Beginner' | 'Intermediate' | 'Advanced';
 // the eligibility filter excludes it for anyone reporting one of them.
 export type JointStressArea = 'Back' | 'Knees' | 'Shoulders' | 'Neck' | 'Wrists' | 'Hips' | 'Ankles';
 
+// Structured muscle tags, separate from the free-text targetMuscle which is
+// display copy and can't be reasoned about. These let the generator check a
+// week actually covers the body, and avoid stacking redundant exercises that
+// train the same thing.
+export type MuscleGroup =
+  | 'Chest' | 'Back' | 'Shoulders' | 'Biceps' | 'Triceps'
+  | 'Quads' | 'Hamstrings' | 'Glutes' | 'Calves' | 'Core';
+
+export const ALL_MUSCLE_GROUPS: MuscleGroup[] = [
+  'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps',
+  'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core',
+];
+
 export interface LibraryExercise {
   id: string;
   name: string;
@@ -234,6 +247,8 @@ export interface LibraryExercise {
   exerciseCategory?: ExerciseCategory;
   minExperience?: ExperienceLevel; // hard gate, not a scoring penalty — a beginner never gets an advanced-only lift
   jointStress?: JointStressArea[]; // areas this exercise loads; excluded for users reporting injury there
+  primaryMuscles?: MuscleGroup[];   // what this mainly trains — drives weekly balance checks
+  secondaryMuscles?: MuscleGroup[]; // meaningfully worked, but not the point of the movement
   generationEnabled?: boolean;     // explicit admin opt-in — without it the exercise is never auto-selected
 }
 

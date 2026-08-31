@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Gym, LibraryExercise, Language, EquipmentItem, MovementPattern, ExerciseCategory, ExperienceLevel, JointStressArea } from '../types';
+import { Gym, LibraryExercise, Language, EquipmentItem, MovementPattern, ExerciseCategory, ExperienceLevel, JointStressArea, MuscleGroup, ALL_MUSCLE_GROUPS } from '../types';
 import { api, DEFAULT_EQUIPMENT } from '../services/api';
 import { searchAndFilterExercises, getExerciseLocations } from '../utils/exerciseMatcher';
 import { getEquipmentIcon, isBeginnerFriendly } from '../utils/equipmentIcons';
@@ -292,6 +292,8 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
   const [formExerciseCategoryTag, setFormExerciseCategoryTag] = useState<ExerciseCategory | ''>('');
   const [formMinExperience, setFormMinExperience] = useState<ExperienceLevel | ''>('');
   const [formJointStress, setFormJointStress] = useState<JointStressArea[]>([]);
+  const [formPrimaryMuscles, setFormPrimaryMuscles] = useState<MuscleGroup[]>([]);
+  const [formSecondaryMuscles, setFormSecondaryMuscles] = useState<MuscleGroup[]>([]);
   const [formGenerationEnabled, setFormGenerationEnabled] = useState(false);
   const [formError, setFormError] = useState('');
   const [savingExercise, setSavingExercise] = useState(false);
@@ -343,6 +345,8 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     setFormExerciseCategoryTag(ex.exerciseCategory || '');
     setFormMinExperience(ex.minExperience || '');
     setFormJointStress(ex.jointStress || []);
+    setFormPrimaryMuscles(ex.primaryMuscles || []);
+    setFormSecondaryMuscles(ex.secondaryMuscles || []);
     setFormGenerationEnabled(ex.generationEnabled === true);
     setFormError('');
     setEquipmentPickerSearch('');
@@ -362,6 +366,8 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     setFormExerciseCategoryTag('');
     setFormMinExperience('');
     setFormJointStress([]);
+    setFormPrimaryMuscles([]);
+    setFormSecondaryMuscles([]);
     setFormGenerationEnabled(false);
     setFormError('');
     setEquipmentPickerSearch('');
@@ -937,6 +943,8 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                     exerciseCategory: formExerciseCategoryTag || undefined,
                     minExperience: formMinExperience || undefined,
                     jointStress: formJointStress,
+                    primaryMuscles: formPrimaryMuscles,
+                    secondaryMuscles: formSecondaryMuscles,
                     generationEnabled: formGenerationEnabled,
                     harderTutorial: formHarderVariation.mode === 'quick'
                       ? { videoUrl: formHarderVariation.videoUrl.trim(), steps: formHarderVariation.steps.map(s => s.trim()).filter(Boolean) }
@@ -1272,6 +1280,50 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                         </div>
                       </div>
                     </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      <div>
+                        <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Primary muscles</label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {ALL_MUSCLE_GROUPS.map(m => {
+                            const on = formPrimaryMuscles.includes(m);
+                            return (
+                              <button
+                                key={m}
+                                type="button"
+                                onClick={() => setFormPrimaryMuscles(prev => on ? prev.filter(x => x !== m) : [...prev, m])}
+                                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors ${
+                                  on ? 'bg-sky-500 text-slate-950' : 'bg-slate-950 text-slate-400 border border-slate-800 hover:border-slate-600'
+                                }`}
+                              >
+                                {m}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Secondary muscles</label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {ALL_MUSCLE_GROUPS.map(m => {
+                            const on = formSecondaryMuscles.includes(m);
+                            return (
+                              <button
+                                key={m}
+                                type="button"
+                                onClick={() => setFormSecondaryMuscles(prev => on ? prev.filter(x => x !== m) : [...prev, m])}
+                                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors ${
+                                  on ? 'bg-slate-700 text-white' : 'bg-slate-950 text-slate-400 border border-slate-800 hover:border-slate-600'
+                                }`}
+                              >
+                                {m}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-slate-500 -mt-1.5">Used to keep a week balanced and avoid stacking exercises that train the same thing.</p>
 
                     <div>
                       <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Stresses these areas</label>
