@@ -6,6 +6,7 @@ import { getEquipmentIcon, isBeginnerFriendly } from '../utils/equipmentIcons';
 import { getEquipmentIconComponent } from './EquipmentLibrary';
 import { getExerciseRequiredEquipmentIds, getZoneEquipmentIds } from '../utils/equipmentMatcher';
 import { getYouTubeVideoId } from '../utils/youtubeEmbed';
+import { deriveMuscleGroups, deriveExerciseCategory, suggestEquipmentIds } from '../utils/exerciseTagDerivation';
 import EditTutorialModal from './EditTutorialModal';
 import VariationTutorialField, { VariationState, blankVariationState, variationStateFromExercise } from './VariationTutorialField';
 import {
@@ -285,6 +286,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
   const [formHarderVariation, setFormHarderVariation] = useState<VariationState>(blankVariationState());
   const [formEasierVariation, setFormEasierVariation] = useState<VariationState>(blankVariationState());
   const [formVideoUrl, setFormVideoUrl] = useState('');
+  const [formName, setFormName] = useState('');
   // Automatic-generation tagging. An exercise is only auto-selectable once
   // movement pattern, category and the enable flag are all set — the
   // generator treats anything missing as "can't establish eligibility".
@@ -341,11 +343,19 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     setFormVideoUrl(ex.exerciseType === 'video' ? ex.videoUrl || '' : '');
     setFormHarderVariation(variationStateFromExercise(ex, 'harder'));
     setFormEasierVariation(variationStateFromExercise(ex, 'easier'));
+    setFormName(ex.name || '');
     setFormMovementPattern(ex.movementPattern || '');
-    setFormExerciseCategoryTag(ex.exerciseCategory || '');
+    // Target Muscle and Category already state these facts in free text —
+    // derive rather than making the admin restate them. Only when the
+    // structured field is still empty, so a deliberate choice always wins.
+    setFormExerciseCategoryTag(ex.exerciseCategory || deriveExerciseCategory(ex.category));
     setFormMinExperience(ex.minExperience || '');
     setFormJointStress(ex.jointStress || []);
-    setFormPrimaryMuscles(ex.primaryMuscles || []);
+    setFormPrimaryMuscles(
+      (ex.primaryMuscles && ex.primaryMuscles.length > 0)
+        ? ex.primaryMuscles
+        : deriveMuscleGroups(ex.targetMuscle)
+    );
     setFormSecondaryMuscles(ex.secondaryMuscles || []);
     setFormGenerationEnabled(ex.generationEnabled === true);
     setFormError('');
@@ -362,6 +372,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     setFormVideoUrl('');
     setFormHarderVariation(blankVariationState());
     setFormEasierVariation(blankVariationState());
+    setFormName('');
     setFormMovementPattern('');
     setFormExerciseCategoryTag('');
     setFormMinExperience('');
@@ -1001,17 +1012,43 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
 
                   <div>
                     <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">{t.exNameLabel} <span className="text-red-500">*</span></label>
-                    <input required name="name" type="text" defaultValue={editingExercise?.name || ''} placeholder={formExerciseType === 'video' ? 'e.g., 10-Min Dynamic Warmup' : 'e.g., Incline Dumbbell Bench Press'} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-lime-500/50 transition-colors min-h-[44px]" />
+                    <input required name="name" type="text" value={formName} onChange={e => setFormName(e.target.value)} placeholder={formExerciseType === 'video' ? 'e.g., 10-Min Dynamic Warmup' : 'e.g., Incline Dumbbell Bench Press'} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-lime-500/50 transition-colors min-h-[44px]" />
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">{t.targetMuscleLabel} <span className="text-red-500">*</span></label>
-                      <SearchCombo value={formMuscle} options={allMuscles} onChange={setFormMuscle} colored />
+                      <SearchCombo
+                        value={formMuscle}
+                        options={allMuscles}
+                        onChange={(v: string) => {
+                          setFormMuscle(v);
+                          // Keep the derived value in step while the admin
+                          // hasn't overridden it; once they have, leave it be.
+                          setFormPrimaryMuscles(prev => {
+                            const derivedFromOld = deriveMuscleGroups(formMuscle);
+                            const untouched = prev.length === 0
+                              || (prev.length === derivedFromOld.length && prev.every(m => derivedFromOld.includes(m)));
+                            return untouched ? deriveMuscleGroups(v) : prev;
+                          });
+                        }}
+                        colored
+                      />
                     </div>
                     <div>
                       <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">{t.exCatLabel} <span className="text-red-500">*</span></label>
-                      <SearchCombo value={formCategory} options={allCategories} onChange={setFormCategory} />
+                      <SearchCombo
+                        value={formCategory}
+                        options={allCategories}
+                        onChange={(v: string) => {
+                          setFormCategory(v);
+                          setFormExerciseCategoryTag(prev =>
+                            (!prev || prev === deriveExerciseCategory(formCategory))
+                              ? deriveExerciseCategory(v)
+                              : prev
+                          );
+                        }}
+                      />
                     </div>
                   </div>
 
@@ -1062,6 +1099,33 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                       </label>
                       <span className="text-[10px] text-slate-500">Tap to select equipment required for this exercise</span>
                     </div>
+
+                    {(() => {
+                      // Suggested from the exercise's own name. Added one at a
+                      // time on purpose: required equipment is AND-ed, so a
+                      // wrongly accepted item would make this exercise
+                      // ineligible at gyms that can actually do it.
+                      const suggestions = suggestEquipmentIds(formName, '', equipmentList)
+                        .filter(id => !selectedEquipmentIds.includes(id))
+                        .slice(0, 4);
+                      if (suggestions.length === 0) return null;
+                      return (
+                        <div className="flex items-center gap-1.5 flex-wrap p-2 rounded-lg bg-lime-500/5 border border-lime-500/20">
+                          <span className="text-[9.5px] font-bold text-lime-400 uppercase tracking-wide mr-0.5">Suggested</span>
+                          {suggestions.map(id => (
+                            <button
+                              key={id}
+                              type="button"
+                              onClick={() => toggleEquipmentSelection(id)}
+                              className="flex items-center gap-1 px-2 py-1 rounded-md bg-slate-900 border border-lime-500/30 text-[10px] font-bold text-lime-300 hover:bg-lime-500/10 transition-colors"
+                            >
+                              <Plus className="w-2.5 h-2.5" />
+                              {equipmentMap.get(id)?.name || id}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })()}
 
                     <div className="relative">
                       <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -1323,7 +1387,9 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                         </div>
                       </div>
                     </div>
-                    <p className="text-[10px] text-slate-500 -mt-1.5">Used to keep a week balanced and avoid stacking exercises that train the same thing.</p>
+                    <p className="text-[10px] text-slate-500 -mt-1.5">
+                      Filled in from Target Muscle and Category above — click any chip to change it. Used to keep a week balanced and avoid stacking exercises that train the same thing.
+                    </p>
 
                     <div>
                       <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Stresses these areas</label>
