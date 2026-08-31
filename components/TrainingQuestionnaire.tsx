@@ -6,6 +6,7 @@ import { QUESTIONNAIRE_GOALS } from '../constants';
 interface TrainingQuestionnaireProps {
   existing: QuestionnaireAnswers | null;
   userName: string;
+  gyms?: { id: string; name: string }[];
   onSubmit: (answers: QuestionnaireAnswers) => void;
 }
 
@@ -43,6 +44,7 @@ interface FormState {
   age: string; heightCm: string; weightKg: string; sex: string;
   goals: string[]; level: string;
   daysPerWeek: string; preferredDays: Weekday[]; minutesPerSession: string;
+  gymId: string;
   equipment: string; avoidExercises: string;
   injuryAreas: string[]; injuryNotes: string;
   medicalClearance: string; consent: boolean;
@@ -52,6 +54,7 @@ const blankForm = (): FormState => ({
   age: '', heightCm: '', weightKg: '', sex: '',
   goals: [], level: '',
   daysPerWeek: '', preferredDays: [], minutesPerSession: '',
+  gymId: '',
   equipment: '', avoidExercises: '',
   injuryAreas: [], injuryNotes: '',
   medicalClearance: '', consent: false,
@@ -69,6 +72,7 @@ const toFormState = (existing: QuestionnaireAnswers | null): FormState => {
     daysPerWeek: existing.daysPerWeek || '',
     preferredDays: existing.preferredDays || [],
     minutesPerSession: existing.minutesPerSession || '',
+    gymId: existing.gymId || '',
     equipment: existing.equipment || '',
     avoidExercises: existing.avoidExercises || '',
     injuryAreas: existing.injuryAreas || [],
@@ -121,7 +125,7 @@ const NumberField: React.FC<{ label: string; value: string; onChange: (v: string
   </div>
 );
 
-const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing, userName, onSubmit }) => {
+const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing, userName, gyms = [], onSubmit }) => {
   const [mode, setMode] = useState<Mode>('prompt');
   const [step, setStep] = useState(0);
   const [maxReached, setMaxReached] = useState(0);
@@ -161,7 +165,7 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
     if (key === 'about') return !!(form.age && form.heightCm && form.weightKg && form.sex);
     if (key === 'goal') return form.goals.length > 0 && !!form.level;
     if (key === 'schedule') return !!(form.daysPerWeek && form.minutesPerSession) && form.preferredDays.length === Number(form.daysPerWeek);
-    if (key === 'preferences') return !!form.equipment;
+    if (key === 'preferences') return !!form.equipment && (gyms.length === 0 || !!form.gymId);
     if (key === 'health') return !hasHealthInfo || !!(form.medicalClearance && form.consent);
     return true;
   };
@@ -180,6 +184,7 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
         daysPerWeek: form.daysPerWeek,
         preferredDays: form.preferredDays,
         minutesPerSession: form.minutesPerSession,
+        gymId: form.gymId || undefined,
         equipment: form.equipment,
         avoidExercises: form.avoidExercises || undefined,
         injuryAreas: form.injuryAreas,
@@ -359,6 +364,17 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
 
       {key === 'preferences' && (
         <div className="space-y-5">
+          {gyms.length > 0 && (
+            <div>
+              <FieldLabel required>Which gym do you train at?</FieldLabel>
+              <div className="flex flex-wrap gap-2">
+                {gyms.map(g => <Pill key={g.id} label={g.name} selected={form.gymId === g.id} onClick={() => set('gymId', g.id)} />)}
+              </div>
+              <p className="text-[10.5px] text-slate-500 mt-2 leading-relaxed">
+                Your plan only uses equipment this gym actually has.
+              </p>
+            </div>
+          )}
           <div>
             <FieldLabel required>Equipment comfort</FieldLabel>
             <div className="flex flex-wrap gap-2">

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Gym, LibraryExercise, Language, EquipmentItem } from '../types';
+import { Gym, LibraryExercise, Language, EquipmentItem, MovementPattern, ExerciseCategory, ExperienceLevel, JointStressArea } from '../types';
 import { api, DEFAULT_EQUIPMENT } from '../services/api';
 import { searchAndFilterExercises, getExerciseLocations } from '../utils/exerciseMatcher';
 import { getEquipmentIcon, isBeginnerFriendly } from '../utils/equipmentIcons';
@@ -285,6 +285,14 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
   const [formHarderVariation, setFormHarderVariation] = useState<VariationState>(blankVariationState());
   const [formEasierVariation, setFormEasierVariation] = useState<VariationState>(blankVariationState());
   const [formVideoUrl, setFormVideoUrl] = useState('');
+  // Automatic-generation tagging. An exercise is only auto-selectable once
+  // movement pattern, category and the enable flag are all set — the
+  // generator treats anything missing as "can't establish eligibility".
+  const [formMovementPattern, setFormMovementPattern] = useState<MovementPattern | ''>('');
+  const [formExerciseCategoryTag, setFormExerciseCategoryTag] = useState<ExerciseCategory | ''>('');
+  const [formMinExperience, setFormMinExperience] = useState<ExperienceLevel | ''>('');
+  const [formJointStress, setFormJointStress] = useState<JointStressArea[]>([]);
+  const [formGenerationEnabled, setFormGenerationEnabled] = useState(false);
   const [formError, setFormError] = useState('');
   const [savingExercise, setSavingExercise] = useState(false);
   const [equipmentPickerSearch, setEquipmentPickerSearch] = useState('');
@@ -331,6 +339,11 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     setFormVideoUrl(ex.exerciseType === 'video' ? ex.videoUrl || '' : '');
     setFormHarderVariation(variationStateFromExercise(ex, 'harder'));
     setFormEasierVariation(variationStateFromExercise(ex, 'easier'));
+    setFormMovementPattern(ex.movementPattern || '');
+    setFormExerciseCategoryTag(ex.exerciseCategory || '');
+    setFormMinExperience(ex.minExperience || '');
+    setFormJointStress(ex.jointStress || []);
+    setFormGenerationEnabled(ex.generationEnabled === true);
     setFormError('');
     setEquipmentPickerSearch('');
     setIsExerciseModalOpen(true);
@@ -345,6 +358,11 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     setFormVideoUrl('');
     setFormHarderVariation(blankVariationState());
     setFormEasierVariation(blankVariationState());
+    setFormMovementPattern('');
+    setFormExerciseCategoryTag('');
+    setFormMinExperience('');
+    setFormJointStress([]);
+    setFormGenerationEnabled(false);
     setFormError('');
     setEquipmentPickerSearch('');
     setIsExerciseModalOpen(true);
@@ -915,6 +933,11 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                     makeEasier: ((formData.get('makeEasier') as string) || '').trim(),
                     harderExerciseId: formHarderVariation.mode === 'link' ? formHarderVariation.linkedId : '',
                     easierExerciseId: formEasierVariation.mode === 'link' ? formEasierVariation.linkedId : '',
+                    movementPattern: formMovementPattern || undefined,
+                    exerciseCategory: formExerciseCategoryTag || undefined,
+                    minExperience: formMinExperience || undefined,
+                    jointStress: formJointStress,
+                    generationEnabled: formGenerationEnabled,
                     harderTutorial: formHarderVariation.mode === 'quick'
                       ? { videoUrl: formHarderVariation.videoUrl.trim(), steps: formHarderVariation.steps.map(s => s.trim()).filter(Boolean) }
                       : {},
@@ -1173,6 +1196,105 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                     </div>
                   </div>
                   <p className="text-[10px] text-slate-500 -mt-2">Optional — leave either blank if it doesn't apply. Only shown to trainees when filled in.</p>
+
+                  {/* Automatic generation tagging */}
+                  <div className="p-3.5 rounded-xl border border-sky-500/20 bg-sky-500/[0.03] space-y-3.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[10px] text-sky-400 font-bold uppercase tracking-wider mb-1">Automatic plan generation</p>
+                        <p className="text-[10px] text-slate-500 leading-relaxed">
+                          Lets the generator pick this exercise for a client's plan on its own. It stays off until movement pattern and type are set.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setFormGenerationEnabled(v => !v)}
+                        disabled={!formMovementPattern || !formExerciseCategoryTag}
+                        className={`flex-shrink-0 px-3 py-2 rounded-lg text-[11px] font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                          formGenerationEnabled ? 'bg-sky-500 text-slate-950' : 'bg-slate-800 text-slate-400 border border-slate-700'
+                        }`}
+                      >
+                        {formGenerationEnabled ? '✓ Enabled' : 'Disabled'}
+                      </button>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Movement pattern</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(['horizontal_push','horizontal_pull','vertical_push','vertical_pull','squat','hinge','lunge','carry','core','conditioning','mobility'] as MovementPattern[]).map(mp => (
+                          <button
+                            key={mp}
+                            type="button"
+                            onClick={() => setFormMovementPattern(formMovementPattern === mp ? '' : mp)}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors ${
+                              formMovementPattern === mp ? 'bg-sky-500 text-slate-950' : 'bg-slate-950 text-slate-400 border border-slate-800 hover:border-slate-600'
+                            }`}
+                          >
+                            {mp.replace(/_/g, ' ')}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      <div>
+                        <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Type</label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(['compound','isolation','cardio','mobility','warmup','cooldown'] as ExerciseCategory[]).map(c => (
+                            <button
+                              key={c}
+                              type="button"
+                              onClick={() => setFormExerciseCategoryTag(formExerciseCategoryTag === c ? '' : c)}
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors ${
+                                formExerciseCategoryTag === c ? 'bg-sky-500 text-slate-950' : 'bg-slate-950 text-slate-400 border border-slate-800 hover:border-slate-600'
+                              }`}
+                            >
+                              {c}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Minimum experience</label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(['Beginner','Intermediate','Advanced'] as ExperienceLevel[]).map(lv => (
+                            <button
+                              key={lv}
+                              type="button"
+                              onClick={() => setFormMinExperience(formMinExperience === lv ? '' : lv)}
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors ${
+                                formMinExperience === lv ? 'bg-sky-500 text-slate-950' : 'bg-slate-950 text-slate-400 border border-slate-800 hover:border-slate-600'
+                              }`}
+                            >
+                              {lv}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Stresses these areas</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(['Back','Knees','Shoulders','Neck','Wrists','Hips','Ankles'] as JointStressArea[]).map(area => {
+                          const on = formJointStress.includes(area);
+                          return (
+                            <button
+                              key={area}
+                              type="button"
+                              onClick={() => setFormJointStress(prev => on ? prev.filter(a => a !== area) : [...prev, area])}
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors ${
+                                on ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40' : 'bg-slate-950 text-slate-400 border border-slate-800 hover:border-slate-600'
+                              }`}
+                            >
+                              {area}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-1.5">Clients reporting an injury in a selected area never get this exercise.</p>
+                    </div>
+                  </div>
                   </>
                   )}
 

@@ -209,7 +209,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, 
         {loadingLogs ? (
           <div className="p-8 text-center text-sm text-slate-500 bg-slate-900 border border-slate-800 rounded-2xl mb-16">Loading…</div>
         ) : workoutPlan.days.every(d => !d.weekday) ? (
-          <TrainingQuestionnaire existing={questionnaire} userName={user.name.split(' ')[0]} onSubmit={onSubmitQuestionnaire} />
+          <TrainingQuestionnaire existing={questionnaire} userName={user.name.split(' ')[0]} gyms={gyms} onSubmit={onSubmitQuestionnaire} />
         ) : (
           <>
             <div className="grid grid-cols-7 gap-2 mb-4">
