@@ -184,6 +184,24 @@ export interface VariationTutorial {
   steps?: string[];
 }
 
+// The motion an exercise trains, independent of the specific equipment used.
+// Program blueprints request slots by pattern ("a horizontal push"), and the
+// generator resolves each to a real exercise — so this is what makes an
+// exercise selectable at all.
+export type MovementPattern =
+  | 'horizontal_push' | 'horizontal_pull' | 'vertical_push' | 'vertical_pull'
+  | 'squat' | 'hinge' | 'lunge' | 'carry'
+  | 'core' | 'conditioning' | 'mobility';
+
+export type ExerciseCategory = 'compound' | 'isolation' | 'cardio' | 'mobility' | 'warmup' | 'cooldown';
+
+export type ExperienceLevel = 'Beginner' | 'Intermediate' | 'Advanced';
+
+// Body areas a user can report as injured (mirrors COMMON_INJURIES in the
+// questionnaire). An exercise lists the areas it meaningfully stresses, and
+// the eligibility filter excludes it for anyone reporting one of them.
+export type JointStressArea = 'Back' | 'Knees' | 'Shoulders' | 'Neck' | 'Wrists' | 'Hips' | 'Ankles';
+
 export interface LibraryExercise {
   id: string;
   name: string;
@@ -206,6 +224,17 @@ export interface LibraryExercise {
   easierExerciseId?: string;  // Link mode: another LibraryExercise.id that's "the easier version" of this one
   harderTutorial?: VariationTutorial; // Quick tutorial mode for the harder variation
   easierTutorial?: VariationTutorial; // Quick tutorial mode for the easier variation
+
+  // --- Automatic generation metadata ---
+  // All optional so existing hand-authored exercises keep working untouched,
+  // but the generator treats missing values as "cannot establish eligibility"
+  // and skips the exercise rather than guessing (fail closed). An exercise
+  // only becomes selectable once an admin has actually filled these in.
+  movementPattern?: MovementPattern;
+  exerciseCategory?: ExerciseCategory;
+  minExperience?: ExperienceLevel; // hard gate, not a scoring penalty — a beginner never gets an advanced-only lift
+  jointStress?: JointStressArea[]; // areas this exercise loads; excluded for users reporting injury there
+  generationEnabled?: boolean;     // explicit admin opt-in — without it the exercise is never auto-selected
 }
 
 export type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
@@ -243,6 +272,28 @@ export interface QuestionnaireAnswers {
   consent?: boolean;          // only present if injuries disclosed
 }
 
+// One unfilled requirement in a blueprint day — "a horizontal push goes
+// here" — that the generator resolves to a real exercise per user. Distinct
+// from SessionBlock, which groups exercises that have *already* been chosen.
+export interface ExerciseSlot {
+  id: string;
+  movementPattern: MovementPattern;
+  exerciseCategory?: ExerciseCategory; // narrows selection (e.g. isolation-only accessory slot)
+  priority: number;                    // lower = more important; the duration fitter drops the highest number first
+  optional?: boolean;                  // only an optional slot may be dropped to fit the session length
+  setsMin: number;
+  setsMax: number;
+  repsMin: number;
+  repsMax: number;
+  restSeconds: number;
+}
+
+export interface BlueprintDay {
+  id: string;
+  name: string;      // e.g. "Upper", "Full Body"
+  slots: ExerciseSlot[];
+}
+
 export interface PlanTemplate {
   id: string;
   name: string;
@@ -250,6 +301,12 @@ export interface PlanTemplate {
   daysPerWeek: string;    // '1'..'4'
   durationMin: number;    // target single-session length in minutes (e.g. 45), set by the admin
   days: WorkoutDay[];     // authored with no weekday set
+
+  // When present, this template is a *blueprint*: the generator resolves
+  // these slots per user instead of copying days[] verbatim. Absent means a
+  // classic fixed template, which keeps working exactly as before.
+  blueprintDays?: BlueprintDay[];
+  minExperience?: ExperienceLevel;
 }
 
 export interface CoachingClient {
