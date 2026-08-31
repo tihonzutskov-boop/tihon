@@ -376,27 +376,37 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
           }, forGoal[0]);
         if (match) break;
       }
-      // Generation is the default path, not something that only runs when an
-      // admin happened to author a blueprint: a matched template's own
-      // blueprint wins if it has one, otherwise the engine builds a default
-      // blueprint from goal + days/week. A matched fixed template is used
-      // only as a fallback when generation can't produce a valid plan.
       const gymId = answers.gymId || null;
       const goalForPlan = match ? match.goal : (goals[0] || 'General fitness');
       const profile = buildGenerationProfile(answers, goalForPlan);
-      const gym = gymId ? await loadGymForGeneration(gymId) : null;
 
       let planDays = null;
       let generationMeta = null;
       let planName = match ? match.name : `${goalForPlan} — ${profile.daysPerWeek} Day Plan`;
 
-      if (!gym) {
+      // A fixed template an admin actually filled in is a deliberate choice —
+      // use it as-is rather than generating over the top of it. Generation is
+      // the path for everyone else, which is most clients.
+      const hasAuthoredFixedDays = match && Array.isArray(match.days)
+        && match.days.some(d => (d.exercises || []).length > 0);
+
+      const gym = hasAuthoredFixedDays ? null : (gymId ? await loadGymForGeneration(gymId) : null);
+
+      if (hasAuthoredFixedDays) {
+        planDays = assignWeekdaysToTemplateDays(match.days, answers.preferredDays, null);
+      } else if (!gym) {
         await recordGenerationFailure(req.user.id, match?.id || null, gymId, 'no_gym',
           'No gym selected, so available equipment could not be determined');
       } else {
-        const adminBlueprint = Array.isArray(match?.blueprint_days) && match.blueprint_days.length > 0
+        // The matcher picks the *closest* days-per-week, not an exact one, so
+        // an admin blueprint can carry a different day count than the client
+        // committed to. Generating from it then fails validation on the day
+        // count and the client gets nothing, so fall back to the default
+        // blueprint, which is always built for the requested number of days.
+        const authored = Array.isArray(match?.blueprint_days) && match.blueprint_days.length > 0
           ? match.blueprint_days
           : null;
+        const adminBlueprint = authored && authored.length === profile.daysPerWeek ? authored : null;
         const blueprintDays = adminBlueprint || buildDefaultBlueprint(goalForPlan, profile.daysPerWeek);
 
         const library = await loadLibraryForGeneration();
@@ -433,15 +443,6 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
             };
           }
         }
-      }
-
-      // Fall back to a matched fixed template only if it actually contains
-      // exercises. A template switched to blueprint mode still carries its
-      // old (now empty) days array, and handing that over would deliver a
-      // plan with days but nothing in them instead of failing honestly.
-      if (!planDays && match && Array.isArray(match.days) && match.days.some(d => (d.exercises || []).length > 0)) {
-        planDays = assignWeekdaysToTemplateDays(match.days, answers.preferredDays, null);
-        planName = match.name;
       }
 
       if (planDays) {

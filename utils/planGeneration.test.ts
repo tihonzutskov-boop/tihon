@@ -480,3 +480,46 @@ describe('muscle tags', () => {
     expect(validatePlan(days, library, gym([]), profile({ daysPerWeek: 1 })).warnings).toHaveLength(0);
   });
 });
+
+// --- regressions -------------------------------------------------------------
+
+describe('thin library does not break generation', () => {
+  it('skips a repeat slot instead of duplicating an exercise', () => {
+    // The Upper day asks for horizontal_push twice (compound + isolation
+    // accessory). With one push exercise tagged, the accessory slot must be
+    // skipped — duplicating it produced a plan the validator then rejected,
+    // so the client got nothing at all.
+    const library = [
+      exercise({ id: 'bench', name: 'Bench Press', movementPattern: 'horizontal_push' }),
+      exercise({ id: 'row', name: 'Row', movementPattern: 'horizontal_pull' }),
+    ];
+    const tpl: PlanTemplate = {
+      id: 't', name: 'T', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 90, days: [],
+      blueprintDays: [buildDefaultBlueprint('Muscle gain', 4)[0]],
+    };
+    const p = profile({ daysPerWeek: 1, sessionMinutes: 90 });
+    const result = generatePlan(tpl, library, gym([]), p);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const names = result.days[0].exercises.map(e => e.name);
+    expect(new Set(names).size).toBe(names.length);           // no duplicates
+    expect(validatePlan(result.days, library, gym([]), p).valid).toBe(true);
+  });
+
+  it('never selects the same exercise twice for one day', () => {
+    const only = [exercise({ id: 'solo', name: 'Solo Push', movementPattern: 'horizontal_push' })];
+    const tpl: PlanTemplate = {
+      id: 't', name: 'T', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 90, days: [],
+      blueprintDays: [{
+        id: 'd', name: 'Day', slots: [
+          slot({ id: 's1', movementPattern: 'horizontal_push', priority: 1 }),
+          slot({ id: 's2', movementPattern: 'horizontal_push', priority: 2, optional: true }),
+        ],
+      }],
+    };
+    const result = generatePlan(tpl, only, gym([]), profile({ daysPerWeek: 1, sessionMinutes: 90 }));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.days[0].exercises).toHaveLength(1);
+  });
+});

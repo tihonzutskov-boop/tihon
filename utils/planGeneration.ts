@@ -239,8 +239,6 @@ export const SCORING = {
   categoryMatch: 10,
   compoundForStrengthGoal: 20,
   experienceFit: 15,
-  alreadyUsedInPlan: -100, // effectively prevents reuse, but stays a score so a
-                           // slot with no alternative can still be filled
   perRepeatedMuscle: -6,   // nudges toward variety when two candidates would
                            // otherwise train the same thing twice in a day
 };
@@ -251,7 +249,6 @@ export const scoreCandidate = (
   ex: LibraryExercise,
   slot: ExerciseSlot,
   profile: GenerationProfile,
-  alreadyUsedIds: Set<string>,
   musclesAlreadyTrained: Set<MuscleGroup> = new Set(),
 ): number => {
   let score = 0;
@@ -259,7 +256,6 @@ export const scoreCandidate = (
   if (GOAL_PREFERS_COMPOUND.has(profile.goal) && ex.exerciseCategory === 'compound') score += SCORING.compoundForStrengthGoal;
   // An exercise pitched at exactly the user's level beats one pitched below it.
   if (ex.minExperience === profile.experience) score += SCORING.experienceFit;
-  if (alreadyUsedIds.has(ex.id)) score += SCORING.alreadyUsedInPlan;
   // Untagged exercises simply score 0 here rather than being penalized —
   // missing muscle tags shouldn't disadvantage an otherwise good pick.
   const repeats = (ex.primaryMuscles || []).filter(m => musclesAlreadyTrained.has(m)).length;
@@ -277,11 +273,17 @@ export const selectForSlot = (
   alreadyUsedIds: Set<string>,
   musclesAlreadyTrained: Set<MuscleGroup> = new Set(),
 ): LibraryExercise | null => {
-  const candidates = pool.filter(ex => ex.movementPattern === slot.movementPattern);
+  // Already-used exercises are removed, not merely penalized. Penalizing
+  // still let one win when it was the only candidate, producing a day with
+  // the same exercise twice — which the validator then rejected, so a thin
+  // library failed to produce any plan at all instead of a shorter one.
+  const candidates = pool.filter(ex =>
+    ex.movementPattern === slot.movementPattern && !alreadyUsedIds.has(ex.id)
+  );
   if (candidates.length === 0) return null;
 
   return candidates
-    .map(ex => ({ ex, score: scoreCandidate(ex, slot, profile, alreadyUsedIds, musclesAlreadyTrained) }))
+    .map(ex => ({ ex, score: scoreCandidate(ex, slot, profile, musclesAlreadyTrained) }))
     .sort((a, b) => (b.score - a.score) || a.ex.id.localeCompare(b.ex.id))[0].ex;
 };
 
@@ -406,7 +408,7 @@ export const generatePlan = (
       }
       usedInDay.add(le.id);
       (le.primaryMuscles || []).forEach(m => musclesInDay.add(m));
-      picked.push({ le, slot, score: scoreCandidate(le, slot, profile, new Set()) });
+      picked.push({ le, slot, score: scoreCandidate(le, slot, profile) });
     }
 
     // Fit the session length by dropping the lowest-priority optional slot

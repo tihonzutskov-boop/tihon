@@ -4,6 +4,7 @@ import { QUESTIONNAIRE_GOALS } from '../constants';
 import { api } from '../services/api';
 import SessionBuilder from './SessionBuilder';
 import BlueprintDayEditor from './BlueprintDayEditor';
+import { selectSplit } from '../utils/planGeneration';
 import { ClipboardList, Loader2, X, ChevronRight, Plus, AlertTriangle } from 'lucide-react';
 
 // Engine failure reasons, phrased as what an admin can actually act on.
@@ -79,6 +80,9 @@ const AdminCoaching: React.FC = () => {
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
   const [failures, setFailures] = useState<GenerationFailureRecord[]>([]);
+  // Holds authored slots while the editor is toggled to Fixed, so flipping
+  // back doesn't silently discard the admin's work.
+  const [stashedBlueprint, setStashedBlueprint] = useState<BlueprintDay[] | null>(null);
 
   const [editingTemplate, setEditingTemplate] = useState<PlanTemplate | null>(null);
   const [wizardStep, setWizardStep] = useState<1 | 2>(1); // 1 = questionnaire (category/days/duration), 2 = session builder
@@ -126,12 +130,14 @@ const AdminCoaching: React.FC = () => {
 
   const startNewTemplate = (goal: string) => {
     if (!openGoals.has(goal)) toggleGoal(goal);
+    setStashedBlueprint(null);
     setEditingTemplate(blankTemplate(goal));
     setActiveDayIndex(0);
     setWizardStep(1);
   };
   const editTemplate = (t: PlanTemplate) => {
     setEditingTemplate({ ...t });
+    setStashedBlueprint(null);
     setActiveDayIndex(0);
     setWizardStep(2); // already categorized — skip straight to the builder
   };
@@ -185,20 +191,32 @@ const AdminCoaching: React.FC = () => {
 
   const switchToBlueprint = () => {
     if (!editingTemplate) return;
+    setActiveDayIndex(0);
+    // Already in blueprint mode, or coming back after a detour through Fixed —
+    // never overwrite slots that already exist.
+    if ((editingTemplate.blueprintDays?.length ?? 0) > 0) return;
+    if (stashedBlueprint && stashedBlueprint.length > 0) {
+      setEditingTemplate({ ...editingTemplate, blueprintDays: stashedBlueprint });
+      return;
+    }
+    // Day names come from the same split rules the generator uses, rather
+    // than a second copy that can drift out of sync with it.
     const n = parseInt(editingTemplate.daysPerWeek, 10) || 1;
-    const names = n >= 4 ? ['Upper', 'Lower', 'Upper', 'Lower'] : Array.from({ length: n }, (_, i) => `Full Body ${i + 1}`);
+    const names = selectSplit(n).dayNames;
     setEditingTemplate({
       ...editingTemplate,
-      blueprintDays: Array.from({ length: n }, (_, i) => ({
+      blueprintDays: names.map((name, i) => ({
         id: `bpday-${Date.now()}-${i}`,
-        name: names[i] || `Day ${i + 1}`,
+        name,
         slots: [],
       })),
     });
-    setActiveDayIndex(0);
   };
   const switchToFixed = () => {
     if (!editingTemplate) return;
+    if ((editingTemplate.blueprintDays?.length ?? 0) > 0) {
+      setStashedBlueprint(editingTemplate.blueprintDays!);
+    }
     setEditingTemplate({ ...editingTemplate, blueprintDays: undefined });
     setActiveDayIndex(0);
   };

@@ -139,7 +139,7 @@ const BlueprintDayEditor: React.FC<BlueprintDayEditorProps> = ({ day, onChange, 
               </div>
 
               <div className="mb-3">
-                <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Restrict to type (optional)</label>
+                <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Prefer type (optional)</label>
                 <div className="flex flex-wrap gap-1.5">
                   {CATEGORIES.map(c => (
                     <button
@@ -154,6 +154,9 @@ const BlueprintDayEditor: React.FC<BlueprintDayEditorProps> = ({ day, onChange, 
                     </button>
                   ))}
                 </div>
+                <p className="text-[10px] text-slate-500 mt-1.5">
+                  A preference, not a restriction — if nothing of this type fits the slot, the best available exercise is still used.
+                </p>
               </div>
 
               <div className="grid grid-cols-5 gap-2 mb-3">
