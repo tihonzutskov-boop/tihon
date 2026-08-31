@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { PlanTemplate, WorkoutDay, LibraryExercise, CoachingClient } from '../types';
+import { PlanTemplate, WorkoutDay, LibraryExercise, CoachingClient, BlueprintDay } from '../types';
 import { QUESTIONNAIRE_GOALS } from '../constants';
 import { api } from '../services/api';
 import SessionBuilder from './SessionBuilder';
+import BlueprintDayEditor from './BlueprintDayEditor';
 import { ClipboardList, Loader2, X, ChevronRight, Plus } from 'lucide-react';
 
 const DURATIONS = [30, 45, 60, 90];
@@ -151,6 +152,51 @@ const AdminCoaching: React.FC = () => {
   };
   const onClear = () => {
     setEditingTemplate(prev => (prev ? { ...prev, days: [{ id: `day-${Date.now()}`, name: 'Workout 1', exercises: [] }] } : prev));
+    setActiveDayIndex(0);
+  };
+
+  // A template with blueprintDays is resolved per client by the generator;
+  // without them it stays a fixed template and is copied verbatim, exactly
+  // as before. Both authoring modes stay available so existing templates
+  // keep working untouched.
+  const isBlueprint = (editingTemplate?.blueprintDays?.length ?? 0) > 0;
+  const blueprintDays = editingTemplate?.blueprintDays || [];
+
+  const switchToBlueprint = () => {
+    if (!editingTemplate) return;
+    const n = parseInt(editingTemplate.daysPerWeek, 10) || 1;
+    const names = n >= 4 ? ['Upper', 'Lower', 'Upper', 'Lower'] : Array.from({ length: n }, (_, i) => `Full Body ${i + 1}`);
+    setEditingTemplate({
+      ...editingTemplate,
+      blueprintDays: Array.from({ length: n }, (_, i) => ({
+        id: `bpday-${Date.now()}-${i}`,
+        name: names[i] || `Day ${i + 1}`,
+        slots: [],
+      })),
+    });
+    setActiveDayIndex(0);
+  };
+  const switchToFixed = () => {
+    if (!editingTemplate) return;
+    setEditingTemplate({ ...editingTemplate, blueprintDays: undefined });
+    setActiveDayIndex(0);
+  };
+  const onChangeBlueprintDay = (day: BlueprintDay) => {
+    setEditingTemplate(prev => prev
+      ? { ...prev, blueprintDays: (prev.blueprintDays || []).map((d, i) => (i === activeDayIndex ? day : d)) }
+      : prev);
+  };
+  const onAddBlueprintDay = () => {
+    setEditingTemplate(prev => prev
+      ? { ...prev, blueprintDays: [...(prev.blueprintDays || []), { id: `bpday-${Date.now()}`, name: `Day ${(prev.blueprintDays || []).length + 1}`, slots: [] }] }
+      : prev);
+  };
+  const onRemoveBlueprintDay = (dayId: string) => {
+    setEditingTemplate(prev => {
+      if (!prev) return prev;
+      const next = (prev.blueprintDays || []).filter(d => d.id !== dayId);
+      return { ...prev, blueprintDays: next.length > 0 ? next : prev.blueprintDays };
+    });
     setActiveDayIndex(0);
   };
   const onSavePlan = async () => {
@@ -506,8 +552,29 @@ const AdminCoaching: React.FC = () => {
               />
             </div>
 
+            <div className="flex gap-1 bg-slate-950 border border-slate-800 rounded-xl p-1 mb-4">
+              <button
+                onClick={switchToFixed}
+                className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 rounded-lg text-[11.5px] font-bold transition-colors ${
+                  !isBlueprint ? 'bg-slate-800 text-lime-400' : 'text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                <span>Fixed exercises</span>
+                <span className="text-[9px] font-semibold text-slate-500">Every client gets these exact exercises</span>
+              </button>
+              <button
+                onClick={switchToBlueprint}
+                className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 rounded-lg text-[11.5px] font-bold transition-colors ${
+                  isBlueprint ? 'bg-slate-800 text-sky-400' : 'text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                <span>Dynamic slots</span>
+                <span className="text-[9px] font-semibold text-slate-500">Generated per client from their gym</span>
+              </button>
+            </div>
+
             <div className="flex items-center gap-2 mb-3 overflow-x-auto">
-              {editingTemplate.days.map((d, idx) => (
+              {(isBlueprint ? blueprintDays : editingTemplate.days).map((d, idx) => (
                 <div key={d.id} className="flex-shrink-0 flex items-center">
                   <button
                     onClick={() => setActiveDayIndex(idx)}
@@ -515,17 +582,17 @@ const AdminCoaching: React.FC = () => {
                       activeDayIndex === idx ? 'bg-lime-500 border-lime-500 text-slate-950' : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'
                     }`}
                   >
-                    Day {idx + 1}
+                    {isBlueprint ? ((d as BlueprintDay).name || `Day ${idx + 1}`) : `Day ${idx + 1}`}
                   </button>
-                  {editingTemplate.days.length > 1 && (
-                    <button onClick={() => onRemoveDay(d.id)} className="ml-1 p-1 text-slate-600 hover:text-red-400 transition-colors" title="Remove day" aria-label="Remove day">
+                  {(isBlueprint ? blueprintDays.length : editingTemplate.days.length) > 1 && (
+                    <button onClick={() => (isBlueprint ? onRemoveBlueprintDay(d.id) : onRemoveDay(d.id))} className="ml-1 p-1 text-slate-600 hover:text-red-400 transition-colors" title="Remove day" aria-label="Remove day">
                       <X className="w-3 h-3" />
                     </button>
                   )}
                 </div>
               ))}
               <button
-                onClick={onAddDay}
+                onClick={isBlueprint ? onAddBlueprintDay : onAddDay}
                 className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg border border-dashed border-slate-700 text-slate-500 hover:border-lime-500 hover:text-lime-400 transition-colors"
                 title="Add day"
                 aria-label="Add day"
@@ -535,17 +602,43 @@ const AdminCoaching: React.FC = () => {
             </div>
 
             <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden h-[600px]">
-              <SessionBuilder
-                day={editingTemplate.days[activeDayIndex] || editingTemplate.days[0]}
-                onChange={onChangeDay}
-                targetDurationMin={editingTemplate.durationMin}
-                libraryExercises={libraryExercises}
-                onCreateLibraryExercise={() => setShowCreateExercise(true)}
-                onSave={onSavePlan}
-                onClear={onClear}
-                onClose={closeTemplateEditor}
-              />
+              {isBlueprint ? (
+                <BlueprintDayEditor
+                  day={blueprintDays[activeDayIndex] || blueprintDays[0]}
+                  onChange={onChangeBlueprintDay}
+                  libraryExercises={libraryExercises}
+                  targetDurationMin={editingTemplate.durationMin}
+                />
+              ) : (
+                <SessionBuilder
+                  day={editingTemplate.days[activeDayIndex] || editingTemplate.days[0]}
+                  onChange={onChangeDay}
+                  targetDurationMin={editingTemplate.durationMin}
+                  libraryExercises={libraryExercises}
+                  onCreateLibraryExercise={() => setShowCreateExercise(true)}
+                  onSave={onSavePlan}
+                  onClear={onClear}
+                  onClose={closeTemplateEditor}
+                />
+              )}
             </div>
+
+            {isBlueprint && (
+              <div className="flex gap-2.5 mt-4">
+                <button
+                  onClick={closeTemplateEditor}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-800 text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => { onSavePlan().catch(err => window.alert(err?.message || 'Failed to save')); }}
+                  className="flex-1 py-2.5 rounded-xl bg-lime-500 hover:bg-lime-400 text-slate-950 text-xs font-extrabold transition-colors"
+                >
+                  Save Blueprint
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
