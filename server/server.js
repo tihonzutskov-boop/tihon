@@ -16,7 +16,7 @@ import {
 // Compiled from utils/planGeneration.ts by `npm run build:engine` — the same
 // engine the frontend and the test suite use, so there is exactly one
 // implementation of the eligibility and safety rules.
-import { generatePlan, validatePlan } from './generated/utils/planGeneration.js';
+import { generatePlan, validatePlan, buildDefaultBlueprint } from './generated/utils/planGeneration.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -374,66 +374,83 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
           }, forGoal[0]);
         if (match) break;
       }
-      if (match) {
-        let planDays = null;
-        let generationMeta = null;
-        const gymId = answers.gymId || null;
+      // Generation is the default path, not something that only runs when an
+      // admin happened to author a blueprint: a matched template's own
+      // blueprint wins if it has one, otherwise the engine builds a default
+      // blueprint from goal + days/week. A matched fixed template is used
+      // only as a fallback when generation can't produce a valid plan.
+      const gymId = answers.gymId || null;
+      const goalForPlan = match ? match.goal : (goals[0] || 'General fitness');
+      const profile = buildGenerationProfile(answers, goalForPlan);
+      const gym = gymId ? await loadGymForGeneration(gymId) : null;
 
-        // A template carrying blueprint_days is a blueprint: resolve its
-        // slots against this specific user and gym instead of copying fixed
-        // days. Anything else keeps the original copy-verbatim behavior.
-        if (match.blueprint_days && Array.isArray(match.blueprint_days) && match.blueprint_days.length > 0) {
-          const gym = gymId ? await loadGymForGeneration(gymId) : null;
-          if (!gym) {
-            await recordGenerationFailure(req.user.id, match.id, gymId, 'no_gym',
-              'Blueprint requires a selected gym to determine available equipment');
+      let planDays = null;
+      let generationMeta = null;
+      let planName = match ? match.name : `${goalForPlan} — ${profile.daysPerWeek} Day Plan`;
+
+      if (!gym) {
+        await recordGenerationFailure(req.user.id, match?.id || null, gymId, 'no_gym',
+          'No gym selected, so available equipment could not be determined');
+      } else {
+        const adminBlueprint = Array.isArray(match?.blueprint_days) && match.blueprint_days.length > 0
+          ? match.blueprint_days
+          : null;
+        const blueprintDays = adminBlueprint || buildDefaultBlueprint(goalForPlan, profile.daysPerWeek);
+
+        const library = await loadLibraryForGeneration();
+        const result = generatePlan(
+          {
+            id: match?.id || 'default',
+            name: planName,
+            goal: goalForPlan,
+            daysPerWeek: String(profile.daysPerWeek),
+            durationMin: match?.duration_min || profile.sessionMinutes,
+            days: [],
+            blueprintDays,
+          },
+          library, gym, profile
+        );
+
+        if (!result.ok) {
+          await recordGenerationFailure(req.user.id, match?.id || null, gymId, result.reason, result.detail);
+        } else {
+          // Validate independently of the selection step — a plan that fails
+          // here is never delivered, it goes to admin review.
+          const check = validatePlan(result.days, library, gym, profile);
+          if (!check.valid) {
+            await recordGenerationFailure(req.user.id, match?.id || null, gymId, 'validation_failed',
+              check.errors.join('; '));
           } else {
-            const library = await loadLibraryForGeneration();
-            const profile = buildGenerationProfile(answers, match.goal);
-            const result = generatePlan(
-              { ...match, blueprintDays: match.blueprint_days, durationMin: match.duration_min },
-              library, gym, profile
-            );
-
-            if (!result.ok) {
-              await recordGenerationFailure(req.user.id, match.id, gymId, result.reason, result.detail);
-            } else {
-              // Validate independently of the selection step — a plan that
-              // fails here is never delivered, it goes to admin review.
-              const check = validatePlan(result.days, library, gym, profile);
-              if (!check.valid) {
-                await recordGenerationFailure(req.user.id, match.id, gymId, 'validation_failed',
-                  check.errors.join('; '));
-              } else {
-                planDays = assignWeekdaysToTemplateDays(result.days, answers.preferredDays, null);
-                generationMeta = {
-                  generatedAt: new Date().toISOString(),
-                  source: 'blueprint',
-                  templateId: match.id,
-                  gymId,
-                  decisions: result.decisions,
-                };
-              }
-            }
+            planDays = assignWeekdaysToTemplateDays(result.days, answers.preferredDays, null);
+            generationMeta = {
+              generatedAt: new Date().toISOString(),
+              source: adminBlueprint ? 'blueprint' : 'default_blueprint',
+              templateId: match?.id || null,
+              gymId,
+              decisions: result.decisions,
+            };
           }
         }
+      }
 
-        // Fixed template, or a blueprint that couldn't generate but still
-        // has hand-authored days to fall back on.
-        if (!planDays && Array.isArray(match.days) && match.days.length > 0) {
-          planDays = assignWeekdaysToTemplateDays(match.days, answers.preferredDays, null);
-        }
+      // Fall back to a matched fixed template only if it actually contains
+      // exercises. A template switched to blueprint mode still carries its
+      // old (now empty) days array, and handing that over would deliver a
+      // plan with days but nothing in them instead of failing honestly.
+      if (!planDays && match && Array.isArray(match.days) && match.days.some(d => (d.exercises || []).length > 0)) {
+        planDays = assignWeekdaysToTemplateDays(match.days, answers.preferredDays, null);
+        planName = match.name;
+      }
 
-        if (planDays) {
-          await pool.query(
-            `INSERT INTO user_plans (user_id, name, days, source_template_id, generated_for_gym_id, generation_meta, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, now())
-             ON CONFLICT (user_id) DO UPDATE SET name=$2, days=$3, source_template_id=$4, generated_for_gym_id=$5, generation_meta=$6, updated_at=now()`,
-            [req.user.id, match.name, JSON.stringify(planDays), match.id, gymId,
-             generationMeta ? JSON.stringify(generationMeta) : null]
-          );
-          assignedPlan = true;
-        }
+      if (planDays) {
+        await pool.query(
+          `INSERT INTO user_plans (user_id, name, days, source_template_id, generated_for_gym_id, generation_meta, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, now())
+           ON CONFLICT (user_id) DO UPDATE SET name=$2, days=$3, source_template_id=$4, generated_for_gym_id=$5, generation_meta=$6, updated_at=now()`,
+          [req.user.id, planName, JSON.stringify(planDays), match?.id || null, gymId,
+           generationMeta ? JSON.stringify(generationMeta) : null]
+        );
+        assignedPlan = true;
       }
     }
 

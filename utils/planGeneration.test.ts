@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   checkEligibility, eligibleExercises, gymEquipmentIds, selectSplit,
-  selectForSlot, estimateDayMinutes, generatePlan, validatePlan,
+  selectForSlot, estimateDayMinutes, generatePlan, validatePlan, buildDefaultBlueprint,
   GenerationProfile, EligibilityContext,
 } from './planGeneration';
 import type { GenerationFailure } from './planGeneration';
@@ -293,5 +293,93 @@ describe('validation is independent of selection', () => {
     const result = validatePlan(days, library, gym([]), profile({ daysPerWeek: 1 }));
     expect(result.valid).toBe(false);
     expect(result.errors.some(e => e.includes('not eligible'))).toBe(true);
+  });
+});
+
+// --- default blueprints (fully automatic, no admin authoring) ----------------
+
+describe('default blueprints', () => {
+  it('builds one day per training day', () => {
+    expect(buildDefaultBlueprint('Muscle gain', 4)).toHaveLength(4);
+    expect(buildDefaultBlueprint('Muscle gain', 2)).toHaveLength(2);
+  });
+
+  it('uses upper/lower at 4 days and full body at 3', () => {
+    expect(buildDefaultBlueprint('Muscle gain', 4).map(d => d.name)).toEqual(['Upper', 'Lower', 'Upper', 'Lower']);
+    expect(buildDefaultBlueprint('Muscle gain', 3).every(d => d.name.startsWith('Full Body'))).toBe(true);
+  });
+
+  it('prescribes heavier low-rep work for muscle gain than for endurance', () => {
+    const gain = buildDefaultBlueprint('Muscle gain', 3)[0].slots[0];
+    const endure = buildDefaultBlueprint('Endurance', 3)[0].slots[0];
+    expect(gain.repsMax).toBeLessThan(endure.repsMin);
+    expect(gain.restSeconds).toBeGreaterThan(endure.restSeconds);
+  });
+
+  it('adds a conditioning finisher only for calorie-focused goals', () => {
+    const hasConditioning = (goal: string) =>
+      buildDefaultBlueprint(goal, 3)[0].slots.some(s => s.movementPattern === 'conditioning');
+    expect(hasConditioning('Weight loss')).toBe(true);
+    expect(hasConditioning('Endurance')).toBe(true);
+    expect(hasConditioning('Muscle gain')).toBe(false);
+  });
+
+  it('always leaves at least one required slot so a day is never all-optional', () => {
+    for (const goal of ['Muscle gain', 'Weight loss', 'General fitness', 'Endurance']) {
+      for (const days of [1, 2, 3, 4]) {
+        buildDefaultBlueprint(goal, days).forEach(d => {
+          expect(d.slots.some(s => !s.optional)).toBe(true);
+        });
+      }
+    }
+  });
+
+  it('falls back to a known prescription for an unrecognized goal', () => {
+    const slots = buildDefaultBlueprint('Something Unknown', 3)[0].slots;
+    expect(slots.length).toBeGreaterThan(0);
+    expect(slots[0].setsMin).toBeGreaterThan(0);
+    expect(slots[0].repsMin).toBeGreaterThan(0);
+  });
+
+  it('is deterministic for the same goal and day count', () => {
+    const a = JSON.stringify(buildDefaultBlueprint('Muscle gain', 4));
+    const b = JSON.stringify(buildDefaultBlueprint('Muscle gain', 4));
+    expect(a).toBe(b);
+  });
+
+  it('generates a real plan end to end with no admin-authored blueprint', () => {
+    const library = [
+      exercise({ id: 'squat', name: 'Goblet Squat', movementPattern: 'squat' }),
+      exercise({ id: 'push', name: 'Push-up', movementPattern: 'horizontal_push' }),
+      exercise({ id: 'row', name: 'Dumbbell Row', movementPattern: 'horizontal_pull' }),
+    ];
+    const template: PlanTemplate = {
+      id: 'auto', name: 'Auto', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 60, days: [],
+      blueprintDays: buildDefaultBlueprint('Muscle gain', 1),
+    };
+    const p = profile({ daysPerWeek: 1, sessionMinutes: 60 });
+    const result = generatePlan(template, library, gym([]), p);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.days[0].exercises.map(e => e.name).sort())
+      .toEqual(['Dumbbell Row', 'Goblet Squat', 'Push-up']);
+    expect(validatePlan(result.days, library, gym([]), p).valid).toBe(true);
+  });
+
+  it('still succeeds when only the required patterns are tagged', () => {
+    // Optional slots (hinge, vertical push, core) have no candidates here —
+    // they should be skipped rather than failing the whole generation.
+    const library = [
+      exercise({ id: 'squat', name: 'Squat', movementPattern: 'squat' }),
+      exercise({ id: 'push', name: 'Push-up', movementPattern: 'horizontal_push' }),
+      exercise({ id: 'row', name: 'Row', movementPattern: 'horizontal_pull' }),
+    ];
+    const template: PlanTemplate = {
+      id: 'auto', name: 'Auto', goal: 'General fitness', daysPerWeek: '1', durationMin: 60, days: [],
+      blueprintDays: buildDefaultBlueprint('General fitness', 1),
+    };
+    const result = generatePlan(template, library, gym([]), profile({ daysPerWeek: 1 }));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.days[0].exercises).toHaveLength(3);
   });
 });

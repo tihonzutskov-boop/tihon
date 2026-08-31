@@ -4,6 +4,7 @@
 import type {
   LibraryExercise, Gym, ExerciseSlot, BlueprintDay, PlanTemplate,
   ExperienceLevel, JointStressArea, WorkoutDay, Exercise, SetDetail,
+  MovementPattern,
 } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -97,6 +98,96 @@ export const selectSplit = (daysPerWeek: number): { split: SplitName; dayNames: 
     return { split: 'upper_lower', dayNames: ['Upper', 'Lower', 'Upper', 'Lower'].slice(0, daysPerWeek) };
   }
   return { split: 'full_body', dayNames: Array.from({ length: Math.max(daysPerWeek, 1) }, (_, i) => `Full Body ${i + 1}`) };
+};
+
+// ---------------------------------------------------------------------------
+// Default blueprints — what makes generation fully automatic
+// ---------------------------------------------------------------------------
+
+// Set/rep/rest defaults per goal. Compound and isolation work are prescribed
+// differently within the same goal, which is why this is keyed by both.
+const GOAL_PRESCRIPTION: Record<string, { compound: Omit<ExerciseSlot, 'id' | 'movementPattern' | 'priority'>; isolation: Omit<ExerciseSlot, 'id' | 'movementPattern' | 'priority'> }> = {
+  'Muscle gain': {
+    compound: { setsMin: 3, setsMax: 4, repsMin: 8, repsMax: 12, restSeconds: 120, exerciseCategory: 'compound' },
+    isolation: { setsMin: 2, setsMax: 3, repsMin: 10, repsMax: 15, restSeconds: 60, exerciseCategory: 'isolation' },
+  },
+  'Weight loss': {
+    compound: { setsMin: 3, setsMax: 3, repsMin: 12, repsMax: 15, restSeconds: 60, exerciseCategory: 'compound' },
+    isolation: { setsMin: 2, setsMax: 3, repsMin: 12, repsMax: 15, restSeconds: 45, exerciseCategory: 'isolation' },
+  },
+  'General fitness': {
+    compound: { setsMin: 3, setsMax: 3, repsMin: 10, repsMax: 12, restSeconds: 90, exerciseCategory: 'compound' },
+    isolation: { setsMin: 2, setsMax: 3, repsMin: 10, repsMax: 15, restSeconds: 60, exerciseCategory: 'isolation' },
+  },
+  'Endurance': {
+    compound: { setsMin: 2, setsMax: 3, repsMin: 15, repsMax: 20, restSeconds: 45, exerciseCategory: 'compound' },
+    isolation: { setsMin: 2, setsMax: 2, repsMin: 15, repsMax: 20, restSeconds: 30, exerciseCategory: 'isolation' },
+  },
+};
+const DEFAULT_GOAL = 'General fitness';
+
+// Which movements make up each day type, in training order. Compound work
+// first (it's required), accessories and conditioning last (optional, so the
+// duration fitter trims them before touching the main lifts).
+type SlotSpec = { pattern: MovementPattern; kind: 'compound' | 'isolation'; optional?: boolean };
+
+const FULL_BODY: SlotSpec[] = [
+  { pattern: 'squat', kind: 'compound' },
+  { pattern: 'horizontal_push', kind: 'compound' },
+  { pattern: 'horizontal_pull', kind: 'compound' },
+  { pattern: 'hinge', kind: 'compound', optional: true },
+  { pattern: 'vertical_push', kind: 'compound', optional: true },
+  { pattern: 'core', kind: 'isolation', optional: true },
+];
+
+const UPPER: SlotSpec[] = [
+  { pattern: 'horizontal_push', kind: 'compound' },
+  { pattern: 'horizontal_pull', kind: 'compound' },
+  { pattern: 'vertical_push', kind: 'compound', optional: true },
+  { pattern: 'vertical_pull', kind: 'compound', optional: true },
+  { pattern: 'horizontal_pull', kind: 'isolation', optional: true },
+  { pattern: 'horizontal_push', kind: 'isolation', optional: true },
+];
+
+const LOWER: SlotSpec[] = [
+  { pattern: 'squat', kind: 'compound' },
+  { pattern: 'hinge', kind: 'compound' },
+  { pattern: 'lunge', kind: 'compound', optional: true },
+  { pattern: 'core', kind: 'isolation', optional: true },
+];
+
+// Goals centered on calorie burn / work capacity get a conditioning finisher.
+const GOALS_WITH_CONDITIONING = new Set(['Weight loss', 'Endurance']);
+
+// Builds a complete blueprint from goal + days/week alone — no admin
+// authoring required. An admin-authored blueprint always wins when one
+// exists; this is what every other client falls back to.
+export const buildDefaultBlueprint = (goal: string, daysPerWeek: number): BlueprintDay[] => {
+  const { dayNames } = selectSplit(daysPerWeek);
+  const rx = GOAL_PRESCRIPTION[goal] || GOAL_PRESCRIPTION[DEFAULT_GOAL];
+
+  return dayNames.map((name, dayIdx) => {
+    const base = name.startsWith('Upper') ? UPPER : name.startsWith('Lower') ? LOWER : FULL_BODY;
+    const specs: SlotSpec[] = GOALS_WITH_CONDITIONING.has(goal)
+      ? [...base, { pattern: 'conditioning', kind: 'isolation', optional: true }]
+      : base;
+
+    return {
+      id: `defbp-${dayIdx}`,
+      name,
+      slots: specs.map((spec, i) => ({
+        ...rx[spec.kind],
+        id: `defslot-${dayIdx}-${i}`,
+        movementPattern: spec.pattern,
+        priority: i + 1,
+        optional: spec.optional,
+        // Conditioning is neither compound nor isolation in the library's
+        // taxonomy — leaving the category unset lets any cardio-tagged
+        // exercise fill it rather than none.
+        exerciseCategory: spec.pattern === 'conditioning' ? undefined : rx[spec.kind].exerciseCategory,
+      })),
+    };
+  });
 };
 
 // ---------------------------------------------------------------------------
