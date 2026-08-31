@@ -264,6 +264,7 @@ export interface QuestionnaireAnswers {
   daysPerWeek: string;        // '1'..'4'
   preferredDays: Weekday[];   // which weekdays, in calendar order — length matches daysPerWeek
   minutesPerSession: string;  // '30 min'..'90 min'
+  gymId?: string;             // which gym they train at — determines the equipment pool available to plan generation
   equipment: string;
   avoidExercises?: string;
   injuryAreas: string[];      // multi-select common areas

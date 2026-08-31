@@ -1,4 +1,7 @@
-import {
+// Type-only import: this file is also compiled to plain JS for the Express
+// server (npm run build:engine), and erasing the import keeps that output
+// standalone rather than pulling in types.ts at runtime.
+import type {
   LibraryExercise, Gym, ExerciseSlot, BlueprintDay, PlanTemplate,
   ExperienceLevel, JointStressArea, WorkoutDay, Exercise, SetDetail,
 } from '../types';

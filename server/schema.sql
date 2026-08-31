@@ -160,3 +160,46 @@ ALTER TABLE plan_templates ADD COLUMN IF NOT EXISTS duration_min INTEGER NOT NUL
 -- editing that template can push the update to everyone still using it.
 -- NULL for plans predating this column, or never matched to a template.
 ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS source_template_id VARCHAR(100) REFERENCES plan_templates(id) ON DELETE SET NULL;
+
+-- --- Automatic plan generation -------------------------------------------
+
+-- GymZone.equipmentIds existed in the client types and DEFAULT_GYM but was
+-- never persisted — so a database-backed gym had no equipment inventory at
+-- all. Plan generation reads exactly this to decide what a user can train
+-- with, so it has to survive a save.
+ALTER TABLE zones ADD COLUMN IF NOT EXISTS equipment_ids JSONB DEFAULT '[]';
+
+-- Generation metadata on exercises. All nullable: an exercise without these
+-- is simply never auto-selected (fail closed), which is also what keeps
+-- every pre-existing hand-authored exercise working untouched.
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS movement_pattern VARCHAR(40);
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS exercise_category VARCHAR(30);
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS min_experience VARCHAR(20);
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS joint_stress JSONB DEFAULT '[]';
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS generation_enabled BOOLEAN DEFAULT false;
+
+-- A template carrying blueprint_days is a *blueprint*: the generator
+-- resolves its slots per user instead of copying days verbatim. NULL means
+-- a classic fixed template, assigned exactly as before.
+ALTER TABLE plan_templates ADD COLUMN IF NOT EXISTS blueprint_days JSONB;
+ALTER TABLE plan_templates ADD COLUMN IF NOT EXISTS min_experience VARCHAR(20);
+
+-- Which gym a user's plan was generated against, so changing gyms can flag
+-- plans whose exercises the new gym may not support.
+ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS generated_for_gym_id VARCHAR(100);
+-- Provenance: what produced this plan, and which rule/data versions were in
+-- effect — so a plan can be explained (and reproduced) long after the fact.
+ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS generation_meta JSONB;
+
+-- Generation failures are never silently swallowed: when the engine can't
+-- produce a valid plan it records why here, for admin review.
+CREATE TABLE IF NOT EXISTS generation_failures (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  template_id VARCHAR(100),
+  gym_id VARCHAR(100),
+  reason VARCHAR(60) NOT NULL,
+  detail TEXT,
+  resolved BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

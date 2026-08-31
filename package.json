@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "server": "node server/server.js",
-    "build": "vite build",
+    "build:engine": "tsc -p tsconfig.engine.json",
+    "build": "npm run build:engine && vite build",
     "start": "node server/server.js",
+    "server": "npm run build:engine && node server/server.js",
     "preview": "vite preview",
     "test": "vitest run"
   },

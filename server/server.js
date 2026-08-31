@@ -13,6 +13,10 @@ import {
   createRequireAdmin,
   isAdminEmail,
 } from './auth.js';
+// Compiled from utils/planGeneration.ts by `npm run build:engine` — the same
+// engine the frontend and the test suite use, so there is exactly one
+// implementation of the eligibility and safety rules.
+import { generatePlan, validatePlan } from './generated/utils/planGeneration.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -270,6 +274,62 @@ const assignWeekdaysToTemplateDays = (templateDays, preferredDays, existingDays)
   });
 };
 
+// The questionnaire stores display strings ('60 min', 'Beginner'); the engine
+// wants structured values. Normalizing in one place keeps raw questionnaire
+// text out of the generation rules entirely.
+const GENERATION_INJURY_AREAS = ['Back', 'Knees', 'Shoulders', 'Neck', 'Wrists', 'Hips', 'Ankles'];
+const buildGenerationProfile = (answers, goal) => ({
+  goal,
+  experience: ['Beginner', 'Intermediate', 'Advanced'].includes(answers.level) ? answers.level : 'Beginner',
+  daysPerWeek: parseInt(answers.daysPerWeek, 10) || 1,
+  sessionMinutes: parseInt(String(answers.minutesPerSession || '').replace(/[^0-9]/g, ''), 10) || 45,
+  // Only recognized areas reach the engine — an unrecognized value would
+  // otherwise silently match nothing and behave as "no injury".
+  injuryAreas: (answers.injuryAreas || []).filter(a => GENERATION_INJURY_AREAS.includes(a)),
+});
+
+// Loads the gym the plan is being generated against, with its zones — the
+// zones' equipmentIds are what the eligibility filter reads.
+const loadGymForGeneration = async (gymId) => {
+  const gymRes = await pool.query('SELECT * FROM gyms WHERE id = $1', [gymId]);
+  if (gymRes.rows.length === 0) return null;
+  const zonesRes = await pool.query('SELECT * FROM zones WHERE gym_id = $1', [gymId]);
+  return {
+    id: gymRes.rows[0].id,
+    name: gymRes.rows[0].name,
+    zones: zonesRes.rows.map(z => ({
+      id: z.id, name: z.name, type: z.type, x: z.x, y: z.y, width: z.width, height: z.height,
+      color: z.color, icon: z.icon, equipmentIds: z.equipment_ids || [],
+    })),
+  };
+};
+
+const loadLibraryForGeneration = async () => {
+  const result = await pool.query('SELECT * FROM exercises');
+  return result.rows.map(row => ({
+    id: row.id,
+    name: row.name,
+    targetMuscle: row.target_muscle || '',
+    equipmentRequired: row.equipment_required || '',
+    requiredEquipmentIds: row.required_equipment_ids || [],
+    category: row.category || '',
+    instructions: row.instructions || '',
+    equipmentId: row.equipment_id || '',
+    movementPattern: row.movement_pattern || undefined,
+    exerciseCategory: row.exercise_category || undefined,
+    minExperience: row.min_experience || undefined,
+    jointStress: row.joint_stress || [],
+    generationEnabled: row.generation_enabled === true,
+  }));
+};
+
+const recordGenerationFailure = async (userId, templateId, gymId, reason, detail) => {
+  await pool.query(
+    'INSERT INTO generation_failures (user_id, template_id, gym_id, reason, detail) VALUES ($1, $2, $3, $4, $5)',
+    [userId, templateId || null, gymId || null, reason, detail || null]
+  );
+};
+
 app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
   const { answers } = req.body;
   try {
@@ -315,14 +375,65 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
         if (match) break;
       }
       if (match) {
-        const days = assignWeekdaysToTemplateDays(match.days, answers.preferredDays, null);
-        await pool.query(
-          `INSERT INTO user_plans (user_id, name, days, source_template_id, updated_at)
-           VALUES ($1, $2, $3, $4, now())
-           ON CONFLICT (user_id) DO UPDATE SET name=$2, days=$3, source_template_id=$4, updated_at=now()`,
-          [req.user.id, match.name, JSON.stringify(days), match.id]
-        );
-        assignedPlan = true;
+        let planDays = null;
+        let generationMeta = null;
+        const gymId = answers.gymId || null;
+
+        // A template carrying blueprint_days is a blueprint: resolve its
+        // slots against this specific user and gym instead of copying fixed
+        // days. Anything else keeps the original copy-verbatim behavior.
+        if (match.blueprint_days && Array.isArray(match.blueprint_days) && match.blueprint_days.length > 0) {
+          const gym = gymId ? await loadGymForGeneration(gymId) : null;
+          if (!gym) {
+            await recordGenerationFailure(req.user.id, match.id, gymId, 'no_gym',
+              'Blueprint requires a selected gym to determine available equipment');
+          } else {
+            const library = await loadLibraryForGeneration();
+            const profile = buildGenerationProfile(answers, match.goal);
+            const result = generatePlan(
+              { ...match, blueprintDays: match.blueprint_days, durationMin: match.duration_min },
+              library, gym, profile
+            );
+
+            if (!result.ok) {
+              await recordGenerationFailure(req.user.id, match.id, gymId, result.reason, result.detail);
+            } else {
+              // Validate independently of the selection step — a plan that
+              // fails here is never delivered, it goes to admin review.
+              const check = validatePlan(result.days, library, gym, profile);
+              if (!check.valid) {
+                await recordGenerationFailure(req.user.id, match.id, gymId, 'validation_failed',
+                  check.errors.join('; '));
+              } else {
+                planDays = assignWeekdaysToTemplateDays(result.days, answers.preferredDays, null);
+                generationMeta = {
+                  generatedAt: new Date().toISOString(),
+                  source: 'blueprint',
+                  templateId: match.id,
+                  gymId,
+                  decisions: result.decisions,
+                };
+              }
+            }
+          }
+        }
+
+        // Fixed template, or a blueprint that couldn't generate but still
+        // has hand-authored days to fall back on.
+        if (!planDays && Array.isArray(match.days) && match.days.length > 0) {
+          planDays = assignWeekdaysToTemplateDays(match.days, answers.preferredDays, null);
+        }
+
+        if (planDays) {
+          await pool.query(
+            `INSERT INTO user_plans (user_id, name, days, source_template_id, generated_for_gym_id, generation_meta, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, now())
+             ON CONFLICT (user_id) DO UPDATE SET name=$2, days=$3, source_template_id=$4, generated_for_gym_id=$5, generation_meta=$6, updated_at=now()`,
+            [req.user.id, match.name, JSON.stringify(planDays), match.id, gymId,
+             generationMeta ? JSON.stringify(generationMeta) : null]
+          );
+          assignedPlan = true;
+        }
       }
     }
 
@@ -330,6 +441,48 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error saving questionnaire' });
+  }
+});
+
+// Generation failures awaiting admin review. The engine deliberately fails
+// closed rather than delivering a questionable plan, so this is where those
+// cases surface instead of being silently swallowed.
+app.get('/api/coaching/generation-failures', requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT gf.*, u.name AS user_name, u.email AS user_email
+      FROM generation_failures gf
+      JOIN users u ON u.id = gf.user_id
+      WHERE gf.resolved = false
+      ORDER BY gf.created_at DESC
+      LIMIT 100
+    `);
+    res.json({
+      failures: result.rows.map(r => ({
+        id: r.id,
+        userId: r.user_id,
+        userName: r.user_name,
+        userEmail: r.user_email,
+        templateId: r.template_id,
+        gymId: r.gym_id,
+        reason: r.reason,
+        detail: r.detail,
+        createdAt: r.created_at,
+      })),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error fetching generation failures' });
+  }
+});
+
+app.put('/api/coaching/generation-failures/:id/resolve', requireAdmin, async (req, res) => {
+  try {
+    await pool.query('UPDATE generation_failures SET resolved = true WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error resolving generation failure' });
   }
 });
 
@@ -395,6 +548,8 @@ app.get('/api/plan-templates', requireAdmin, async (req, res) => {
     res.json({
       templates: result.rows.map(r => ({
         id: r.id, name: r.name, goal: r.goal, daysPerWeek: r.days_per_week, durationMin: r.duration_min, days: r.days,
+        blueprintDays: r.blueprint_days || undefined,
+        minExperience: r.min_experience || undefined,
       })),
     });
   } catch (err) {
@@ -404,11 +559,12 @@ app.get('/api/plan-templates', requireAdmin, async (req, res) => {
 });
 
 app.post('/api/plan-templates', requireAdmin, async (req, res) => {
-  const { id, name, goal, daysPerWeek, durationMin, days } = req.body;
+  const { id, name, goal, daysPerWeek, durationMin, days, blueprintDays, minExperience } = req.body;
   try {
     await pool.query(
-      'INSERT INTO plan_templates (id, name, goal, days_per_week, duration_min, days) VALUES ($1, $2, $3, $4, $5, $6)',
-      [id, name, goal, daysPerWeek, durationMin || 45, JSON.stringify(days || [])]
+      'INSERT INTO plan_templates (id, name, goal, days_per_week, duration_min, days, blueprint_days, min_experience) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [id, name, goal, daysPerWeek, durationMin || 45, JSON.stringify(days || []),
+       blueprintDays ? JSON.stringify(blueprintDays) : null, minExperience || null]
     );
     res.json({ success: true });
   } catch (err) {
@@ -418,14 +574,15 @@ app.post('/api/plan-templates', requireAdmin, async (req, res) => {
 });
 
 app.put('/api/plan-templates/:id', requireAdmin, async (req, res) => {
-  const { name, goal, daysPerWeek, durationMin, days } = req.body;
+  const { name, goal, daysPerWeek, durationMin, days, blueprintDays, minExperience } = req.body;
   const templateDays = days || [];
   try {
     await pool.query(
-      `INSERT INTO plan_templates (id, name, goal, days_per_week, duration_min, days)
-       VALUES ($6, $1, $2, $3, $4, $5)
-       ON CONFLICT (id) DO UPDATE SET name=$1, goal=$2, days_per_week=$3, duration_min=$4, days=$5`,
-      [name, goal, daysPerWeek, durationMin || 45, JSON.stringify(templateDays), req.params.id]
+      `INSERT INTO plan_templates (id, name, goal, days_per_week, duration_min, days, blueprint_days, min_experience)
+       VALUES ($6, $1, $2, $3, $4, $5, $7, $8)
+       ON CONFLICT (id) DO UPDATE SET name=$1, goal=$2, days_per_week=$3, duration_min=$4, days=$5, blueprint_days=$7, min_experience=$8`,
+      [name, goal, daysPerWeek, durationMin || 45, JSON.stringify(templateDays), req.params.id,
+       blueprintDays ? JSON.stringify(blueprintDays) : null, minExperience || null]
     );
 
     // Push this edit to every client whose plan was assigned from this
@@ -478,7 +635,9 @@ app.get('/api/gyms', async (req, res) => {
     // Note: For production, consider using JOINs or JSON_AGG for efficiency
     for (let gym of gyms) {
       const zonesRes = await client.query('SELECT * FROM zones WHERE gym_id = $1', [gym.id]);
-      gym.zones = zonesRes.rows;
+      // equipment_ids is snake_case in the DB but the client (and the
+      // generation engine) read equipmentIds.
+      gym.zones = zonesRes.rows.map(z => ({ ...z, equipmentIds: z.equipment_ids || [] }));
 
       const annexRes = await client.query('SELECT * FROM annexes WHERE gym_id = $1', [gym.id]);
       gym.annexes = annexRes.rows;
@@ -511,8 +670,8 @@ app.post('/api/gyms', requireAdmin, async (req, res) => {
     if (zones && zones.length > 0) {
       for (const z of zones) {
         await client.query(
-          'INSERT INTO zones (id, gym_id, name, type, x, y, width, height, color, icon, description, machines) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)',
-          [z.id, id, z.name, z.type, z.x, z.y, z.width, z.height, z.color, z.icon, z.description, JSON.stringify(z.machines || [])]
+          'INSERT INTO zones (id, gym_id, name, type, x, y, width, height, color, icon, description, machines, equipment_ids) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)',
+          [z.id, id, z.name, z.type, z.x, z.y, z.width, z.height, z.color, z.icon, z.description, JSON.stringify(z.machines || []), JSON.stringify(z.equipmentIds || [])]
         );
       }
     }
@@ -570,8 +729,8 @@ app.put('/api/gyms/:id', requireAdmin, async (req, res) => {
       await client.query('DELETE FROM zones WHERE gym_id = $1', [id]);
       for (const z of zones) {
         await client.query(
-          'INSERT INTO zones (id, gym_id, name, type, x, y, width, height, color, icon, description, machines) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)',
-          [z.id, id, z.name, z.type, z.x, z.y, z.width, z.height, z.color, z.icon, z.description, JSON.stringify(z.machines || [])]
+          'INSERT INTO zones (id, gym_id, name, type, x, y, width, height, color, icon, description, machines, equipment_ids) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)',
+          [z.id, id, z.name, z.type, z.x, z.y, z.width, z.height, z.color, z.icon, z.description, JSON.stringify(z.machines || []), JSON.stringify(z.equipmentIds || [])]
         );
       }
     }
@@ -731,7 +890,12 @@ app.get('/api/exercises', async (req, res) => {
       harderExerciseId: row.harder_exercise_id || '',
       easierExerciseId: row.easier_exercise_id || '',
       harderTutorial: row.harder_tutorial || {},
-      easierTutorial: row.easier_tutorial || {}
+      easierTutorial: row.easier_tutorial || {},
+      movementPattern: row.movement_pattern || undefined,
+      exerciseCategory: row.exercise_category || undefined,
+      minExperience: row.min_experience || undefined,
+      jointStress: row.joint_stress || [],
+      generationEnabled: row.generation_enabled === true
     }));
     res.json(exercises);
   } catch (err) {
@@ -744,12 +908,12 @@ app.get('/api/exercises', async (req, res) => {
 
 // POST Create Exercise
 app.post('/api/exercises', requireAdmin, async (req, res) => {
-  const { id, name, targetMuscle, equipmentRequired, requiredEquipmentIds, category, instructions, equipmentId, videoUrl, imageUrl, makeHarder, makeEasier, tutorialVideoUrl, tutorialVideoFileName, steps, exerciseType, videoDurationLabel, harderExerciseId, easierExerciseId, harderTutorial, easierTutorial } = req.body;
+  const { id, name, targetMuscle, equipmentRequired, requiredEquipmentIds, category, instructions, equipmentId, videoUrl, imageUrl, makeHarder, makeEasier, tutorialVideoUrl, tutorialVideoFileName, steps, exerciseType, videoDurationLabel, harderExerciseId, easierExerciseId, harderTutorial, easierTutorial, movementPattern, exerciseCategory, minExperience, jointStress, generationEnabled } = req.body;
   let client;
   try {
     client = await pool.connect();
     await client.query(
-      'INSERT INTO exercises (id, name, target_muscle, equipment_required, required_equipment_ids, category, instructions, equipment_id, video_url, image_url, make_harder, make_easier, tutorial_video_url, tutorial_video_file_name, steps, exercise_type, video_duration_label, harder_exercise_id, easier_exercise_id, harder_tutorial, easier_tutorial) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)',
+      'INSERT INTO exercises (id, name, target_muscle, equipment_required, required_equipment_ids, category, instructions, equipment_id, video_url, image_url, make_harder, make_easier, tutorial_video_url, tutorial_video_file_name, steps, exercise_type, video_duration_label, harder_exercise_id, easier_exercise_id, harder_tutorial, easier_tutorial, movement_pattern, exercise_category, min_experience, joint_stress, generation_enabled) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)',
       [
         id,
         name,
@@ -771,7 +935,12 @@ app.post('/api/exercises', requireAdmin, async (req, res) => {
         harderExerciseId || '',
         easierExerciseId || '',
         JSON.stringify(harderTutorial || {}),
-        JSON.stringify(easierTutorial || {})
+        JSON.stringify(easierTutorial || {}),
+        movementPattern || null,
+        exerciseCategory || null,
+        minExperience || null,
+        JSON.stringify(jointStress || []),
+        generationEnabled === true
       ]
     );
     res.json({ success: true, id });
@@ -786,17 +955,17 @@ app.post('/api/exercises', requireAdmin, async (req, res) => {
 // PUT Update Exercise
 app.put('/api/exercises/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
-  const { name, targetMuscle, equipmentRequired, requiredEquipmentIds, category, instructions, equipmentId, videoUrl, imageUrl, makeHarder, makeEasier, tutorialVideoUrl, tutorialVideoFileName, steps, exerciseType, videoDurationLabel, harderExerciseId, easierExerciseId, harderTutorial, easierTutorial } = req.body;
+  const { name, targetMuscle, equipmentRequired, requiredEquipmentIds, category, instructions, equipmentId, videoUrl, imageUrl, makeHarder, makeEasier, tutorialVideoUrl, tutorialVideoFileName, steps, exerciseType, videoDurationLabel, harderExerciseId, easierExerciseId, harderTutorial, easierTutorial, movementPattern, exerciseCategory, minExperience, jointStress, generationEnabled } = req.body;
   let client;
   try {
     client = await pool.connect();
     // Upsert: the item being "updated" may be one of the client-side default
     // exercises that was never actually inserted into the database yet.
     await client.query(
-      `INSERT INTO exercises (id, name, target_muscle, equipment_required, required_equipment_ids, category, instructions, equipment_id, video_url, image_url, make_harder, make_easier, tutorial_video_url, tutorial_video_file_name, steps, exercise_type, video_duration_label, harder_exercise_id, easier_exercise_id, harder_tutorial, easier_tutorial)
-       VALUES ($21, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+      `INSERT INTO exercises (id, name, target_muscle, equipment_required, required_equipment_ids, category, instructions, equipment_id, video_url, image_url, make_harder, make_easier, tutorial_video_url, tutorial_video_file_name, steps, exercise_type, video_duration_label, harder_exercise_id, easier_exercise_id, harder_tutorial, easier_tutorial, movement_pattern, exercise_category, min_experience, joint_stress, generation_enabled)
+       VALUES ($26, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
        ON CONFLICT (id) DO UPDATE SET
-         name=$1, target_muscle=$2, equipment_required=$3, required_equipment_ids=$4, category=$5, instructions=$6, equipment_id=$7, video_url=$8, image_url=$9, make_harder=$10, make_easier=$11, tutorial_video_url=$12, tutorial_video_file_name=$13, steps=$14, exercise_type=$15, video_duration_label=$16, harder_exercise_id=$17, easier_exercise_id=$18, harder_tutorial=$19, easier_tutorial=$20`,
+         name=$1, target_muscle=$2, equipment_required=$3, required_equipment_ids=$4, category=$5, instructions=$6, equipment_id=$7, video_url=$8, image_url=$9, make_harder=$10, make_easier=$11, tutorial_video_url=$12, tutorial_video_file_name=$13, steps=$14, exercise_type=$15, video_duration_label=$16, harder_exercise_id=$17, easier_exercise_id=$18, harder_tutorial=$19, easier_tutorial=$20, movement_pattern=$21, exercise_category=$22, min_experience=$23, joint_stress=$24, generation_enabled=$25`,
       [
         name,
         targetMuscle || '',
@@ -818,6 +987,11 @@ app.put('/api/exercises/:id', requireAdmin, async (req, res) => {
         easierExerciseId || '',
         JSON.stringify(harderTutorial || {}),
         JSON.stringify(easierTutorial || {}),
+        movementPattern || null,
+        exerciseCategory || null,
+        minExperience || null,
+        JSON.stringify(jointStress || []),
+        generationEnabled === true,
         id
       ]
     );
