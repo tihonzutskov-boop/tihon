@@ -289,7 +289,6 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
   const [savingExercise, setSavingExercise] = useState(false);
   const [equipmentPickerSearch, setEquipmentPickerSearch] = useState('');
   const [showTutorialEditor, setShowTutorialEditor] = useState(false);
-  const [justSaved, setJustSaved] = useState(false);
   const exerciseFormRef = useRef<HTMLFormElement>(null);
   // Set right before requestSubmit() when "Add Tutorial" is clicked on a
   // brand-new exercise — the save still has to go through the normal
@@ -334,7 +333,6 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     setFormEasierVariation(variationStateFromExercise(ex, 'easier'));
     setFormError('');
     setEquipmentPickerSearch('');
-    setJustSaved(false);
     setIsExerciseModalOpen(true);
   };
 
@@ -349,7 +347,6 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     setFormEasierVariation(blankVariationState());
     setFormError('');
     setEquipmentPickerSearch('');
-    setJustSaved(false);
     setIsExerciseModalOpen(true);
   };
 
@@ -934,12 +931,8 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                   : handleAddNewExercise(exData)
                 )
                   .then((savedEx) => {
-                    // Stay open on the saved exercise instead of closing —
-                    // this is what makes "Add Tutorial" reachable right
-                    // after registering a new exercise, not just when
-                    // reopening it later from the library list.
                     setEditingExercise(savedEx);
-                    setJustSaved(true);
+                    setIsExerciseModalOpen(false);
                     if (openTutorialAfterSaveRef.current) {
                       openTutorialAfterSaveRef.current = false;
                       setShowTutorialEditor(true);
@@ -1105,7 +1098,6 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                   {editingExercise ? (
                     <div className="p-3 rounded-xl border border-lime-500/20 bg-lime-500/5 flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        {justSaved && <p className="text-[10.5px] text-lime-400 font-bold mb-0.5">✓ Saved</p>}
                         <p className="text-[10px] text-slate-500 leading-relaxed">Video, step-by-step instructions, and the GIF live in the Tutorials editor.</p>
                       </div>
                       <button
@@ -1192,7 +1184,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                 </div>
 
                 <div className="p-4 border-t border-slate-800 bg-slate-900 flex justify-end space-x-3 flex-shrink-0">
-                   <button type="button" onClick={() => setIsExerciseModalOpen(false)} className="px-5 py-2.5 bg-slate-950 hover:bg-slate-800 rounded-xl text-xs font-bold text-slate-400 border border-slate-800 transition-colors min-h-[44px]">{justSaved ? 'Close' : t.discardBtn}</button>
+                   <button type="button" onClick={() => setIsExerciseModalOpen(false)} className="px-5 py-2.5 bg-slate-950 hover:bg-slate-800 rounded-xl text-xs font-bold text-slate-400 border border-slate-800 transition-colors min-h-[44px]">{t.discardBtn}</button>
                    <button type="submit" disabled={savingExercise} className="px-5 py-2.5 bg-lime-500 hover:bg-lime-400 rounded-xl text-xs font-bold text-slate-950 shadow-md shadow-lime-500/20 min-h-[44px] disabled:opacity-60">
                      {savingExercise ? 'Saving…' : editingExercise ? t.saveBtn : t.publishBtn}
                    </button>
