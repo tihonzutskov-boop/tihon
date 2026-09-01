@@ -208,10 +208,21 @@ export type ExerciseCategory = 'compound' | 'isolation' | 'cardio' | 'mobility' 
 
 export type ExperienceLevel = 'Beginner' | 'Intermediate' | 'Advanced';
 
-// Body areas a user can report as injured (mirrors COMMON_INJURIES in the
-// questionnaire). An exercise lists the areas it meaningfully stresses, and
-// the eligibility filter excludes it for anyone reporting one of them.
-export type JointStressArea = 'Back' | 'Knees' | 'Shoulders' | 'Neck' | 'Wrists' | 'Hips' | 'Ankles';
+// Body areas a user can report as injured. An exercise lists the areas it
+// meaningfully stresses, and the eligibility filter excludes it for anyone
+// reporting one of them.
+export type JointStressArea =
+  | 'Back' | 'Knees' | 'Shoulders' | 'Neck' | 'Wrists' | 'Hips' | 'Ankles'
+  | 'Elbows' | 'Chest' | 'Groin' | 'Hamstrings' | 'Achilles';
+
+// Single source for both the exercise tagging chips and the questionnaire's
+// injury picker. Eligibility compares these two by exact string, so a value
+// present in one list and missing from the other silently stops excluding
+// anything — keeping one array avoids that drift.
+export const ALL_JOINT_STRESS_AREAS: JointStressArea[] = [
+  'Back', 'Knees', 'Shoulders', 'Neck', 'Wrists', 'Hips', 'Ankles',
+  'Elbows', 'Chest', 'Groin', 'Hamstrings', 'Achilles',
+];
 
 // Structured muscle tags, separate from the free-text targetMuscle which is
 // display copy and can't be reasoned about. These let the generator check a

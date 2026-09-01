@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ClipboardList, Check } from 'lucide-react';
-import { QuestionnaireAnswers, Weekday } from '../types';
+import { QuestionnaireAnswers, Weekday, ALL_JOINT_STRESS_AREAS } from '../types';
 import { QUESTIONNAIRE_GOALS } from '../constants';
 
 interface TrainingQuestionnaireProps {
@@ -38,7 +38,9 @@ const LENGTHS = ['30 min', '45 min', '60 min', '90 min'];
 const SEXES = ['Male', 'Female', 'Prefer not to say'];
 const EQUIPMENT_OPTIONS = ['Machines only', 'Comfortable with free weights', 'Anything'];
 const CLEARANCE_OPTIONS = ['Yes, cleared to exercise', 'No / not sure', "Doesn't apply to me"];
-const COMMON_INJURIES = ['Back', 'Knees', 'Shoulders', 'Neck', 'Wrists', 'Hips', 'Ankles'];
+// Shared with the exercise tagging chips: eligibility matches these strings
+// exactly against an exercise's jointStress, so the two must not drift.
+const COMMON_INJURIES = ALL_JOINT_STRESS_AREAS;
 
 interface FormState {
   age: string; heightCm: string; weightKg: string; sex: string;

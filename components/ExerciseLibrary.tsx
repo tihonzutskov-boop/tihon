@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Gym, LibraryExercise, Language, EquipmentItem, MovementPattern, ExerciseCategory, ExperienceLevel, JointStressArea, MuscleGroup, ALL_MUSCLE_GROUPS } from '../types';
+import { Gym, LibraryExercise, Language, EquipmentItem, MovementPattern, ExerciseCategory, ExperienceLevel, JointStressArea, MuscleGroup, ALL_MUSCLE_GROUPS, ALL_JOINT_STRESS_AREAS } from '../types';
 import { api, DEFAULT_EQUIPMENT } from '../services/api';
 import { searchAndFilterExercises, getExerciseLocations } from '../utils/exerciseMatcher';
 import { getEquipmentIcon, isBeginnerFriendly } from '../utils/equipmentIcons';
@@ -1502,7 +1502,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                     <div>
                       <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Stresses these areas</label>
                       <div className="flex flex-wrap gap-1.5">
-                        {(['Back','Knees','Shoulders','Neck','Wrists','Hips','Ankles'] as JointStressArea[]).map(area => {
+                        {ALL_JOINT_STRESS_AREAS.map(area => {
                           const on = formJointStress.includes(area);
                           return (
                             <button

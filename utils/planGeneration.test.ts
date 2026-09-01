@@ -5,7 +5,7 @@ import {
   GenerationProfile, EligibilityContext,
 } from './planGeneration';
 import type { GenerationFailure } from './planGeneration';
-import { LibraryExercise, Gym, ExerciseSlot, PlanTemplate } from '../types';
+import { LibraryExercise, Gym, ExerciseSlot, PlanTemplate, ALL_JOINT_STRESS_AREAS } from '../types';
 
 // --- fixtures ---------------------------------------------------------------
 
@@ -90,6 +90,19 @@ describe('safety fails closed', () => {
   it('rejects an exercise with no movement pattern rather than guessing', () => {
     const ex = exercise({ id: 'e1', name: 'Half tagged', movementPattern: undefined });
     expect(checkEligibility(ex, ctx(gym([]))).reason).toBe('missing_movement_pattern');
+  });
+
+  it('excludes an exercise for every injury area a user can report', () => {
+    // Eligibility compares the questionnaire's strings against an exercise's
+    // jointStress by exact equality, so any area the picker offers must
+    // actually exclude. A value that only exists on one side silently stops
+    // filtering and quietly puts a bad exercise in someone's plan.
+    for (const area of ALL_JOINT_STRESS_AREAS) {
+      const ex = exercise({ id: 'e1', name: 'Loaded', jointStress: [area] });
+      const result = checkEligibility(ex, ctx(gym([]), profile({ injuryAreas: [area] })));
+      expect(result.eligible, `${area} did not exclude`).toBe(false);
+      expect(result.reason).toBe('injury_conflict');
+    }
   });
 
   it('rejects an exercise stressing an injured area', () => {
