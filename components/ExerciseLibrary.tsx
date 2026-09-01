@@ -6,8 +6,9 @@ import { getEquipmentIcon, isBeginnerFriendly } from '../utils/equipmentIcons';
 import { getEquipmentIconComponent } from './EquipmentLibrary';
 import { getExerciseRequiredEquipmentIds, getZoneEquipmentIds } from '../utils/equipmentMatcher';
 import { getYouTubeVideoId } from '../utils/youtubeEmbed';
-import { deriveMuscleGroups, deriveExerciseCategory, suggestEquipmentIds } from '../utils/exerciseTagDerivation';
+import { deriveMuscleGroups, deriveExerciseCategory, suggestEquipmentIds, suggestMovementPattern } from '../utils/exerciseTagDerivation';
 import EditTutorialModal from './EditTutorialModal';
+import BulkTaggingTable from './BulkTaggingTable';
 import VariationTutorialField, { VariationState, blankVariationState, variationStateFromExercise } from './VariationTutorialField';
 import {
   Search, MapPin, Dumbbell, Edit3, Trash2, Plus, X, Loader2, KeyRound, Box, Sparkles, Globe, Layers, Check, Flame, ShieldCheck, Film
@@ -274,6 +275,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
   const [selectedEquipmentFilter, setSelectedEquipmentFilter] = useState('All');
   const [selectedMappedFilter, setSelectedMappedFilter] = useState<'All' | 'mapped' | 'unmapped'>('All');
   const [groupMode, setGroupMode] = useState<'muscle' | 'category' | 'name'>('muscle');
+  const [libView, setLibView] = useState<'browse' | 'tagging'>('browse');
   const [isLoadingExercises, setIsLoadingExercises] = useState(false);
 
   const [previewExercise, setPreviewExercise] = useState<LibraryExercise | null>(null);
@@ -518,6 +520,32 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
       {/* Fixed header: intro, search, group-by, muscle pills, secondary
           filters — stays reachable while the exercise grid below scrolls. */}
       <div className="p-6 pb-0 flex-shrink-0">
+      {/* Browse / bulk-tagging views */}
+      <div className="flex gap-1 bg-slate-950 border border-slate-800 rounded-xl p-1 mb-5 w-fit">
+        <button
+          onClick={() => setLibView('browse')}
+          className={`px-4 py-2 rounded-lg text-[11.5px] font-bold transition-colors ${
+            libView === 'browse' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-300'
+          }`}
+        >
+          Browse
+        </button>
+        <button
+          onClick={() => setLibView('tagging')}
+          className={`px-4 py-2 rounded-lg text-[11.5px] font-bold transition-colors flex items-center gap-1.5 ${
+            libView === 'tagging' ? 'bg-slate-800 text-lime-400' : 'text-slate-500 hover:text-slate-300'
+          }`}
+        >
+          Tag for generation
+          {(() => {
+            const untagged = libraryExercises.filter(e => !e.generationEnabled).length;
+            return untagged > 0
+              ? <span className="px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 text-[9px] font-extrabold">{untagged}</span>
+              : null;
+          })()}
+        </button>
+      </div>
+
       {/* Intro Header info */}
       <div className="mb-6 bg-slate-900/50 border border-slate-800 rounded-2xl p-4 flex items-start gap-4">
         <div className="w-10 h-10 bg-lime-500/10 border border-lime-500/30 text-lime-400 rounded-xl flex items-center justify-center flex-shrink-0 animate-pulse">
@@ -531,6 +559,8 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
         </div>
       </div>
 
+      {libView === 'browse' && (
+      <>
       {/* Search + Group-by */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-4">
         <div className="flex-1 max-w-md relative">
@@ -624,12 +654,29 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
           <option value="unmapped" className="bg-slate-950 text-white">Needs review</option>
         </select>
       </div>
+      </>
+      )}
       </div>
 
       {/* Scrollable exercise grid — the only part of this view that scrolls */}
       <div className="flex-1 overflow-y-auto px-6 pb-6">
-      {/* Grid Container */}
-      {isLoadingExercises ? (
+      {libView === 'tagging' ? (
+        <BulkTaggingTable
+          exercises={libraryExercises}
+          equipmentList={equipmentList}
+          onSave={async (updated) => {
+            // Saved one at a time so a mid-list failure still reports which
+            // exercise it stopped on, rather than failing the batch opaquely.
+            for (const ex of updated) {
+              const result = await api.saveExercise(ex);
+              if (!result.ok) {
+                throw new Error(result.error ? `"${ex.name}" not saved: ${result.error}` : `"${ex.name}" not saved — check your connection.`);
+              }
+            }
+            setLibraryExercises(prev => prev.map(e => updated.find(u => u.id === e.id) || e));
+          }}
+        />
+      ) : isLoadingExercises ? (
         <div className="flex-1 flex flex-col items-center justify-center text-slate-500 gap-3 py-12">
           <Loader2 className="w-8 h-8 animate-spin text-lime-500" />
           <p className="text-xs">{t.loading}</p>

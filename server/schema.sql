@@ -208,3 +208,13 @@ CREATE TABLE IF NOT EXISTS generation_failures (
   resolved BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Tutorial videos moved out of JSON and out of base64. Embedding them as a
+-- data URI in the exercise payload forced the whole file through the JSON
+-- body limit, which had to be kept small to avoid OOM-killing the instance —
+-- capping video quality as a side effect. Stored as raw bytes instead: the
+-- upload keeps its exact original bytes at any size, and range requests can
+-- be sliced in the database rather than loaded whole.
+-- tutorial_video_url is retained for videos uploaded before this change.
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS tutorial_video BYTEA;
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS tutorial_video_type VARCHAR(100);

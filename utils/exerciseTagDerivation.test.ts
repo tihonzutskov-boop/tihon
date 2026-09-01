@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveMuscleGroups, deriveExerciseCategory, suggestEquipmentIds } from './exerciseTagDerivation';
+import { deriveMuscleGroups, deriveExerciseCategory, suggestEquipmentIds, suggestMovementPattern } from './exerciseTagDerivation';
 
 describe('deriveMuscleGroups', () => {
   it('reads every muscle in a slash-separated value', () => {
@@ -169,5 +169,46 @@ describe('suggestEquipmentIds — whole-word matching', () => {
 
   it('still matches the pull-up bar for an actual pull-up', () => {
     expect(suggestEquipmentIds('Pull-up', '', equipment)).toContain('eq-pullup');
+  });
+});
+
+describe('suggestMovementPattern', () => {
+  it('reads the common compound movements from the name', () => {
+    expect(suggestMovementPattern('Bench Press')).toBe('horizontal_push');
+    expect(suggestMovementPattern('Overhead Press')).toBe('vertical_push');
+    expect(suggestMovementPattern('Wide-Grip Lat Pulldown')).toBe('vertical_pull');
+    expect(suggestMovementPattern('Dumbbell Row')).toBe('horizontal_pull');
+    expect(suggestMovementPattern('Barbell Squat')).toBe('squat');
+    expect(suggestMovementPattern('Conventional Barbell Deadlift')).toBe('hinge');
+    expect(suggestMovementPattern('Plank')).toBe('core');
+    expect(suggestMovementPattern('Treadmill Run')).toBe('conditioning');
+  });
+
+  it('prefers the more specific rule when a name matches two', () => {
+    // Contains "squat" but is a lunge pattern.
+    expect(suggestMovementPattern('Bulgarian Split Squat')).toBe('lunge');
+    // Contains "row" but is conditioning, not a horizontal pull.
+    expect(suggestMovementPattern('Concept2 Rowing Conditioning')).toBe('conditioning');
+  });
+
+  it('stays silent when the name does not settle the pattern', () => {
+    // Isolation work — guessing here would quietly misprogram plans.
+    expect(suggestMovementPattern('Seated Dumbbell Hammer Curl')).toBe('');
+    expect(suggestMovementPattern('Standing Cable Chest Fly')).toBe('');
+    expect(suggestMovementPattern('Cable Triceps Rope Pushdown')).toBe('');
+    expect(suggestMovementPattern('Seated Quadriceps Leg Extension')).toBe('');
+    expect(suggestMovementPattern('')).toBe('');
+  });
+
+  it('covers most of the real library without guessing on the rest', () => {
+    const library = [
+      'Barbell Squat','Bench Press','Dumbbell Row','Overhead Press','Incline Dumbbell Bench Press',
+      'Seated Dumbbell Hammer Curl','Conventional Barbell Deadlift','Wide-Grip Lat Pulldown',
+      'Standing Cable Chest Fly','Cable Triceps Rope Pushdown','Machine Leg Press 45°',
+      'Seated Quadriceps Leg Extension','Concept2 Rowing Conditioning','Treadmill Run','Pull-up',
+      'Push-up','Plank','Kettlebell Russian Swing','Plyometric Box Jump',
+    ];
+    const suggested = library.filter(n => suggestMovementPattern(n) !== '');
+    expect(suggested.length).toBe(15);
   });
 });

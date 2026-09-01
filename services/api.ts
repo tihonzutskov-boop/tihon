@@ -609,6 +609,39 @@ export const api = {
   // exactly as before; callers that need to know about a silent backend
   // failure (e.g. a save that only landed in the localStorage fallback) can
   // check `.ok`.
+  // The video is sent as a raw body, not embedded in the exercise JSON.
+  // Base64 inside JSON inflated every file by a third and had to fit under a
+  // small JSON body limit, which capped how good a video could be uploaded.
+  // Raw bytes are stored exactly as chosen, so quality is untouched.
+  async uploadTutorialVideo(exerciseId: string, file: File): Promise<{ ok: boolean; url?: string; error?: string }> {
+    try {
+      const response = await fetch(`${API_BASE}/exercises/${encodeURIComponent(exerciseId)}/tutorial-video`, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type || 'video/mp4' },
+        body: file,
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        return { ok: false, error: body.error || `Server responded with ${response.status}` };
+      }
+      const body = await response.json();
+      return { ok: true, url: body.tutorialVideoUrl };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Upload failed' };
+    }
+  },
+
+  async deleteTutorialVideo(exerciseId: string): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const response = await fetch(`${API_BASE}/exercises/${encodeURIComponent(exerciseId)}/tutorial-video`, {
+        method: 'DELETE',
+      });
+      return response.ok ? { ok: true } : { ok: false, error: `Server responded with ${response.status}` };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Delete failed' };
+    }
+  },
+
   async saveExercise(exercise: LibraryExercise): Promise<{ ok: boolean; error?: string }> {
     let result: { ok: boolean; error?: string } = { ok: false };
     try {

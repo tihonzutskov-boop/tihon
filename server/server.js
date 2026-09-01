@@ -13,6 +13,7 @@ import {
   createRequireAdmin,
   isAdminEmail,
 } from './auth.js';
+import { mediaUrl, sendDataUri, serveMediaColumn, serveBinaryColumn, blobWrite } from './media.js';
 // Compiled from utils/planGeneration.ts by `npm run build:engine` — the same
 // engine the frontend and the test suite use, so there is exactly one
 // implementation of the eligibility and safety rules.
@@ -28,6 +29,7 @@ const pool = new Pool({
 });
 const requireAdmin = createRequireAdmin(pool);
 
+
 // Apply the schema (all statements are idempotent, safe to re-run on every boot)
 const initDb = async () => {
   try {
@@ -41,9 +43,14 @@ const initDb = async () => {
 initDb();
 
 app.use(cookieParser());
-// 60mb to accommodate a short uploaded tutorial video as a base64 data URI
-// (roughly 33% larger than the raw file), on top of the existing GIF uploads.
-app.use(express.json({ limit: '60mb' }));
+// Sized against the 512MB instance, not against how long a video an admin
+// might want. Express buffers the raw body, then the UTF-16 string, then the
+// parsed object, so a body of N MB costs roughly 5N MB of heap at peak: 60mb
+// alone could exhaust the instance and get it OOM-killed (exit 137). 12mb of
+// base64 is about a 9MB source file — enough for a short demo clip.
+// Raising this only becomes safe on a larger instance; the real fix for long
+// videos is uploading to object storage instead of embedding base64 in JSON.
+app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '12mb' }));
 
 // --- Auth Routes ---
 
@@ -305,7 +312,15 @@ const loadGymForGeneration = async (gymId) => {
 };
 
 const loadLibraryForGeneration = async () => {
-  const result = await pool.query('SELECT * FROM exercises');
+  // Explicit column list: the generator needs none of the media columns, and
+  // SELECT * pulled every base64 blob into memory just to drop it here.
+  const result = await pool.query(
+    `SELECT id, name, target_muscle, equipment_required, required_equipment_ids,
+            category, instructions, equipment_id, movement_pattern,
+            exercise_category, min_experience, joint_stress,
+            primary_muscles, secondary_muscles, generation_enabled
+     FROM exercises`
+  );
   return result.rows.map(row => ({
     id: row.id,
     name: row.name,
@@ -800,14 +815,18 @@ app.get('/api/equipment', async (req, res) => {
   let client;
   try {
     client = await pool.connect();
-    const result = await client.query('SELECT * FROM equipment ORDER BY name ASC');
+    const result = await client.query(
+      `SELECT id, name, category, description, icon, default_footprint, muscle_groups,
+              CASE WHEN image_url <> '' THEN substr(md5(image_url), 1, 8) END AS image_v
+       FROM equipment ORDER BY name ASC`
+    );
     const equipment = result.rows.map(row => ({
       id: row.id,
       name: row.name,
       category: row.category || '',
       description: row.description || '',
       icon: row.icon || '',
-      imageUrl: row.image_url || '',
+      imageUrl: row.image_v ? mediaUrl('equipment', `${row.id}/image`, row.image_v) : '',
       defaultFootprint: row.default_footprint || undefined,
       muscleGroups: row.muscle_groups || []
     }));
@@ -828,7 +847,7 @@ app.post('/api/equipment', requireAdmin, async (req, res) => {
     client = await pool.connect();
     await client.query(
       'INSERT INTO equipment (id, name, category, description, icon, image_url, default_footprint, muscle_groups) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-      [id, name, category || '', description || '', icon || '', imageUrl || '', JSON.stringify(defaultFootprint || null), JSON.stringify(muscleGroups || [])]
+      [id, name, category || '', description || '', icon || '', blobWrite(imageUrl) || '', JSON.stringify(defaultFootprint || null), JSON.stringify(muscleGroups || [])]
     );
     res.json({ success: true, id });
   } catch (err) {
@@ -850,10 +869,12 @@ app.put('/api/equipment/:id', requireAdmin, async (req, res) => {
     // items that was never actually inserted into the database yet.
     await client.query(
       `INSERT INTO equipment (id, name, category, description, icon, image_url, default_footprint, muscle_groups)
-       VALUES ($8, $1, $2, $3, $4, $5, $6, $7)
+       VALUES ($8, $1, $2, $3, $4, COALESCE($5::text, ''), $6, $7)
        ON CONFLICT (id) DO UPDATE SET
-         name=$1, category=$2, description=$3, icon=$4, image_url=$5, default_footprint=$6, muscle_groups=$7`,
-      [name, category || '', description || '', icon || '', imageUrl || '', JSON.stringify(defaultFootprint || null), JSON.stringify(muscleGroups || []), id]
+         name=$1, category=$2, description=$3, icon=$4,
+         image_url=COALESCE($5::text, equipment.image_url),
+         default_footprint=$6, muscle_groups=$7`,
+      [name, category || '', description || '', icon || '', blobWrite(imageUrl), JSON.stringify(defaultFootprint || null), JSON.stringify(muscleGroups || []), id]
     );
     res.json({ success: true });
   } catch (err) {
@@ -880,6 +901,8 @@ app.delete('/api/equipment/:id', requireAdmin, async (req, res) => {
   }
 });
 
+app.get('/api/equipment/:id/image', serveMediaColumn(pool, 'equipment', 'image_url'));
+
 // --- Exercise Library Routes ---
 
 // GET All Exercises
@@ -887,7 +910,22 @@ app.get('/api/exercises', async (req, res) => {
   let client;
   try {
     client = await pool.connect();
-    const result = await client.query('SELECT * FROM exercises ORDER BY name ASC');
+    const result = await client.query(
+      `SELECT id, name, target_muscle, equipment_required, required_equipment_ids,
+              category, instructions, equipment_id, video_url, make_harder, make_easier,
+              tutorial_video_file_name, steps, exercise_type, video_duration_label,
+              harder_exercise_id, easier_exercise_id, harder_tutorial, easier_tutorial,
+              movement_pattern, exercise_category, min_experience, joint_stress,
+              primary_muscles, secondary_muscles, generation_enabled,
+              CASE WHEN image_url <> '' THEN substr(md5(image_url), 1, 8) END AS image_v,
+              CASE
+                WHEN tutorial_video IS NOT NULL
+                  THEN substr(md5(encode(tutorial_video, 'hex')), 1, 8)
+                WHEN tutorial_video_url <> ''
+                  THEN substr(md5(tutorial_video_url), 1, 8)
+              END AS tutorial_v
+       FROM exercises ORDER BY name ASC`
+    );
     // Map database snake_case back to camelCase for the API response
     const exercises = result.rows.map(row => ({
       id: row.id,
@@ -899,10 +937,12 @@ app.get('/api/exercises', async (req, res) => {
       instructions: row.instructions || '',
       equipmentId: row.equipment_id || '',
       videoUrl: row.video_url || '',
-      imageUrl: row.image_url || '',
+      imageUrl: row.image_v ? mediaUrl('exercises', `${row.id}/image`, row.image_v) : '',
       makeHarder: row.make_harder || '',
       makeEasier: row.make_easier || '',
-      tutorialVideoUrl: row.tutorial_video_url || '',
+      tutorialVideoUrl: row.tutorial_v
+        ? mediaUrl('exercises', `${row.id}/tutorial-video`, row.tutorial_v)
+        : '',
       tutorialVideoFileName: row.tutorial_video_file_name || '',
       steps: row.steps || [],
       exerciseType: row.exercise_type || 'standard',
@@ -928,6 +968,68 @@ app.get('/api/exercises', async (req, res) => {
   }
 });
 
+app.get('/api/exercises/:id/image', serveMediaColumn(pool, 'exercises', 'image_url'));
+app.get(
+  '/api/exercises/:id/tutorial-video',
+  serveBinaryColumn(pool, 'exercises', 'tutorial_video', 'tutorial_video_type', 'tutorial_video_url')
+);
+
+// Raw-body upload: the video never passes through JSON, so it is not subject
+// to the JSON body limit and is stored exactly as uploaded — no base64, no
+// re-encoding, no quality ceiling imposed by the transport.
+app.put(
+  '/api/exercises/:id/tutorial-video',
+  requireAdmin,
+  express.raw({ type: () => true, limit: process.env.VIDEO_UPLOAD_LIMIT || '200mb' }),
+  async (req, res) => {
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+      return res.status(400).json({ error: 'Empty upload' });
+    }
+    const contentType = (req.get('Content-Type') || 'video/mp4').split(';')[0].trim();
+    if (!contentType.startsWith('video/')) {
+      return res.status(415).json({ error: 'Expected a video file' });
+    }
+    let client;
+    try {
+      client = await pool.connect();
+      const result = await client.query(
+        `UPDATE exercises
+            SET tutorial_video = $2, tutorial_video_type = $3, tutorial_video_url = ''
+          WHERE id = $1
+        RETURNING substr(md5(encode(tutorial_video, 'hex')), 1, 8) AS v`,
+        [req.params.id, req.body, contentType]
+      );
+      if (result.rows.length === 0) return res.status(404).json({ error: 'Exercise not found' });
+      return res.json({
+        success: true,
+        tutorialVideoUrl: mediaUrl('exercises', `${req.params.id}/tutorial-video`, result.rows[0].v),
+      });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Database error saving video' });
+    } finally {
+      client?.release();
+    }
+  }
+);
+
+app.delete('/api/exercises/:id/tutorial-video', requireAdmin, async (req, res) => {
+  let client;
+  try {
+    client = await pool.connect();
+    await client.query(
+      `UPDATE exercises SET tutorial_video = NULL, tutorial_video_type = NULL, tutorial_video_url = '' WHERE id = $1`,
+      [req.params.id]
+    );
+    return res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Database error removing video' });
+  } finally {
+    client?.release();
+  }
+});
+
 // POST Create Exercise
 app.post('/api/exercises', requireAdmin, async (req, res) => {
   const { id, name, targetMuscle, equipmentRequired, requiredEquipmentIds, category, instructions, equipmentId, videoUrl, imageUrl, makeHarder, makeEasier, tutorialVideoUrl, tutorialVideoFileName, steps, exerciseType, videoDurationLabel, harderExerciseId, easierExerciseId, harderTutorial, easierTutorial, movementPattern, exerciseCategory, minExperience, jointStress, primaryMuscles, secondaryMuscles, generationEnabled } = req.body;
@@ -946,10 +1048,10 @@ app.post('/api/exercises', requireAdmin, async (req, res) => {
         instructions || '',
         equipmentId || '',
         videoUrl || '',
-        imageUrl || '',
+        blobWrite(imageUrl),
         makeHarder || '',
         makeEasier || '',
-        tutorialVideoUrl || '',
+        blobWrite(tutorialVideoUrl),
         tutorialVideoFileName || '',
         JSON.stringify(steps || []),
         exerciseType || 'standard',
@@ -987,9 +1089,13 @@ app.put('/api/exercises/:id', requireAdmin, async (req, res) => {
     // exercises that was never actually inserted into the database yet.
     await client.query(
       `INSERT INTO exercises (id, name, target_muscle, equipment_required, required_equipment_ids, category, instructions, equipment_id, video_url, image_url, make_harder, make_easier, tutorial_video_url, tutorial_video_file_name, steps, exercise_type, video_duration_label, harder_exercise_id, easier_exercise_id, harder_tutorial, easier_tutorial, movement_pattern, exercise_category, min_experience, joint_stress, generation_enabled, primary_muscles, secondary_muscles)
-       VALUES ($28, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
+       VALUES ($28, $1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::text, ''), $10, $11, COALESCE($12::text, ''), $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
        ON CONFLICT (id) DO UPDATE SET
-         name=$1, target_muscle=$2, equipment_required=$3, required_equipment_ids=$4, category=$5, instructions=$6, equipment_id=$7, video_url=$8, image_url=$9, make_harder=$10, make_easier=$11, tutorial_video_url=$12, tutorial_video_file_name=$13, steps=$14, exercise_type=$15, video_duration_label=$16, harder_exercise_id=$17, easier_exercise_id=$18, harder_tutorial=$19, easier_tutorial=$20, movement_pattern=$21, exercise_category=$22, min_experience=$23, joint_stress=$24, generation_enabled=$25, primary_muscles=$26, secondary_muscles=$27`,
+         name=$1, target_muscle=$2, equipment_required=$3, required_equipment_ids=$4, category=$5, instructions=$6, equipment_id=$7, video_url=$8,
+         image_url=COALESCE($9::text, exercises.image_url),
+         make_harder=$10, make_easier=$11,
+         tutorial_video_url=COALESCE($12::text, exercises.tutorial_video_url),
+         tutorial_video_file_name=$13, steps=$14, exercise_type=$15, video_duration_label=$16, harder_exercise_id=$17, easier_exercise_id=$18, harder_tutorial=$19, easier_tutorial=$20, movement_pattern=$21, exercise_category=$22, min_experience=$23, joint_stress=$24, generation_enabled=$25, primary_muscles=$26, secondary_muscles=$27`,
       [
         name,
         targetMuscle || '',
@@ -999,10 +1105,10 @@ app.put('/api/exercises/:id', requireAdmin, async (req, res) => {
         instructions || '',
         equipmentId || '',
         videoUrl || '',
-        imageUrl || '',
+        blobWrite(imageUrl),
         makeHarder || '',
         makeEasier || '',
-        tutorialVideoUrl || '',
+        blobWrite(tutorialVideoUrl),
         tutorialVideoFileName || '',
         JSON.stringify(steps || []),
         exerciseType || 'standard',

@@ -20,6 +20,12 @@ services:
         sync: false
       - key: NODE_ENV
         value: production
+      # Node sizes its heap from the host's memory, not the container limit,
+      # so on a 512MB instance it will happily grow past the cap and be
+      # OOM-killed (exit 137) instead of collecting garbage. Cap it below the
+      # limit, leaving headroom for buffers and the runtime itself.
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=400
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: VITE_GOOGLE_CLIENT_ID

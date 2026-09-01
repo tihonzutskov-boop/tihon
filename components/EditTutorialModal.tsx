@@ -1,5 +1,6 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { LibraryExercise, TutorialStep } from '../types';
+import { api } from '../services/api';
 import { X, UploadCloud, Play, Pause, Plus, ArrowUp, ArrowDown, Trash2, Timer } from 'lucide-react';
 
 interface EditTutorialModalProps {
@@ -20,6 +21,12 @@ const EditTutorialModal: React.FC<EditTutorialModalProps> = ({ exercise, onClose
     exercise.steps && exercise.steps.length > 0 ? exercise.steps.map(s => ({ ...s })) : [{ text: '', time: null }]
   );
   const [videoUrl, setVideoUrl] = useState(exercise.tutorialVideoUrl || '');
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [videoRemoved, setVideoRemoved] = useState(false);
+  const objectUrlRef = useRef('');
+  useEffect(() => () => {
+    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+  }, []);
   const [videoFileName, setVideoFileName] = useState(exercise.tutorialVideoFileName || '');
   const [previewStepIdx, setPreviewStepIdx] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -64,20 +71,31 @@ const EditTutorialModal: React.FC<EditTutorialModalProps> = ({ exercise, onClose
     if (video.paused) video.play(); else video.pause();
   };
 
+  // Previewed through an object URL rather than a base64 data URI: the file
+  // is shown as-is with no conversion, and unlike a data URI a blob URL
+  // supports seeking — which the "Mark" button below depends on to read an
+  // accurate timestamp. The File itself is held for upload on save.
   const handleVideoFile = (file: File | null | undefined) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setVideoUrl(reader.result);
-        setVideoFileName(file.name);
-        setDuration(0);
-        setCurrentTime(0);
-      }
-    };
-    reader.readAsDataURL(file);
+    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    const preview = URL.createObjectURL(file);
+    objectUrlRef.current = preview;
+    setPendingFile(file);
+    setVideoUrl(preview);
+    setVideoFileName(file.name);
+    setDuration(0);
+    setCurrentTime(0);
   };
+
   const removeVideo = () => {
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = '';
+    }
+    setPendingFile(null);
+    // Only a video already on the server needs an explicit delete; discarding
+    // one that was never uploaded is purely local.
+    setVideoRemoved(!!exercise.tutorialVideoUrl);
     setVideoUrl('');
     setVideoFileName('');
     setDuration(0);
@@ -165,12 +183,28 @@ const EditTutorialModal: React.FC<EditTutorialModalProps> = ({ exercise, onClose
     setError('');
     setSaving(true);
     try {
-      await onSave({
+      // The video travels on its own request; the exercise JSON only ever
+      // carries the URL the server hands back, never the file itself.
+      const persist = (tutorialVideoUrl: string) => onSave({
         ...exercise,
-        tutorialVideoUrl: videoUrl,
+        tutorialVideoUrl,
         tutorialVideoFileName: videoFileName,
         steps: cleanSteps,
       });
+
+      // Save the exercise before touching the video. This may be one of the
+      // built-in exercises that has never been inserted, and the video
+      // endpoints update an existing row — uploading first would 404.
+      await persist(pendingFile ? (exercise.tutorialVideoUrl || '') : videoUrl);
+
+      if (pendingFile) {
+        const upload = await api.uploadTutorialVideo(exercise.id, pendingFile);
+        if (!upload.ok) throw new Error(upload.error || 'Could not upload the video.');
+        await persist(upload.url || '');
+      } else if (videoRemoved) {
+        const removed = await api.deleteTutorialVideo(exercise.id);
+        if (!removed.ok) throw new Error(removed.error || 'Could not remove the video.');
+      }
       onClose();
     } catch (err: any) {
       setError(err?.message || 'Failed to save. Please try again.');
