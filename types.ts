@@ -191,10 +191,17 @@ export interface VariationTutorial {
 export type MovementPattern =
   | 'horizontal_push' | 'horizontal_pull' | 'vertical_push' | 'vertical_pull'
   | 'squat' | 'hinge' | 'lunge' | 'carry'
-  // Shoulder abduction/raise work (lateral raise, front raise, rear delt
-  // fly) is neither a press nor a row, and had no home in the pattern set —
-  // an exercise like Lateral Raises could never be selected for a slot.
-  | 'shoulder_abduction'
+  // Single-joint work. Without these an isolation exercise has no truthful
+  // option, so it gets tagged with whatever compound pattern is closest —
+  // which then puts a curl in a pressing slot. Every exercise in a normal
+  // gym should be markable without lying about what it trains.
+  | 'shoulder_abduction'    // lateral / front raise, rear delt fly
+  | 'horizontal_adduction'  // chest fly, pec deck
+  | 'elbow_flexion'         // biceps curls
+  | 'elbow_extension'       // triceps pushdown, overhead extension
+  | 'knee_extension'        // leg extension
+  | 'knee_flexion'          // leg / hamstring curl
+  | 'calf_raise'
   | 'core' | 'conditioning' | 'mobility';
 
 export type ExerciseCategory = 'compound' | 'isolation' | 'cardio' | 'mobility' | 'warmup' | 'cooldown';

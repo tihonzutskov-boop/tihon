@@ -156,30 +156,44 @@ export const suggestEquipmentIds = (
 };
 
 // Suggests a movement pattern from the exercise name. Deliberately silent
-// where the name doesn't settle it — a curl or pushdown is isolation work
-// with no clear pattern, and guessing would quietly misprogram plans. Raises
-// and delt flyes are the one isolation family with an unambiguous pattern of
-// their own (shoulder_abduction) rather than being genuinely pattern-less.
+// where the name doesn't settle it — guessing would quietly misprogram
+// plans. Isolation work now has patterns of its own, so a curl or pushdown
+// resolves honestly instead of being forced into a pressing slot.
 // Order matters: "Bulgarian Split Squat" is a lunge, so lunge is tested
 // before the bare "squat" it also contains.
 const PATTERN_RULES: [RegExp, MovementPatternName][] = [
-  [/\b(bulgarian|split squat|lunge|step[- ]?up)\b/, 'lunge'],
-  [/\b(deadlift|rdl|hip thrust|good morning|swing)\b/, 'hinge'],
-  [/\b(squat|leg press)\b/, 'squat'],
-  [/\b(pulldown|pull-?up|chin-?up)\b/, 'vertical_pull'],
-  [/\brow\b/, 'horizontal_pull'],
+  // Plurals and spaced spellings are matched explicitly: real libraries hold
+  // "Goblet Squats", "Pull Up" and "Dumbbell Rows", none of which match a
+  // bare \bsquat\b / pull-?up / \brow\b.
+  [/\b(bulgarian|split squats?|lunges?|step[- ]?ups?)\b/, 'lunge'],
+  [/\b(deadlifts?|rdls?|hip thrusts?|good mornings?|swings?)\b/, 'hinge'],
+  [/\b(squats?|leg press(es)?)\b/, 'squat'],
+  [/\b(pulldowns?|pull[- ]?ups?|chin[- ]?ups?)\b/, 'vertical_pull'],
+  [/\brows?\b/, 'horizontal_pull'],
   [/\b(lateral raises?|front raises?|rear delt|delt flye?s?|deltoid flye?s?)\b/, 'shoulder_abduction'],
-  [/\b(overhead press|shoulder press|military press)\b/, 'vertical_push'],
-  [/\b(bench press|push-?up|chest press|dip)\b/, 'horizontal_push'],
-  [/\b(plank|crunch|sit-?up|dead bug|hollow)\b/, 'core'],
-  [/\b(treadmill|rowing|erg|bike|run|conditioning|sprint)\b/, 'conditioning'],
-  [/\b(box jump|plyo)\b/, 'squat'],
-  [/\b(stretch|mobility|foam roll)\b/, 'mobility'],
+  [/\b(overhead press(es)?|shoulder press(es)?|military press(es)?)\b/, 'vertical_push'],
+  [/\b(bench press(es)?|push[- ]?ups?|chest press(es)?|dips?)\b/, 'horizontal_push'],
+  // Single-joint work, tested after the compounds so a press or row always
+  // wins. Knee flexion precedes elbow flexion because a "leg curl" is a
+  // curl by name but a hamstring movement in fact.
+  [/\b(leg curls?|hamstring curls?|lying leg curls?)\b/, 'knee_flexion'],
+  [/\b(leg extensions?|knee extensions?|quad extensions?)\b/, 'knee_extension'],
+  [/\b(calf raises?|calf press(es)?|calve raises?)\b/, 'calf_raise'],
+  [/\b(triceps?|push[- ]?downs?|skull ?crushers?|kickbacks?)\b/, 'elbow_extension'],
+  [/\b(biceps?|curls?)\b/, 'elbow_flexion'],
+  [/\b(chest flye?s?|pec decks?|cable flye?s?|dumbbell flye?s?|flye?s?)\b/, 'horizontal_adduction'],
+  [/\b(planks?|crunch(es)?|sit[- ]?ups?|dead bugs?|hollow)\b/, 'core'],
+  [/\b(treadmills?|rowing|ergs?|bikes?|runs?|conditioning|sprints?)\b/, 'conditioning'],
+  [/\b(box jumps?|plyo)\b/, 'squat'],
+  [/\b(stretch(es)?|mobility|foam roll(ing)?)\b/, 'mobility'],
 ];
 
 type MovementPatternName =
   | 'horizontal_push' | 'horizontal_pull' | 'vertical_push' | 'vertical_pull'
-  | 'squat' | 'hinge' | 'lunge' | 'carry' | 'shoulder_abduction'
+  | 'squat' | 'hinge' | 'lunge' | 'carry'
+  | 'shoulder_abduction' | 'horizontal_adduction'
+  | 'elbow_flexion' | 'elbow_extension'
+  | 'knee_extension' | 'knee_flexion' | 'calf_raise'
   | 'core' | 'conditioning' | 'mobility';
 
 export const suggestMovementPattern = (exerciseName: string): MovementPatternName | '' => {

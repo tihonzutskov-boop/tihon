@@ -5,7 +5,10 @@ import { Loader2 } from 'lucide-react';
 
 const PATTERNS: MovementPattern[] = [
   'horizontal_push', 'horizontal_pull', 'vertical_push', 'vertical_pull',
-  'squat', 'hinge', 'lunge', 'carry', 'shoulder_abduction', 'core', 'conditioning', 'mobility',
+  'squat', 'hinge', 'lunge', 'carry',
+  'shoulder_abduction', 'horizontal_adduction', 'elbow_flexion', 'elbow_extension',
+  'knee_extension', 'knee_flexion', 'calf_raise',
+  'core', 'conditioning', 'mobility',
 ];
 // The patterns a default blueprint marks required. Anything missing here
 // means generation fails for clients at that day count, so it's worth

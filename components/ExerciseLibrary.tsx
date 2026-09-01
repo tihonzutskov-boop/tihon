@@ -212,6 +212,12 @@ const PATTERN_HELP: { pattern: MovementPattern; direction: string; examples: str
   { pattern: 'hinge', direction: 'Hips move backward/forward', examples: 'Deadlift, Romanian deadlift, good morning' },
   { pattern: 'lunge', direction: 'Single-leg knee/hip movement', examples: 'Lunges, Bulgarian split squat, step-up' },
   { pattern: 'shoulder_abduction', direction: 'Arm raises away from the body', examples: 'Lateral raise, front raise, rear delt fly' },
+  { pattern: 'horizontal_adduction', direction: 'Arms close across the chest', examples: 'Chest fly, pec deck, cable crossover' },
+  { pattern: 'elbow_flexion', direction: 'Elbow bends, upper arm still', examples: 'Biceps curl, hammer curl, preacher curl' },
+  { pattern: 'elbow_extension', direction: 'Elbow straightens, upper arm still', examples: 'Triceps pushdown, overhead extension, kickback' },
+  { pattern: 'knee_extension', direction: 'Knee straightens against load', examples: 'Leg extension machine' },
+  { pattern: 'knee_flexion', direction: 'Knee bends against load', examples: 'Lying leg curl, seated leg curl' },
+  { pattern: 'calf_raise', direction: 'Ankle extends, heel lifts', examples: 'Standing calf raise, seated calf raise' },
   { pattern: 'carry', direction: 'Load-bearing walk or hold', examples: "Farmer's carry, suitcase carry, waiter's walk" },
   { pattern: 'core', direction: 'Trunk resists or drives motion', examples: 'Plank, dead bug, hollow hold, cable chop' },
   { pattern: 'conditioning', direction: 'Sustained cyclical effort', examples: 'Treadmill, rowing machine, assault bike, sprints' },
@@ -1395,7 +1401,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                         </div>
                       )}
                       <div className="flex flex-wrap gap-1.5">
-                        {(['horizontal_push','horizontal_pull','vertical_push','vertical_pull','squat','hinge','lunge','carry','shoulder_abduction','core','conditioning','mobility'] as MovementPattern[]).map(mp => (
+                        {(['horizontal_push','horizontal_pull','vertical_push','vertical_pull','squat','hinge','lunge','carry','shoulder_abduction','horizontal_adduction','elbow_flexion','elbow_extension','knee_extension','knee_flexion','calf_raise','core','conditioning','mobility'] as MovementPattern[]).map(mp => (
                           <button
                             key={mp}
                             type="button"

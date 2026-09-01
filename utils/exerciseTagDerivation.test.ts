@@ -193,10 +193,8 @@ describe('suggestMovementPattern', () => {
 
   it('stays silent when the name does not settle the pattern', () => {
     // Isolation work — guessing here would quietly misprogram plans.
-    expect(suggestMovementPattern('Seated Dumbbell Hammer Curl')).toBe('');
-    expect(suggestMovementPattern('Standing Cable Chest Fly')).toBe('');
-    expect(suggestMovementPattern('Cable Triceps Rope Pushdown')).toBe('');
-    expect(suggestMovementPattern('Seated Quadriceps Leg Extension')).toBe('');
+    expect(suggestMovementPattern('Farmers Walk')).toBe('');
+    expect(suggestMovementPattern('Turkish Get-Up')).toBe('');
     expect(suggestMovementPattern('')).toBe('');
   });
 
@@ -214,6 +212,28 @@ describe('suggestMovementPattern', () => {
     expect(suggestMovementPattern('Seated Dumbbell Shoulder Press')).toBe('vertical_push');
   });
 
+  it('gives single-joint work its own pattern instead of a pressing slot', () => {
+    // These were the exercises with no truthful option, so they got tagged
+    // vertical_push and ended up selected as if they were overhead presses.
+    expect(suggestMovementPattern('Seated Dumbbell Curl')).toBe('elbow_flexion');
+    expect(suggestMovementPattern('Tricep Pushdown')).toBe('elbow_extension');
+    expect(suggestMovementPattern('Dumbbell Tricep Extensions (Overhead)')).toBe('elbow_extension');
+    expect(suggestMovementPattern('Standing Cable Chest Fly')).toBe('horizontal_adduction');
+    expect(suggestMovementPattern('Seated Quadriceps Leg Extension')).toBe('knee_extension');
+    expect(suggestMovementPattern('Standing Calf Raise')).toBe('calf_raise');
+  });
+
+  it('reads a leg curl as a hamstring movement, not a biceps curl', () => {
+    expect(suggestMovementPattern('Lying Leg Curl')).toBe('knee_flexion');
+    expect(suggestMovementPattern('Seated Dumbbell Hammer Curl')).toBe('elbow_flexion');
+  });
+
+  it('still lets compound lifts win over the isolation rules', () => {
+    expect(suggestMovementPattern('Goblet Squat')).toBe('squat');
+    expect(suggestMovementPattern('Barbell Bench Press')).toBe('horizontal_push');
+    expect(suggestMovementPattern('Dumbbell Row')).toBe('horizontal_pull');
+  });
+
   it('covers most of the real library without guessing on the rest', () => {
     const library = [
       'Barbell Squat','Bench Press','Dumbbell Row','Overhead Press','Incline Dumbbell Bench Press',
@@ -222,7 +242,8 @@ describe('suggestMovementPattern', () => {
       'Seated Quadriceps Leg Extension','Concept2 Rowing Conditioning','Treadmill Run','Pull-up',
       'Push-up','Plank','Kettlebell Russian Swing','Plyometric Box Jump',
     ];
-    const suggested = library.filter(n => suggestMovementPattern(n) !== '');
-    expect(suggested.length).toBe(15);
+    // Every one of these now resolves — isolation work included.
+    const unresolved = library.filter(n => suggestMovementPattern(n) === '');
+    expect(unresolved).toEqual([]);
   });
 });
