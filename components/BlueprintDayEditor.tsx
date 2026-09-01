@@ -4,7 +4,7 @@ import { ChevronUp, ChevronDown, X, Plus, AlertTriangle } from 'lucide-react';
 
 const MOVEMENT_PATTERNS: MovementPattern[] = [
   'horizontal_push', 'horizontal_pull', 'vertical_push', 'vertical_pull',
-  'squat', 'hinge', 'lunge', 'carry', 'core', 'conditioning', 'mobility',
+  'squat', 'hinge', 'lunge', 'carry', 'shoulder_abduction', 'core', 'conditioning', 'mobility',
 ];
 const CATEGORIES: ExerciseCategory[] = ['compound', 'isolation', 'cardio', 'mobility', 'warmup', 'cooldown'];
 

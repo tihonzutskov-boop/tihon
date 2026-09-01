@@ -200,6 +200,20 @@ describe('suggestMovementPattern', () => {
     expect(suggestMovementPattern('')).toBe('');
   });
 
+  it('reads shoulder raises and delt flyes as shoulder_abduction', () => {
+    // Previously silent (no pattern fit push/pull), so exercises like this
+    // could never be selected by the generator at all.
+    expect(suggestMovementPattern('Lateral Raises')).toBe('shoulder_abduction');
+    expect(suggestMovementPattern('Dumbbell Lateral Raise')).toBe('shoulder_abduction');
+    expect(suggestMovementPattern('Front Raise')).toBe('shoulder_abduction');
+    expect(suggestMovementPattern('Rear Delt Fly')).toBe('shoulder_abduction');
+    expect(suggestMovementPattern('Cable Deltoid Fly')).toBe('shoulder_abduction');
+  });
+
+  it('does not confuse a shoulder press with a shoulder raise', () => {
+    expect(suggestMovementPattern('Seated Dumbbell Shoulder Press')).toBe('vertical_push');
+  });
+
   it('covers most of the real library without guessing on the rest', () => {
     const library = [
       'Barbell Squat','Bench Press','Dumbbell Row','Overhead Press','Incline Dumbbell Bench Press',

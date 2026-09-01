@@ -191,6 +191,10 @@ export interface VariationTutorial {
 export type MovementPattern =
   | 'horizontal_push' | 'horizontal_pull' | 'vertical_push' | 'vertical_pull'
   | 'squat' | 'hinge' | 'lunge' | 'carry'
+  // Shoulder abduction/raise work (lateral raise, front raise, rear delt
+  // fly) is neither a press nor a row, and had no home in the pattern set —
+  // an exercise like Lateral Raises could never be selected for a slot.
+  | 'shoulder_abduction'
   | 'core' | 'conditioning' | 'mobility';
 
 export type ExerciseCategory = 'compound' | 'isolation' | 'cardio' | 'mobility' | 'warmup' | 'cooldown';

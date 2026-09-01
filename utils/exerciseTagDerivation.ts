@@ -156,8 +156,10 @@ export const suggestEquipmentIds = (
 };
 
 // Suggests a movement pattern from the exercise name. Deliberately silent
-// where the name doesn't settle it — a curl, fly or pushdown is isolation
-// work with no clear pattern, and guessing would quietly misprogram plans.
+// where the name doesn't settle it — a curl or pushdown is isolation work
+// with no clear pattern, and guessing would quietly misprogram plans. Raises
+// and delt flyes are the one isolation family with an unambiguous pattern of
+// their own (shoulder_abduction) rather than being genuinely pattern-less.
 // Order matters: "Bulgarian Split Squat" is a lunge, so lunge is tested
 // before the bare "squat" it also contains.
 const PATTERN_RULES: [RegExp, MovementPatternName][] = [
@@ -166,6 +168,7 @@ const PATTERN_RULES: [RegExp, MovementPatternName][] = [
   [/\b(squat|leg press)\b/, 'squat'],
   [/\b(pulldown|pull-?up|chin-?up)\b/, 'vertical_pull'],
   [/\brow\b/, 'horizontal_pull'],
+  [/\b(lateral raises?|front raises?|rear delt|delt flye?s?|deltoid flye?s?)\b/, 'shoulder_abduction'],
   [/\b(overhead press|shoulder press|military press)\b/, 'vertical_push'],
   [/\b(bench press|push-?up|chest press|dip)\b/, 'horizontal_push'],
   [/\b(plank|crunch|sit-?up|dead bug|hollow)\b/, 'core'],
@@ -176,7 +179,8 @@ const PATTERN_RULES: [RegExp, MovementPatternName][] = [
 
 type MovementPatternName =
   | 'horizontal_push' | 'horizontal_pull' | 'vertical_push' | 'vertical_pull'
-  | 'squat' | 'hinge' | 'lunge' | 'carry' | 'core' | 'conditioning' | 'mobility';
+  | 'squat' | 'hinge' | 'lunge' | 'carry' | 'shoulder_abduction'
+  | 'core' | 'conditioning' | 'mobility';
 
 export const suggestMovementPattern = (exerciseName: string): MovementPatternName | '' => {
   const name = (exerciseName || '').toLowerCase();

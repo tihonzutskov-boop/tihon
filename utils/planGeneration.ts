@@ -150,6 +150,7 @@ const UPPER: SlotSpec[] = [
   { pattern: 'vertical_pull', kind: 'compound', optional: true },
   { pattern: 'horizontal_pull', kind: 'isolation', optional: true },
   { pattern: 'horizontal_push', kind: 'isolation', optional: true },
+  { pattern: 'shoulder_abduction', kind: 'isolation', optional: true },
 ];
 
 const LOWER: SlotSpec[] = [
@@ -163,6 +164,7 @@ const PUSH: SlotSpec[] = [
   { pattern: 'horizontal_push', kind: 'compound' },
   { pattern: 'vertical_push', kind: 'compound' },
   { pattern: 'horizontal_push', kind: 'isolation', optional: true },
+  { pattern: 'shoulder_abduction', kind: 'isolation', optional: true },
 ];
 
 const PULL: SlotSpec[] = [

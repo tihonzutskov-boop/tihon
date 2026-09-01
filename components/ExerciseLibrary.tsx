@@ -11,7 +11,7 @@ import EditTutorialModal from './EditTutorialModal';
 import BulkTaggingTable from './BulkTaggingTable';
 import VariationTutorialField, { VariationState, blankVariationState, variationStateFromExercise } from './VariationTutorialField';
 import {
-  Search, MapPin, Dumbbell, Edit3, Trash2, Plus, X, Loader2, KeyRound, Box, Sparkles, Globe, Layers, Check, Flame, ShieldCheck, Film
+  Search, MapPin, Dumbbell, Edit3, Trash2, Plus, X, Loader2, KeyRound, Box, Sparkles, Globe, Layers, Check, Flame, ShieldCheck, Film, Info
 } from 'lucide-react';
 
 interface ExerciseLibraryProps {
@@ -200,6 +200,24 @@ export const MUSCLE_COLORS: Record<string, string> = {
 };
 export const muscleColor = (m: string) => MUSCLE_COLORS[m] || '#94a3b8';
 
+// Reference for the "Movement pattern" picker below — admins choosing a
+// pattern otherwise see only the raw identifier (e.g. "hinge") with nothing
+// explaining what qualifies or what it's for.
+const PATTERN_HELP: { pattern: MovementPattern; direction: string; examples: string }[] = [
+  { pattern: 'horizontal_push', direction: 'Push away horizontally', examples: 'Bench press, push-up, chest press' },
+  { pattern: 'horizontal_pull', direction: 'Pull toward you horizontally', examples: 'Barbell row, cable row, dumbbell row' },
+  { pattern: 'vertical_push', direction: 'Push overhead', examples: 'Overhead press, shoulder press, pike push-up' },
+  { pattern: 'vertical_pull', direction: 'Pull downward', examples: 'Pull-up, chin-up, lat pulldown' },
+  { pattern: 'squat', direction: 'Knees + hips bend', examples: 'Back squat, front squat, leg press' },
+  { pattern: 'hinge', direction: 'Hips move backward/forward', examples: 'Deadlift, Romanian deadlift, good morning' },
+  { pattern: 'lunge', direction: 'Single-leg knee/hip movement', examples: 'Lunges, Bulgarian split squat, step-up' },
+  { pattern: 'shoulder_abduction', direction: 'Arm raises away from the body', examples: 'Lateral raise, front raise, rear delt fly' },
+  { pattern: 'carry', direction: 'Load-bearing walk or hold', examples: "Farmer's carry, suitcase carry, waiter's walk" },
+  { pattern: 'core', direction: 'Trunk resists or drives motion', examples: 'Plank, dead bug, hollow hold, cable chop' },
+  { pattern: 'conditioning', direction: 'Sustained cyclical effort', examples: 'Treadmill, rowing machine, assault bike, sprints' },
+  { pattern: 'mobility', direction: 'Joint moved through range, no load', examples: 'Dynamic stretch, foam rolling, band pull-apart' },
+];
+
 // Searchable "type to filter, or create a new one" combobox used for the
 // Target Muscle and Category fields in the add/edit form — free text isn't
 // locked to the preset list, matching the same pattern used for equipment
@@ -293,6 +311,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
   // movement pattern, category and the enable flag are all set — the
   // generator treats anything missing as "can't establish eligibility".
   const [formMovementPattern, setFormMovementPattern] = useState<MovementPattern | ''>('');
+  const [showPatternHelp, setShowPatternHelp] = useState(false);
   const [formExerciseCategoryTag, setFormExerciseCategoryTag] = useState<ExerciseCategory | ''>('');
   const [formMinExperience, setFormMinExperience] = useState<ExperienceLevel | ''>('');
   const [formJointStress, setFormJointStress] = useState<JointStressArea[]>([]);
@@ -1338,9 +1357,45 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                     </div>
 
                     <div>
-                      <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Movement pattern</label>
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider">Movement pattern</label>
+                        <button
+                          type="button"
+                          onClick={() => setShowPatternHelp(v => !v)}
+                          aria-label="What do these patterns mean?"
+                          className={`w-3.5 h-3.5 rounded-full flex items-center justify-center transition-colors ${
+                            showPatternHelp ? 'text-sky-400' : 'text-slate-600 hover:text-slate-400'
+                          }`}
+                        >
+                          <Info className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      {showPatternHelp && (
+                        <div className="mb-2 rounded-lg border border-slate-800 bg-slate-950 overflow-hidden">
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                              <thead>
+                                <tr className="border-b border-slate-800">
+                                  <th className="px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-500">Pattern</th>
+                                  <th className="px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-500">Direction</th>
+                                  <th className="px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-500">Examples</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {PATTERN_HELP.map(row => (
+                                  <tr key={row.pattern} className="border-b border-slate-900 last:border-0">
+                                    <td className="px-2.5 py-1.5 text-[10px] font-bold text-slate-200 whitespace-nowrap capitalize">{row.pattern.replace(/_/g, ' ')}</td>
+                                    <td className="px-2.5 py-1.5 text-[10px] text-slate-400">{row.direction}</td>
+                                    <td className="px-2.5 py-1.5 text-[10px] text-slate-500">{row.examples}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
                       <div className="flex flex-wrap gap-1.5">
-                        {(['horizontal_push','horizontal_pull','vertical_push','vertical_pull','squat','hinge','lunge','carry','core','conditioning','mobility'] as MovementPattern[]).map(mp => (
+                        {(['horizontal_push','horizontal_pull','vertical_push','vertical_pull','squat','hinge','lunge','carry','shoulder_abduction','core','conditioning','mobility'] as MovementPattern[]).map(mp => (
                           <button
                             key={mp}
                             type="button"

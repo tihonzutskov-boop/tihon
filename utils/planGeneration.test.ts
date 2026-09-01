@@ -138,6 +138,15 @@ describe('slot selection', () => {
     const runs = Array.from({ length: 20 }, () => selectForSlot(slot({ id: 's1' }), pool, profile(), new Set())?.id);
     expect(new Set(runs).size).toBe(1);
   });
+
+  it('fills a shoulder_abduction slot with a tagged lateral raise', () => {
+    const raise = exercise({ id: 'raise', name: 'Lateral Raises', movementPattern: 'shoulder_abduction' });
+    const bench = exercise({ id: 'bench', name: 'Bench Press', movementPattern: 'horizontal_push' });
+    const picked = selectForSlot(
+      slot({ id: 's1', movementPattern: 'shoulder_abduction' }), [raise, bench], profile(), new Set()
+    );
+    expect(picked?.id).toBe('raise');
+  });
 });
 
 // --- split ------------------------------------------------------------------
@@ -335,6 +344,22 @@ describe('default blueprints', () => {
         });
       }
     }
+  });
+
+  it('gives Upper and Push days an optional shoulder_abduction slot', () => {
+    // Lateral raises, front raises and rear delt flyes had no movement
+    // pattern to fill, so they could never be selected even when tagged.
+    const upperDay = buildDefaultBlueprint('Muscle gain', 4)[0];
+    expect(upperDay.name).toBe('Upper');
+    const upperSlot = upperDay.slots.find(s => s.movementPattern === 'shoulder_abduction');
+    expect(upperSlot).toBeDefined();
+    expect(upperSlot!.optional).toBe(true);
+
+    const pushDay = buildDefaultBlueprint('Muscle gain', 5)[0];
+    expect(pushDay.name).toBe('Push');
+    const pushSlot = pushDay.slots.find(s => s.movementPattern === 'shoulder_abduction');
+    expect(pushSlot).toBeDefined();
+    expect(pushSlot!.optional).toBe(true);
   });
 
   it('falls back to a known prescription for an unrecognized goal', () => {
