@@ -354,7 +354,7 @@ export interface SlotDecision {
   selectedExerciseName: string;
   score: number;
   dropped?: boolean;
-  droppedReason?: 'duration';
+  droppedReason?: 'duration' | 'no_candidate';
 }
 
 export type GenerationResult = GenerationSuccess | GenerationFailure;
@@ -407,16 +407,21 @@ export const generatePlan = (
     const usedInDay = new Set<string>();
     const musclesInDay = new Set<MuscleGroup>();
     const picked: { le: LibraryExercise; slot: ExerciseSlot; score: number }[] = [];
+    const unfilledRequired: { slotId: string; movementPattern: MovementPattern }[] = [];
 
     for (const slot of [...bpDay.slots].sort((a, b) => a.priority - b.priority)) {
       const le = selectForSlot(slot, pool, profile, usedInDay, musclesInDay);
       if (!le) {
-        if (slot.optional) continue; // an optional slot with no candidate is simply skipped
-        return {
-          ok: false,
-          reason: 'no_candidate_for_slot',
-          detail: `No eligible ${slot.movementPattern} exercise for "${bpDay.name}" at this gym`,
-        };
+        // A slot nothing can fill is skipped rather than failing the whole
+        // plan. Killing the week over one gap meant a client with a knee
+        // complaint, or a library with no hinge exercise, received no plan
+        // at all instead of a shorter one — strictly worse for them.
+        // The skip is still recorded below, so the gap surfaces in the
+        // admin's Issues queue rather than disappearing silently.
+        if (!slot.optional) {
+          unfilledRequired.push({ slotId: slot.id, movementPattern: slot.movementPattern });
+        }
+        continue;
       }
       usedInDay.add(le.id);
       (le.primaryMuscles || []).forEach(m => musclesInDay.add(m));
@@ -451,6 +456,26 @@ export const generatePlan = (
       droppedIds.push(picked[dropIdx].slot.id);
       picked.splice(dropIdx, 1);
     }
+
+    if (picked.length === 0) {
+      const wanted = bpDay.slots.map(sl => sl.movementPattern).join(', ');
+      return {
+        ok: false,
+        reason: 'no_candidate_for_slot',
+        detail: `Nothing at this gym can fill any slot in "${bpDay.name}" (needed: ${wanted})`,
+      };
+    }
+
+    unfilledRequired.forEach(u => decisions.push({
+      dayName: bpDay.name,
+      slotId: u.slotId,
+      movementPattern: u.movementPattern,
+      selectedExerciseId: '',
+      selectedExerciseName: '',
+      score: 0,
+      dropped: true,
+      droppedReason: 'no_candidate',
+    }));
 
     picked.forEach(p => decisions.push({
       dayName: bpDay.name,

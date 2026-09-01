@@ -301,6 +301,87 @@ describe('end to end generation', () => {
 
 // --- validation catches what selection might miss ----------------------------
 
+describe('graceful skip when a required slot cannot be filled', () => {
+  it('still produces a plan, minus the unfillable slot', () => {
+    // Previously this returned no plan at all, so a client whose gym lacked
+    // one movement got nothing rather than a shorter session.
+    const library = [
+      exercise({ id: 'push', name: 'Push-up', movementPattern: 'horizontal_push' }),
+      exercise({ id: 'pull', name: 'Row', movementPattern: 'horizontal_pull' }),
+    ];
+    const bp: PlanTemplate = {
+      id: 't1', name: 'T', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 60, days: [],
+      blueprintDays: [{
+        id: 'bd1', name: 'Day 1', slots: [
+          slot({ id: 's1', movementPattern: 'horizontal_push', priority: 1 }),
+          slot({ id: 's2', movementPattern: 'squat', priority: 2 }),
+          slot({ id: 's3', movementPattern: 'horizontal_pull', priority: 3 }),
+        ],
+      }],
+    };
+    const r = generatePlan(bp, library, gym([]), profile({ daysPerWeek: 1, sessionMinutes: 90 }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.days[0].exercises.map(e => e.name)).toEqual(['Push-up', 'Row']);
+  });
+
+  it('records the skipped slot so the gap is not silent', () => {
+    const library = [exercise({ id: 'push', name: 'Push-up', movementPattern: 'horizontal_push' })];
+    const bp: PlanTemplate = {
+      id: 't1', name: 'T', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 60, days: [],
+      blueprintDays: [{
+        id: 'bd1', name: 'Day 1', slots: [
+          slot({ id: 's1', movementPattern: 'horizontal_push', priority: 1 }),
+          slot({ id: 's2', movementPattern: 'hinge', priority: 2 }),
+        ],
+      }],
+    };
+    const r = generatePlan(bp, library, gym([]), profile({ daysPerWeek: 1, sessionMinutes: 90 }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const skipped = r.decisions.find(d => d.droppedReason === 'no_candidate');
+    expect(skipped?.movementPattern).toBe('hinge');
+  });
+
+  it('still fails when nothing can fill any slot in a day', () => {
+    // An empty day is not a plan — validatePlan rejects it, so reporting the
+    // gap is better than shipping a day with no exercises.
+    const library = [exercise({ id: 'push', name: 'Push-up', movementPattern: 'horizontal_push' })];
+    const bp: PlanTemplate = {
+      id: 't1', name: 'T', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 60, days: [],
+      blueprintDays: [{
+        id: 'bd1', name: 'Day 1', slots: [slot({ id: 's1', movementPattern: 'hinge', priority: 1 })],
+      }],
+    };
+    const r = generatePlan(bp, library, gym([]), profile({ daysPerWeek: 1 }));
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.reason).toBe('no_candidate_for_slot');
+  });
+
+  it('produces a plan that passes validation after skipping', () => {
+    const library = [
+      exercise({ id: 'push', name: 'Push-up', movementPattern: 'horizontal_push' }),
+      exercise({ id: 'pull', name: 'Row', movementPattern: 'horizontal_pull' }),
+    ];
+    const bp: PlanTemplate = {
+      id: 't1', name: 'T', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 60, days: [],
+      blueprintDays: [{
+        id: 'bd1', name: 'Day 1', slots: [
+          slot({ id: 's1', movementPattern: 'squat', priority: 1 }),
+          slot({ id: 's2', movementPattern: 'horizontal_push', priority: 2 }),
+          slot({ id: 's3', movementPattern: 'horizontal_pull', priority: 3 }),
+        ],
+      }],
+    };
+    const p = profile({ daysPerWeek: 1, sessionMinutes: 90 });
+    const r = generatePlan(bp, library, gym([]), p);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(validatePlan(r.days, library, gym([]), p).valid).toBe(true);
+  });
+});
+
 describe('validation is independent of selection', () => {
   it('rejects a plan containing an exercise the gym cannot support', () => {
     const library = [exercise({ id: 'bench', name: 'Bench Press', requiredEquipmentIds: ['barbell'] })];
