@@ -201,6 +201,9 @@ export type MovementPattern =
   | 'elbow_extension'       // triceps pushdown, overhead extension
   | 'knee_extension'        // leg extension
   | 'knee_flexion'          // leg / hamstring curl
+  | 'hip_extension'         // glute kickback, glute bridge, pull-through
+  | 'hip_adduction'         // adductor machine, cable hip adduction
+  | 'hip_abduction'         // abductor machine, banded lateral walk
   | 'calf_raise'
   | 'core' | 'conditioning' | 'mobility';
 

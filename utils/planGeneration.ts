@@ -161,6 +161,9 @@ const LOWER: SlotSpec[] = [
   { pattern: 'lunge', kind: 'compound', optional: true },
   { pattern: 'knee_flexion', kind: 'isolation', optional: true },
   { pattern: 'knee_extension', kind: 'isolation', optional: true },
+  { pattern: 'hip_extension', kind: 'isolation', optional: true },
+  { pattern: 'hip_adduction', kind: 'isolation', optional: true },
+  { pattern: 'hip_abduction', kind: 'isolation', optional: true },
   { pattern: 'calf_raise', kind: 'isolation', optional: true },
   { pattern: 'core', kind: 'isolation', optional: true },
 ];
@@ -186,6 +189,9 @@ const LEGS: SlotSpec[] = [
   { pattern: 'lunge', kind: 'compound', optional: true },
   { pattern: 'knee_flexion', kind: 'isolation', optional: true },
   { pattern: 'knee_extension', kind: 'isolation', optional: true },
+  { pattern: 'hip_extension', kind: 'isolation', optional: true },
+  { pattern: 'hip_adduction', kind: 'isolation', optional: true },
+  { pattern: 'hip_abduction', kind: 'isolation', optional: true },
   { pattern: 'calf_raise', kind: 'isolation', optional: true },
   { pattern: 'core', kind: 'isolation', optional: true },
 ];

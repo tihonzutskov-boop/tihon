@@ -201,8 +201,10 @@ describe('suggestMovementPattern', () => {
 
   it('stays silent when the name does not settle the pattern', () => {
     // Isolation work — guessing here would quietly misprogram plans.
-    expect(suggestMovementPattern('Farmers Walk')).toBe('');
+    // Farmer's walk used to land here; it now resolves to carry, which is
+    // covered by its own test above.
     expect(suggestMovementPattern('Turkish Get-Up')).toBe('');
+    expect(suggestMovementPattern('Sled Drag')).toBe('');
     expect(suggestMovementPattern('')).toBe('');
   });
 
@@ -229,6 +231,58 @@ describe('suggestMovementPattern', () => {
     expect(suggestMovementPattern('Standing Cable Chest Fly')).toBe('horizontal_adduction');
     expect(suggestMovementPattern('Seated Quadriceps Leg Extension')).toBe('knee_extension');
     expect(suggestMovementPattern('Standing Calf Raise')).toBe('calf_raise');
+  });
+
+  it('separates a glute kickback from a triceps kickback', () => {
+    // Bare "kickback" matched the triceps rule, so glute work was being
+    // classified as elbow extension and programmed into arm slots.
+    expect(suggestMovementPattern('Glute Kickback')).toBe('hip_extension');
+    expect(suggestMovementPattern('Triceps Kickback')).toBe('elbow_extension');
+  });
+
+  it('reads single-joint glute work as hip extension', () => {
+    expect(suggestMovementPattern('Donkey Kick')).toBe('hip_extension');
+    expect(suggestMovementPattern('Glute Bridge')).toBe('hip_extension');
+    expect(suggestMovementPattern('Cable Pull-Through')).toBe('hip_extension');
+  });
+
+  it('keeps loaded hip hinges as hinge, not hip extension', () => {
+    // A hip thrust and an RDL are compound hinges; the split is single-joint
+    // glute work versus a loaded hinge, not "does the hip extend".
+    expect(suggestMovementPattern('Hip Thrust')).toBe('hinge');
+    expect(suggestMovementPattern('Romanian Deadlift')).toBe('hinge');
+  });
+
+  it('reads a hanging leg raise as core, not hip flexion', () => {
+    // Programmed as core work, and the core slot is where it belongs.
+    expect(suggestMovementPattern('Hanging Leg Raise')).toBe('core');
+    expect(suggestMovementPattern('Hanging Knee Raise')).toBe('core');
+  });
+
+  it('gives hip adduction and abduction their own patterns', () => {
+    // The adductor and abductor machines had no honest option before.
+    expect(suggestMovementPattern('Hip Adduction Machine')).toBe('hip_adduction');
+    expect(suggestMovementPattern('Seated Adductor')).toBe('hip_adduction');
+    expect(suggestMovementPattern('Hip Abduction Machine')).toBe('hip_abduction');
+    expect(suggestMovementPattern('Cable Abductor')).toBe('hip_abduction');
+    expect(suggestMovementPattern('Banded Lateral Walk')).toBe('hip_abduction');
+    expect(suggestMovementPattern('Clamshell')).toBe('hip_abduction');
+    expect(suggestMovementPattern('Fire Hydrant')).toBe('hip_abduction');
+  });
+
+  it('reads a loaded carry as carry, not a banded walk', () => {
+    // "Walk" alone must not mean hip abduction — the qualifier is what
+    // distinguishes a banded lateral walk from a farmer's walk.
+    expect(suggestMovementPattern('Farmers Walk')).toBe('carry');
+    expect(suggestMovementPattern("Farmer's Carry")).toBe('carry');
+    expect(suggestMovementPattern('Suitcase Carry')).toBe('carry');
+    expect(suggestMovementPattern('Walking Lunge')).toBe('lunge');
+  });
+
+  it('does not confuse hip adduction with a chest fly', () => {
+    // horizontal_adduction is the chest movement; the hip has its own.
+    expect(suggestMovementPattern('Cable Chest Fly')).toBe('horizontal_adduction');
+    expect(suggestMovementPattern('Hip Adduction')).toBe('hip_adduction');
   });
 
   it('reads a leg curl as a hamstring movement, not a biceps curl', () => {

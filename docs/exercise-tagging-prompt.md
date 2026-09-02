@@ -1,146 +1,189 @@
 # GYDE exercise tagging prompt
 
-Paste everything between the lines below into Claude, then add your exercise
-names at the end. Keep the whole block — the rules matter as much as the lists.
+Copy everything between the two `====` lines into Claude, then list your
+exercise names at the bottom. The output comes back in the same order as the
+fields in the Edit modal, so you can click straight down the form.
 
----
+====
 
-You are tagging exercises for a gym app's automatic workout plan generator.
-The generator is a deterministic rules engine, not an AI — it can only use the
-exact values below. Any value outside these lists breaks it.
+Tag exercises for a gym app. A rules engine reads these tags — it can only use
+the exact values listed, so never invent one.
 
-For each exercise name I give you, return one row of a markdown table with
-these columns: Exercise, Movement pattern, Type, Min experience, Primary
-muscles, Secondary muscles, Joint stress.
+## The six fields
 
-## Movement pattern (pick exactly ONE)
+**1. Pattern** — one only. Ask: *which joint drives the movement?*
 
-The pattern is the *motion*, independent of equipment. It is a hard filter:
-the generator asks for "a horizontal push" and only exercises with that exact
-pattern can fill the slot.
+Multi-joint (compound movements):
+`horizontal_push` bench press, push-up, chest press, dip ·
+`horizontal_pull` any row ·
+`vertical_push` overhead / shoulder press ·
+`vertical_pull` pull-up, chin-up, lat pulldown ·
+`squat` squat, goblet squat, leg press ·
+`hinge` deadlift, RDL, hip thrust, good morning, swing ·
+`lunge` lunge, split squat, step-up ·
+`carry` farmer's carry, suitcase carry
 
-| Value | Meaning | Examples |
-|---|---|---|
-| `horizontal_push` | Push away from the chest, horizontally | Bench press, push-up, chest press, dip |
-| `horizontal_pull` | Pull toward the torso, horizontally | Barbell row, cable row, dumbbell row |
-| `vertical_push` | Press overhead | Overhead press, shoulder press, pike push-up |
-| `vertical_pull` | Pull down from overhead | Pull-up, chin-up, lat pulldown |
-| `squat` | Knees and hips bend together | Back squat, front squat, goblet squat, leg press |
-| `hinge` | Hips travel back then forward, knees mostly still | Deadlift, Romanian deadlift, hip thrust, good morning, kettlebell swing |
-| `lunge` | Single-leg knee and hip movement | Lunge, Bulgarian split squat, step-up |
-| `carry` | Load carried while walking or held | Farmer's carry, suitcase carry, waiter's walk |
-| `shoulder_abduction` | Arm raises away from the body | Lateral raise, front raise, rear delt fly |
-| `horizontal_adduction` | Arms close across the chest | Chest fly, pec deck, cable crossover |
-| `elbow_flexion` | Elbow bends, upper arm still | Biceps curl, hammer curl, preacher curl |
-| `elbow_extension` | Elbow straightens, upper arm still | Triceps pushdown, overhead extension, kickback |
-| `knee_extension` | Knee straightens against load | Leg extension machine |
-| `knee_flexion` | Knee bends against load | Lying leg curl, seated leg curl |
-| `calf_raise` | Ankle extends, heel lifts | Standing or seated calf raise |
-| `core` | Trunk resists or drives the motion | Plank, dead bug, hollow hold, cable chop, crunch |
-| `conditioning` | Sustained cyclical cardio effort | Treadmill, rowing machine, assault bike, sprints |
-| `mobility` | Joint moved through range, little or no load | Dynamic stretch, foam rolling, band pull-apart |
+Single-joint (isolation):
+`shoulder_abduction` lateral / front raise, rear delt fly ·
+`horizontal_adduction` chest fly, pec deck ·
+`elbow_flexion` any biceps curl ·
+`elbow_extension` pushdown, overhead extension, kickback ·
+`knee_extension` leg extension ·
+`knee_flexion` leg / hamstring curl ·
+`hip_extension` glute kickback, glute bridge, cable pull-through ·
+`hip_adduction` adductor machine, cable hip adduction ·
+`hip_abduction` abductor machine, banded lateral walk ·
+`calf_raise` calf raise
 
-Rules:
-- A compound lift always wins over an isolation reading. A close-grip bench
-  press is `horizontal_push`, not `elbow_extension`, even though it hits
-  triceps hard.
-- A "leg curl" is `knee_flexion`, not `elbow_flexion` — it is a curl by name
-  only.
-- Multi-joint means naming the *primary* joint action. A goblet squat is
-  `squat` even though the arms hold the weight.
+Other:
+`core` plank, dead bug, crunch, cable chop ·
+`conditioning` treadmill, bike, rower, sprints ·
+`mobility` stretching, foam rolling, band pull-apart
 
-## Type (pick exactly ONE)
+Tie-breakers:
+- Compound beats isolation. Close-grip bench press is `horizontal_push`, not
+  `elbow_extension`.
+- "Leg curl" is `knee_flexion`. Only arm curls are `elbow_flexion`.
+- Goblet squat is `squat` — the arms only hold the weight.
+- A bare "kickback" is a triceps kickback (`elbow_extension`). A *glute*
+  kickback is `hip_extension`. If the name doesn't say which, ask.
+- Loaded hip hinges (deadlift, RDL, hip thrust, good morning) are `hinge`.
+  Single-joint glute work (kickback, bridge, pull-through) is
+  `hip_extension`.
 
-`compound` · `isolation` · `cardio` · `mobility` · `warmup` · `cooldown`
+**2. Type** — one only:
+`compound` `isolation` `cardio` `mobility` `warmup` `cooldown`
 
-- `compound` = more than one joint moves under load (squat, row, pull-up,
-  bench press, overhead press, lunge, deadlift).
-- `isolation` = one joint moves (curl, pushdown, lateral raise, leg extension,
-  leg curl, calf raise, chest fly).
-- `cardio` = sustained machine or running work.
-- Get this right: pull-ups and lat pulldowns are `compound`; triceps pushdowns
-  and extensions are `isolation`.
+More than one joint moves → `compound`. One joint → `isolation`.
+Pull-ups and lat pulldowns are `compound`. Pushdowns and extensions are
+`isolation`.
 
-## Min experience (pick exactly ONE)
+**3. Experience** — one only: `Beginner` `Intermediate` `Advanced`
 
-`Beginner` · `Intermediate` · `Advanced`
+Hard filter: an `Advanced` exercise is never given to a beginner. Default to
+`Beginner`. Use `Intermediate` only for real technique (barbell back squat,
+conventional deadlift, dips), `Advanced` only for skill lifts (snatch, clean,
+muscle-up, pistol squat).
 
-This is a hard filter — an exercise marked `Advanced` is never given to a
-beginner. Default to `Beginner` for anything a newcomer can safely do with
-brief instruction. Reserve `Intermediate` for exercises needing real technique
-(barbell back squat, conventional deadlift, dips) and `Advanced` for skill
-lifts (snatch, clean and jerk, muscle-up, pistol squat).
+**4. Primary muscles** and **5. Secondary muscles**
 
-## Primary and secondary muscles
+Specific heads only — there is no "Back", "Shoulders", "Arms", "Legs",
+"Core" or "Full body":
 
-Choose only from these specific heads — there is no plain "Back",
-"Shoulders", "Arms", "Legs", "Core" or "Full body":
+`Chest` `Upper chest` `Lats` `Upper back` `Lower back` `Front delts`
+`Side delts` `Rear delts` `Biceps` `Triceps` `Forearms` `Quads` `Hamstrings`
+`Glutes` `Calves` `Adductors` `Abductors` `Abs` `Obliques`
 
-`Chest` · `Upper chest` · `Lats` · `Upper back` · `Lower back` ·
-`Front delts` · `Side delts` · `Rear delts` · `Biceps` · `Triceps` ·
-`Forearms` · `Quads` · `Hamstrings` · `Glutes` · `Calves` · `Adductors` ·
-`Abductors` · `Abs` · `Obliques`
+- Primary = what it's for (1–2 heads). Secondary = also worked (0–3 heads).
+- Name the head, not the region: lat pulldown is `Lats`; lateral raise is
+  `Side delts`; front raise is `Front delts`; rear delt fly is `Rear delts`.
+- Row = `Upper back` + `Lats`. Deadlift = `Lower back`, `Glutes`, `Hamstrings`.
+  Squat = `Quads` + `Glutes`, never just one.
 
-- Primary = what the exercise is *for*, usually 1–2 heads.
-- Secondary = meaningfully worked but not the point, usually 1–3 heads.
-- Name the actual head, not the region. A lat pulldown is `Lats`, not "Back".
-  A lateral raise is `Side delts`, a front raise `Front delts`, a rear delt
-  fly `Rear delts` — never all three, and never "Shoulders".
-- A row is usually `Upper back` plus `Lats`; a deadlift is `Lower back`,
-  `Glutes`, `Hamstrings`.
-- A squat's primary is `Quads, Glutes` — do not list only one.
-- These drive weekly balance checks, so be accurate rather than generous.
+**6. Stress** — the field people get wrong. Tag as little as possible.
 
-## Joint stress — TAG SPARINGLY, THIS IS THE ONE PEOPLE GET WRONG
+`Back` `Knees` `Shoulders` `Neck` `Wrists` `Hips` `Ankles` `Elbows` `Chest`
+`Groin` `Hamstrings` `Achilles`
 
-Choose only from: `Back` · `Knees` · `Shoulders` · `Neck` · `Wrists` · `Hips` ·
-`Ankles` · `Elbows` · `Chest` · `Groin` · `Hamstrings` · `Achilles`
+This is a hard exclusion: a client reporting that area loses every exercise
+tagged with it. Over-tagging leaves people with almost no plan.
 
-This is a hard exclusion. If a client reports an injured area, EVERY exercise
-tagged with that area is removed from their plan entirely.
+The test is NOT "is this joint involved?" It is:
 
-The test is NOT "does this area participate in the movement?" — it is:
+> Would a coach swap this exercise out for someone with pain there?
 
-> **Would a coach actually swap this exercise out for someone complaining of
-> pain in that area?**
+If no, leave it off. **Most exercises need 0–2 tags. Many need none — answer
+`none`.**
 
-If the answer is no, leave the tag off.
+- Right: goblet squat → `Knees`. Bench press → `Shoulders`. Pushdown →
+  `Elbows`. Deadlift → `Back`. Overhead press → `Shoulders`.
+- Wrong: a row tagged `Elbows` because the elbow bends.
+- Wrong: a bench press tagged `Chest` — this field is aggravation risk, not
+  muscles worked.
+- Wrong: a squat tagged `Achilles` because the ankle flexes.
+- Never tag every joint the movement uses.
 
-Most exercises need **zero to two** tags. Never tag every joint involved.
+## Before you answer — check each of these
 
-- Correct: goblet squat → `Knees, Back`. Bench press → `Shoulders`. Triceps
-  pushdown → `Elbows`. Deadlift → `Back`. Overhead press → `Shoulders`.
-- Wrong: tagging a dumbbell row with `Elbows` because the elbow bends.
-- Wrong: tagging a bench press with `Chest` because it works the chest —
-  joint stress means *aggravation risk*, not muscles trained.
-- Wrong: tagging a goblet squat with `Achilles` because the ankle flexes.
+Run this list against every exercise before returning it. These are the
+mistakes that actually happen:
 
-Return `—` when nothing genuinely qualifies. An empty joint stress list is
-normal and correct for many exercises.
+1. **One value per single-select.** Pattern, Type and Experience take exactly
+   one. Never two.
+2. **Never a region name in muscles.** If you wrote `Back`, `Shoulders`,
+   `Arms`, `Legs`, `Core` or `Full body`, replace it — those are not valid
+   values. `Back` → `Lats` or `Upper back`. `Shoulders` → `Front delts`,
+   `Side delts` or `Rear delts`. `Core` → `Abs`.
+3. **Replace, never both.** Give the specific head only — not `Back, Lats`
+   and not `Shoulders, Side delts`.
+4. **Experience is never blank.** Every exercise gets one, default
+   `Beginner`.
+5. **Compound vs isolation:** pull-up, chin-up, lat pulldown, row, dip and
+   leg press are `compound`. Curl, pushdown, extension, raise, fly, leg
+   extension, leg curl and calf raise are `isolation`.
+6. **Stress: count your tags.** More than two on one exercise almost always
+   means you tagged joints that merely participate. A bench press is
+   `Shoulders` — not `Shoulders, Elbows, Chest`. A pull-up is `Shoulders` —
+   not `Wrists, Back, Shoulders`. A leg press is `Knees` — not
+   `Knees, Back, Hips`.
+7. **Secondary muscles are optional.** Don't pad them. A pushdown's secondary
+   is `none`.
+8. **Don't tag the muscles worked as stress.** Stress means "would a coach
+   avoid this for someone with pain there", not "what does it work".
 
-## Output format
+## Output
 
-Return only the markdown table, no commentary. Use the exact snake_case values
-above for movement pattern and type. Example:
+One block per exercise, exactly these six fields in this order, nothing else.
+No preamble, no summary, no notes.
 
-| Exercise | Movement pattern | Type | Min experience | Primary muscles | Secondary muscles | Joint stress |
-|---|---|---|---|---|---|---|
-| Goblet Squat | `squat` | `compound` | `Beginner` | Quads, Glutes | Abs | Knees, Back |
-| Triceps Pushdown | `elbow_extension` | `isolation` | `Beginner` | Triceps | — | Elbows |
-| Dumbbell Row | `horizontal_pull` | `compound` | `Beginner` | Upper back, Lats | Biceps | Back |
+```
+Bench Press
+Pattern:    horizontal_push
+Type:       compound
+Experience: Beginner
+Primary:    Chest
+Secondary:  Triceps, Front delts
+Stress:     Shoulders
+```
 
-If an exercise name is ambiguous (for example "Press" or "Curl" with no other
-words), say so and ask which variation is meant rather than guessing.
+```
+Triceps Pushdown
+Pattern:    elbow_extension
+Type:       isolation
+Experience: Beginner
+Primary:    Triceps
+Secondary:  none
+Stress:     Elbows
+```
 
-Here are the exercises to tag:
+```
+Pull Up
+Pattern:    vertical_pull
+Type:       compound
+Experience: Beginner
+Primary:    Lats
+Secondary:  Biceps, Upper back
+Stress:     Shoulders
+```
 
----
+If a name is too vague to tag (just "Press", "Curl", "Machine"), don't guess —
+list it under "Need more detail" and say which variation you need.
 
-## How to use the result
+Exercises to tag:
 
-For each row, in the GYDE admin: **Exercise Library → find the exercise →
-Edit**, then set Movement pattern, Type, Min experience, Primary/Secondary
-muscles and Joint stress to match, and make sure **Enabled** is on.
+====
 
-The generator ignores any exercise that isn't enabled or is missing a movement
-pattern or type — those two are required for it to be selectable at all.
+## Applying the result
+
+**Exercise Library → find the exercise → Edit.** The blocks come back in modal
+order, so work top to bottom: Movement pattern, Type, Minimum experience,
+Primary muscles, Secondary muscles, Stresses these areas. Make sure **Enabled**
+is on before saving.
+
+Two things worth doing in the same pass:
+
+- Also fix the free-text **Target Muscle** and **Category** fields above. They
+  feed the auto-derivation, so a stale "Isolation (Hypertrophy)" on a pull-up
+  will re-suggest the wrong Type next time you use bulk tagging.
+- An exercise missing a movement pattern or type is invisible to the
+  generator, no matter what else is filled in.

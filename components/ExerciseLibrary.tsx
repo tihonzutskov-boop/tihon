@@ -213,6 +213,14 @@ export const MUSCLE_COLORS: Record<string, string> = {
 };
 export const muscleColor = (m: string) => MUSCLE_COLORS[m] || '#94a3b8';
 
+// Chips only render values that still exist, so a tag saved under an older
+// vocabulary ("Back" before it split into Lats/Upper back) had no chip to
+// click and could never be removed — it round-tripped invisibly on every
+// save while the engine ignored it. Dropping it on load makes the form show
+// what is actually stored, and the next save cleans the record up.
+const keepValid = <T,>(values: T[] | undefined, allowed: readonly T[]): T[] =>
+  (values || []).filter(v => allowed.includes(v));
+
 // Reference for the "Movement pattern" picker below — admins choosing a
 // pattern otherwise see only the raw identifier (e.g. "hinge") with nothing
 // explaining what qualifies or what it's for.
@@ -230,6 +238,9 @@ const PATTERN_HELP: { pattern: MovementPattern; direction: string; examples: str
   { pattern: 'elbow_extension', direction: 'Elbow straightens, upper arm still', examples: 'Triceps pushdown, overhead extension, kickback' },
   { pattern: 'knee_extension', direction: 'Knee straightens against load', examples: 'Leg extension machine' },
   { pattern: 'knee_flexion', direction: 'Knee bends against load', examples: 'Lying leg curl, seated leg curl' },
+  { pattern: 'hip_extension', direction: 'Hip drives straight back, knee still', examples: 'Glute kickback, glute bridge, cable pull-through' },
+  { pattern: 'hip_adduction', direction: 'Legs squeeze toward the midline', examples: 'Adductor machine, cable hip adduction' },
+  { pattern: 'hip_abduction', direction: 'Legs press away from the midline', examples: 'Abductor machine, banded lateral walk' },
   { pattern: 'calf_raise', direction: 'Ankle extends, heel lifts', examples: 'Standing calf raise, seated calf raise' },
   { pattern: 'carry', direction: 'Load-bearing walk or hold', examples: "Farmer's carry, suitcase carry, waiter's walk" },
   { pattern: 'core', direction: 'Trunk resists or drives motion', examples: 'Plank, dead bug, hollow hold, cable chop' },
@@ -390,13 +401,13 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     // structured field is still empty, so a deliberate choice always wins.
     setFormExerciseCategoryTag(ex.exerciseCategory || deriveExerciseCategory(ex.category));
     setFormMinExperience(ex.minExperience || '');
-    setFormJointStress(ex.jointStress || []);
+    setFormJointStress(keepValid(ex.jointStress, ALL_JOINT_STRESS_AREAS));
     setFormPrimaryMuscles(
       (ex.primaryMuscles && ex.primaryMuscles.length > 0)
-        ? ex.primaryMuscles
+        ? keepValid(ex.primaryMuscles, ALL_MUSCLE_GROUPS)
         : deriveMuscleGroups(ex.targetMuscle)
     );
-    setFormSecondaryMuscles(ex.secondaryMuscles || []);
+    setFormSecondaryMuscles(keepValid(ex.secondaryMuscles, ALL_MUSCLE_GROUPS));
     setFormGenerationEnabled(ex.generationEnabled === true);
     setFormError('');
     setEquipmentPickerSearch('');
@@ -1424,7 +1435,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                         </div>
                       )}
                       <div className="flex flex-wrap gap-1.5">
-                        {(['horizontal_push','horizontal_pull','vertical_push','vertical_pull','squat','hinge','lunge','carry','shoulder_abduction','horizontal_adduction','elbow_flexion','elbow_extension','knee_extension','knee_flexion','calf_raise','core','conditioning','mobility'] as MovementPattern[]).map(mp => (
+                        {(['horizontal_push','horizontal_pull','vertical_push','vertical_pull','squat','hinge','lunge','carry','shoulder_abduction','horizontal_adduction','elbow_flexion','elbow_extension','knee_extension','knee_flexion','hip_extension','hip_adduction','hip_abduction','calf_raise','core','conditioning','mobility'] as MovementPattern[]).map(mp => (
                           <button
                             key={mp}
                             type="button"

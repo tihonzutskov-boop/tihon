@@ -181,6 +181,7 @@ const PATTERN_RULES: [RegExp, MovementPatternName][] = [
   // Plurals and spaced spellings are matched explicitly: real libraries hold
   // "Goblet Squats", "Pull Up" and "Dumbbell Rows", none of which match a
   // bare \bsquat\b / pull-?up / \brow\b.
+  [/\b(farmer'?s? (carry|walk)|suitcase carry|waiter'?s? walk|loaded carry)\b/, 'carry'],
   [/\b(bulgarian|split squats?|lunges?|step[- ]?ups?)\b/, 'lunge'],
   [/\b(deadlifts?|rdls?|hip thrusts?|good mornings?|swings?)\b/, 'hinge'],
   [/\b(squats?|leg press(es)?)\b/, 'squat'],
@@ -194,11 +195,16 @@ const PATTERN_RULES: [RegExp, MovementPatternName][] = [
   // curl by name but a hamstring movement in fact.
   [/\b(leg curls?|hamstring curls?|lying leg curls?)\b/, 'knee_flexion'],
   [/\b(leg extensions?|knee extensions?|quad extensions?)\b/, 'knee_extension'],
+  // Before the triceps rule: bare "kickback" belongs to triceps, but a
+  // glute kickback is hip extension and was being read as elbow extension.
+  [/\b(glute kickbacks?|glute kicks?|donkey kicks?|glute bridges?|hip extensions?|pull[- ]?throughs?|reverse hypers?)\b/, 'hip_extension'],
+  [/\b(hip adductions?|adductors?|copenhagen)\b/, 'hip_adduction'],
+  [/\b(hip abductions?|abductors?|banded lateral walks?|lateral band walks?|banded walks?|monster walks?|clamshells?|fire hydrants?)\b/, 'hip_abduction'],
   [/\b(calf raises?|calf press(es)?|calve raises?)\b/, 'calf_raise'],
   [/\b(triceps?|push[- ]?downs?|skull ?crushers?|kickbacks?)\b/, 'elbow_extension'],
   [/\b(biceps?|curls?)\b/, 'elbow_flexion'],
   [/\b(chest flye?s?|pec decks?|cable flye?s?|dumbbell flye?s?|flye?s?)\b/, 'horizontal_adduction'],
-  [/\b(planks?|crunch(es)?|sit[- ]?ups?|dead bugs?|hollow)\b/, 'core'],
+  [/\b(planks?|crunch(es)?|sit[- ]?ups?|dead bugs?|hollow|leg raises?|knee raises?|hanging)\b/, 'core'],
   [/\b(treadmills?|rowing|ergs?|bikes?|runs?|conditioning|sprints?)\b/, 'conditioning'],
   [/\b(box jumps?|plyo)\b/, 'squat'],
   [/\b(stretch(es)?|mobility|foam roll(ing)?)\b/, 'mobility'],
@@ -209,7 +215,8 @@ type MovementPatternName =
   | 'squat' | 'hinge' | 'lunge' | 'carry'
   | 'shoulder_abduction' | 'horizontal_adduction'
   | 'elbow_flexion' | 'elbow_extension'
-  | 'knee_extension' | 'knee_flexion' | 'calf_raise'
+  | 'knee_extension' | 'knee_flexion'
+  | 'hip_extension' | 'hip_adduction' | 'hip_abduction' | 'calf_raise'
   | 'core' | 'conditioning' | 'mobility';
 
 export const suggestMovementPattern = (exerciseName: string): MovementPatternName | '' => {
