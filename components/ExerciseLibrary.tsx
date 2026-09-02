@@ -193,10 +193,23 @@ const CATEGORY_TRANSLATIONS: Record<Language, Record<string, string>> = {
 
 // Left-edge / badge color per target muscle group, so exercises are
 // recognizable by muscle at a glance across the grid and detail view.
+// Keyed by region so every head of a muscle shares one colour. Legacy
+// combined labels are kept as aliases so exercises saved before the split
+// still render with a colour instead of falling back to grey.
 export const MUSCLE_COLORS: Record<string, string> = {
-  'Chest': '#f87171', 'Back': '#60a5fa', 'Back/Full Body': '#60a5fa', 'Shoulders': '#fbbf24',
-  'Legs/Quads': '#34d399', 'Glutes': '#34d399', 'Glutes/Quads': '#34d399',
-  'Arms/Biceps': '#c084fc', 'Arms/Triceps': '#c084fc', 'Cardio': '#22d3ee', 'Core': '#fb923c', 'Full Body': '#a3e635'
+  'Chest': '#f87171', 'Upper chest': '#f87171',
+  'Lats': '#60a5fa', 'Upper back': '#60a5fa', 'Lower back': '#60a5fa',
+  'Front delts': '#fbbf24', 'Side delts': '#fbbf24', 'Rear delts': '#fbbf24',
+  'Biceps': '#c084fc', 'Triceps': '#c084fc', 'Forearms': '#c084fc',
+  'Quads': '#34d399', 'Hamstrings': '#34d399', 'Glutes': '#34d399',
+  'Calves': '#34d399', 'Adductors': '#34d399', 'Abductors': '#34d399',
+  'Abs': '#fb923c', 'Obliques': '#fb923c',
+  'Cardio': '#22d3ee',
+  // Pre-split labels, still present on older saved exercises.
+  'Back': '#60a5fa', 'Back/Full Body': '#60a5fa', 'Shoulders': '#fbbf24',
+  'Legs/Quads': '#34d399', 'Glutes/Quads': '#34d399',
+  'Arms/Biceps': '#c084fc', 'Arms/Triceps': '#c084fc',
+  'Core': '#fb923c', 'Full Body': '#a3e635',
 };
 export const muscleColor = (m: string) => MUSCLE_COLORS[m] || '#94a3b8';
 
@@ -491,9 +504,19 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     });
   }, [libraryExercises, exercisesSearchQuery, selectedMuscleFilter, selectedZoneFilter, selectedEquipmentFilter, selectedMappedFilter, gym, equipmentList]);
 
+  // Specific heads only. Combined labels ("Legs/Quads", "Glutes/Quads") and
+  // catch-alls ("Full Body", "Back/Full Body") were removed: they say almost
+  // nothing about what an exercise trains, and an admin picking one leaves
+  // the structured muscle tags with nothing to derive from.
   const musclePresetGroups = [
-    'All', 'Quads', 'Glutes', 'Legs/Quads', 'Glutes/Quads',
-    'Back', 'Back/Full Body', 'Chest', 'Shoulders', 'Arms/Biceps', 'Arms/Triceps', 'Cardio', 'Core', 'Full Body'
+    'All',
+    'Chest', 'Upper chest',
+    'Lats', 'Upper back', 'Lower back',
+    'Front delts', 'Side delts', 'Rear delts',
+    'Biceps', 'Triceps', 'Forearms',
+    'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Adductors', 'Abductors',
+    'Abs', 'Obliques',
+    'Cardio',
   ];
 
   const categoryPresets = [

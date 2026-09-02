@@ -355,8 +355,7 @@ describe('graceful skip when a required slot cannot be filled', () => {
     };
     const r = generatePlan(bp, library, gym([]), profile({ daysPerWeek: 1 }));
     expect(r.ok).toBe(false);
-    if (r.ok) return;
-    expect(r.reason).toBe('no_candidate_for_slot');
+    expect((r as GenerationFailure).reason).toBe('no_candidate_for_slot');
   });
 
   it('produces a plan that passes validation after skipping', () => {
@@ -554,7 +553,7 @@ describe('warm-up slots', () => {
 describe('muscle tags', () => {
   it('prefers an exercise that trains something not yet hit that day', () => {
     const chestAgain = exercise({ id: 'a-chest', name: 'Another Press', primaryMuscles: ['Chest'] });
-    const freshBack = exercise({ id: 'z-back', name: 'Row Variant', primaryMuscles: ['Back'] });
+    const freshBack = exercise({ id: 'z-back', name: 'Row Variant', primaryMuscles: ['Lats'] });
     // 'a-chest' sorts first on id, so only the muscle penalty can flip this.
     const picked = selectForSlot(
       slot({ id: 's1' }), [chestAgain, freshBack], profile(), new Set(), new Set(['Chest'] as any)

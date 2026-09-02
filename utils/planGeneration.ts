@@ -520,7 +520,15 @@ export interface ValidationResult {
 
 // Muscle groups a balanced week should touch. Deliberately the big movers
 // only — flagging a week for missing calves would be noise, not signal.
-const CORE_COVERAGE: MuscleGroup[] = ['Chest', 'Back', 'Quads', 'Hamstrings'];
+// Regions rather than individual heads: muscle tags are split finely (lats,
+// upper back, lower back), so asking for "Back" by name would never be
+// satisfied. A region counts as trained when any one of its heads is.
+const CORE_COVERAGE: { region: string; anyOf: MuscleGroup[] }[] = [
+  { region: 'Chest', anyOf: ['Chest', 'Upper chest'] },
+  { region: 'Back', anyOf: ['Lats', 'Upper back', 'Lower back'] },
+  { region: 'Quads', anyOf: ['Quads'] },
+  { region: 'Hamstrings', anyOf: ['Hamstrings'] },
+];
 
 export const validatePlan = (
   days: WorkoutDay[],
@@ -578,7 +586,9 @@ export const validatePlan = (
       const le = ex.libraryExerciseId ? byId.get(ex.libraryExerciseId) : undefined;
       (le?.primaryMuscles || []).forEach(m => trained.add(m));
     }));
-    const missing = CORE_COVERAGE.filter(m => !trained.has(m));
+    const missing = CORE_COVERAGE
+      .filter(c => !c.anyOf.some(m => trained.has(m)))
+      .map(c => c.region);
     if (missing.length > 0) {
       warnings.push(`Week does not train: ${missing.join(', ')}`);
     }

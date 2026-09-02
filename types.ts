@@ -229,12 +229,24 @@ export const ALL_JOINT_STRESS_AREAS: JointStressArea[] = [
 // week actually covers the body, and avoid stacking redundant exercises that
 // train the same thing.
 export type MuscleGroup =
-  | 'Chest' | 'Back' | 'Shoulders' | 'Biceps' | 'Triceps'
-  | 'Quads' | 'Hamstrings' | 'Glutes' | 'Calves' | 'Core';
+  // Split finer than the usual "Back"/"Shoulders" so a plan can tell a
+  // pulldown from a row, or a lateral raise from a front raise. Coverage
+  // checks roll these back up into regions (see CORE_COVERAGE), so splitting
+  // does not make a week look under-trained.
+  | 'Chest' | 'Upper chest'
+  | 'Lats' | 'Upper back' | 'Lower back'
+  | 'Front delts' | 'Side delts' | 'Rear delts'
+  | 'Biceps' | 'Triceps' | 'Forearms'
+  | 'Quads' | 'Hamstrings' | 'Glutes' | 'Calves' | 'Adductors' | 'Abductors'
+  | 'Abs' | 'Obliques';
 
 export const ALL_MUSCLE_GROUPS: MuscleGroup[] = [
-  'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps',
-  'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core',
+  'Chest', 'Upper chest',
+  'Lats', 'Upper back', 'Lower back',
+  'Front delts', 'Side delts', 'Rear delts',
+  'Biceps', 'Triceps', 'Forearms',
+  'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Adductors', 'Abductors',
+  'Abs', 'Obliques',
 ];
 
 export interface LibraryExercise {

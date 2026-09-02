@@ -5,20 +5,29 @@ describe('deriveMuscleGroups', () => {
   it('reads every muscle in a slash-separated value', () => {
     expect(deriveMuscleGroups('Arms/Biceps')).toEqual(['Biceps']);
     expect(deriveMuscleGroups('Chest/Triceps').sort()).toEqual(['Chest', 'Triceps']);
-    expect(deriveMuscleGroups('Glutes/Hamstrings/Core').sort()).toEqual(['Core', 'Glutes', 'Hamstrings']);
+    expect(deriveMuscleGroups('Glutes/Hamstrings/Abs').sort()).toEqual(['Abs', 'Glutes', 'Hamstrings']);
   });
 
   it('prefers the longer phrase over the word inside it', () => {
-    // "Upper Chest" must not also register via the bare "chest" term, and
-    // "Posterior Chain" must not be read as plain "Back".
-    expect(deriveMuscleGroups('Upper Chest/Anterior Deltoids').sort()).toEqual(['Chest', 'Shoulders']);
-    expect(deriveMuscleGroups('Back/Posterior Chain').sort()).toEqual(['Back', 'Hamstrings']);
+    // "Upper Chest" must resolve to its own head, not the bare "Chest" it
+    // contains, and "Posterior Chain" must not be read as a back muscle.
+    expect(deriveMuscleGroups('Upper Chest/Anterior Deltoids').sort())
+      .toEqual(['Front delts', 'Upper chest']);
+    expect(deriveMuscleGroups('Back/Posterior Chain').sort())
+      .toEqual(['Hamstrings', 'Upper back']);
   });
 
-  it('maps synonyms to the canonical group', () => {
-    expect(deriveMuscleGroups('Back/Lats')).toEqual(['Back']);
-    expect(deriveMuscleGroups('Shoulders/Delts')).toEqual(['Shoulders']);
+  it('resolves specific heads rather than a whole region', () => {
+    expect(deriveMuscleGroups('Lats')).toEqual(['Lats']);
+    expect(deriveMuscleGroups('Lower Back')).toEqual(['Lower back']);
+    expect(deriveMuscleGroups('Rear Delts')).toEqual(['Rear delts']);
     expect(deriveMuscleGroups('Chest/Pectorals')).toEqual(['Chest']);
+  });
+
+  it('stays silent when the text names a region but not which head', () => {
+    // "Shoulders" could be front, side or rear delts. Picking one would be a
+    // guess, and a wrong muscle tag skews the variety scoring.
+    expect(deriveMuscleGroups('Shoulders/Delts')).toEqual([]);
   });
 
   it('returns nothing for values that name no specific muscle', () => {
@@ -30,8 +39,7 @@ describe('deriveMuscleGroups', () => {
   });
 
   it('never returns duplicates', () => {
-    const result = deriveMuscleGroups('Chest/Upper Chest/Pectorals');
-    expect(result).toEqual(['Chest']);
+    expect(deriveMuscleGroups('Chest/Pectorals/Chest')).toEqual(['Chest']);
   });
 
   it('handles every real library value without crashing', () => {
@@ -43,7 +51,7 @@ describe('deriveMuscleGroups', () => {
     ];
     real.forEach(v => expect(Array.isArray(deriveMuscleGroups(v))).toBe(true));
     expect(deriveMuscleGroups('Legs/Quads')).toEqual(['Quads']);
-    expect(deriveMuscleGroups('Back/Full Body')).toEqual(['Back']);
+    expect(deriveMuscleGroups('Back/Full Body')).toEqual(['Upper back']);
   });
 });
 
