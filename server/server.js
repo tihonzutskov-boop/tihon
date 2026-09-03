@@ -29,6 +29,23 @@ const pool = new Pool({
 });
 const requireAdmin = createRequireAdmin(pool);
 
+// node-postgres emits 'error' on the pool when an *idle* connection dies —
+// a database restart, an idle timeout, a network blip. On an EventEmitter an
+// unhandled 'error' event is rethrown, which takes the whole process down
+// with exit code 1 even though every in-flight request was fine. The pool
+// discards the dead client and reconnects on its own, so logging is the
+// correct response here, not crashing.
+pool.on('error', (err) => {
+  console.error('Idle Postgres client error (pool will reconnect):', err.message);
+});
+
+// One rejected promise in a single route should not take the gym offline.
+// Node exits with code 1 on an unhandled rejection by default; log it loudly
+// instead so the request fails alone and the service stays up.
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled promise rejection:', reason);
+});
+
 
 // Apply the schema (all statements are idempotent, safe to re-run on every boot)
 const initDb = async () => {
