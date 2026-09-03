@@ -505,10 +505,18 @@ export const api = {
     } catch (error) {
       console.warn("Backend save postponed. Syncing equipment locally.");
     }
-    const cached = localStorage.getItem('gym_equipment');
-    let list: EquipmentItem[] = cached ? JSON.parse(cached) : [...DEFAULT_EQUIPMENT];
-    list.push(equipment);
-    localStorage.setItem('gym_equipment', JSON.stringify(list));
+    // Caching is best-effort: equipment photos are base64, so this list can
+    // exceed the localStorage quota. An uncaught throw here escaped the whole
+    // call, so the caller's "close the modal" line never ran and Save looked
+    // like it did nothing.
+    try {
+      const cached = localStorage.getItem('gym_equipment');
+      const list: EquipmentItem[] = cached ? JSON.parse(cached) : [...DEFAULT_EQUIPMENT];
+      list.push(equipment);
+      localStorage.setItem('gym_equipment', JSON.stringify(list));
+    } catch (storageError) {
+      console.warn('Could not cache equipment locally (localStorage quota likely exceeded):', storageError);
+    }
   },
 
   async saveEquipment(equipment: EquipmentItem): Promise<void> {
@@ -521,10 +529,18 @@ export const api = {
     } catch (error) {
       console.warn("Backend save postponed. Syncing equipment locally.");
     }
-    const cached = localStorage.getItem('gym_equipment');
-    let list: EquipmentItem[] = cached ? JSON.parse(cached) : [...DEFAULT_EQUIPMENT];
-    list = list.map(item => item.id === equipment.id ? equipment : item);
-    localStorage.setItem('gym_equipment', JSON.stringify(list));
+    // Caching is best-effort: equipment photos are base64, so this list can
+    // exceed the localStorage quota. An uncaught throw here escaped the whole
+    // call, so the caller's "close the modal" line never ran and Save looked
+    // like it did nothing.
+    try {
+      const cached = localStorage.getItem('gym_equipment');
+      const list: EquipmentItem[] = cached ? JSON.parse(cached) : [...DEFAULT_EQUIPMENT];
+      localStorage.setItem('gym_equipment', JSON.stringify(
+        list.map(item => item.id === equipment.id ? equipment : item)));
+    } catch (storageError) {
+      console.warn('Could not cache equipment locally (localStorage quota likely exceeded):', storageError);
+    }
   },
 
   async deleteEquipment(id: string): Promise<void> {
@@ -535,10 +551,17 @@ export const api = {
     } catch (error) {
       console.warn("Backend delete postponed. Syncing equipment locally.");
     }
-    const cached = localStorage.getItem('gym_equipment');
-    let list: EquipmentItem[] = cached ? JSON.parse(cached) : [...DEFAULT_EQUIPMENT];
-    list = list.filter(item => item.id !== id);
-    localStorage.setItem('gym_equipment', JSON.stringify(list));
+    // Caching is best-effort: equipment photos are base64, so this list can
+    // exceed the localStorage quota. An uncaught throw here escaped the whole
+    // call, so the caller's "close the modal" line never ran and Save looked
+    // like it did nothing.
+    try {
+      const cached = localStorage.getItem('gym_equipment');
+      const list: EquipmentItem[] = cached ? JSON.parse(cached) : [...DEFAULT_EQUIPMENT];
+      localStorage.setItem('gym_equipment', JSON.stringify(list.filter(item => item.id !== id)));
+    } catch (storageError) {
+      console.warn('Could not cache equipment locally (localStorage quota likely exceeded):', storageError);
+    }
   },
 
   // --- EXERCISES & VIDEO LIBRARY ---

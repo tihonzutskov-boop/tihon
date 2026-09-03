@@ -276,13 +276,25 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
   };
 
   // Save changes from modal
+  const [modalError, setModalError] = useState('');
+  const [isSavingModal, setIsSavingModal] = useState(false);
+
   const handleSaveModal = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formName.trim()) return;
+    // Both of these used to fail silently: an empty name returned with no
+    // message, and a throw from the save skipped the close below, so the
+    // modal just sat there looking like the button did nothing.
+    if (!formName.trim()) {
+      setModalError('Enter a name first.');
+      return;
+    }
+    setModalError('');
+    setIsSavingModal(true);
 
     const w = parseFloat(formFootprintW) || 40;
     const h = parseFloat(formFootprintH) || 40;
 
+    try {
     if (editingItem) {
       const updated: EquipmentItem = {
         ...editingItem,
@@ -311,9 +323,13 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
       await api.createEquipment(created);
       onEquipmentChange([...safeEquipmentList, created]);
     }
-
-    setIsCreatingNew(false);
-    setEditingItem(null);
+      setIsCreatingNew(false);
+      setEditingItem(null);
+    } catch (err: any) {
+      setModalError(err?.message || 'Could not save. Please try again.');
+    } finally {
+      setIsSavingModal(false);
+    }
   };
 
   // Delete item handler
@@ -873,18 +889,24 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
               </div>
 
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800 flex-shrink-0">
+                {modalError && (
+                  <p className="flex-1 text-[11px] font-bold text-red-400 text-left">{modalError}</p>
+                )}
                 <button
                   type="button"
-                  onClick={() => { setIsCreatingNew(false); setEditingItem(null); }}
+                  onClick={() => { setModalError(''); setIsCreatingNew(false); setEditingItem(null); }}
                   className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition-colors min-h-[44px]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl text-xs font-bold text-slate-950 bg-lime-500 hover:bg-lime-400 transition-all shadow-md shadow-lime-500/20 min-h-[44px]"
+                  disabled={isSavingModal}
+                  className={`px-5 py-2 rounded-xl text-xs font-bold text-slate-950 bg-lime-500 transition-all shadow-md shadow-lime-500/20 min-h-[44px] ${
+                    isSavingModal ? 'opacity-60 cursor-not-allowed' : 'hover:bg-lime-400'
+                  }`}
                 >
-                  {editingItem ? 'Save Changes' : 'Create Equipment Item'}
+                  {isSavingModal ? 'Saving…' : (editingItem ? 'Save Changes' : 'Create Equipment Item')}
                 </button>
               </div>
             </form>
