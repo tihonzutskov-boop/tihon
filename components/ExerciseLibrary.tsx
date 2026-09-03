@@ -221,6 +221,17 @@ export const muscleColor = (m: string) => MUSCLE_COLORS[m] || '#94a3b8';
 const keepValid = <T,>(values: T[] | undefined, allowed: readonly T[]): T[] =>
   (values || []).filter(v => allowed.includes(v));
 
+// The tag chip boxes are height-capped and scroll, so an already-selected
+// chip can sit below the visible slice — the form would open looking as
+// though nothing was chosen. Scroll the selection into view on mount.
+const revealSelectedChip = (el: HTMLDivElement | null) => {
+  if (!el) return;
+  const selected = el.querySelector('[data-selected="true"]') as HTMLElement | null;
+  if (!selected) return;
+  const offset = selected.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
+  el.scrollTop = Math.max(0, offset - el.clientHeight / 2 + selected.offsetHeight / 2);
+};
+
 // Reference for the "Movement pattern" picker below — admins choosing a
 // pattern otherwise see only the raw identifier (e.g. "hinge") with nothing
 // explaining what qualifies or what it's for.
@@ -1434,12 +1445,13 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                           </div>
                         </div>
                       )}
-                      <div className="flex flex-wrap gap-1.5">
+                      <div ref={revealSelectedChip} className="flex flex-wrap gap-1.5 max-h-[104px] overflow-y-auto pr-1">
                         {(['horizontal_push','horizontal_pull','vertical_push','vertical_pull','squat','hinge','lunge','carry','shoulder_abduction','horizontal_adduction','elbow_flexion','elbow_extension','knee_extension','knee_flexion','hip_extension','hip_adduction','hip_abduction','calf_raise','core','conditioning','mobility'] as MovementPattern[]).map(mp => (
                           <button
                             key={mp}
                             type="button"
                             onClick={() => setFormMovementPattern(formMovementPattern === mp ? '' : mp)}
+                            data-selected={formMovementPattern === mp}
                             className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors ${
                               formMovementPattern === mp ? 'bg-sky-500 text-slate-950' : 'bg-slate-950 text-slate-400 border border-slate-800 hover:border-slate-600'
                             }`}
@@ -1490,7 +1502,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                       <div>
                         <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Primary muscles</label>
-                        <div className="flex flex-wrap gap-1.5">
+                        <div ref={revealSelectedChip} className="flex flex-wrap gap-1.5 max-h-[104px] overflow-y-auto pr-1">
                           {ALL_MUSCLE_GROUPS.map(m => {
                             const on = formPrimaryMuscles.includes(m);
                             return (
@@ -1498,6 +1510,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                                 key={m}
                                 type="button"
                                 onClick={() => setFormPrimaryMuscles(prev => on ? prev.filter(x => x !== m) : [...prev, m])}
+                                data-selected={on}
                                 className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors ${
                                   on ? 'bg-sky-500 text-slate-950' : 'bg-slate-950 text-slate-400 border border-slate-800 hover:border-slate-600'
                                 }`}
@@ -1510,7 +1523,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                       </div>
                       <div>
                         <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Secondary muscles</label>
-                        <div className="flex flex-wrap gap-1.5">
+                        <div ref={revealSelectedChip} className="flex flex-wrap gap-1.5 max-h-[104px] overflow-y-auto pr-1">
                           {ALL_MUSCLE_GROUPS.map(m => {
                             const on = formSecondaryMuscles.includes(m);
                             return (
@@ -1518,6 +1531,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                                 key={m}
                                 type="button"
                                 onClick={() => setFormSecondaryMuscles(prev => on ? prev.filter(x => x !== m) : [...prev, m])}
+                                data-selected={on}
                                 className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors ${
                                   on ? 'bg-slate-700 text-white' : 'bg-slate-950 text-slate-400 border border-slate-800 hover:border-slate-600'
                                 }`}
@@ -1535,7 +1549,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
 
                     <div>
                       <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Stresses these areas</label>
-                      <div className="flex flex-wrap gap-1.5">
+                      <div ref={revealSelectedChip} className="flex flex-wrap gap-1.5 max-h-[104px] overflow-y-auto pr-1">
                         {ALL_JOINT_STRESS_AREAS.map(area => {
                           const on = formJointStress.includes(area);
                           return (
@@ -1543,6 +1557,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                               key={area}
                               type="button"
                               onClick={() => setFormJointStress(prev => on ? prev.filter(a => a !== area) : [...prev, area])}
+                              data-selected={on}
                               className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors ${
                                 on ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40' : 'bg-slate-950 text-slate-400 border border-slate-800 hover:border-slate-600'
                               }`}
