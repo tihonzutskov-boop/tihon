@@ -120,6 +120,11 @@ export interface GymHallway {
 export interface GymDimensions {
   width: number;
   height: number;
+  // Top-left corner of the room in canvas coordinates. Absent on gyms saved
+  // before the left/top walls became draggable — treat as 0 (the previous,
+  // implicit origin) rather than requiring a migration.
+  x?: number;
+  y?: number;
   walls?: GymWall[];
   nodes?: GymWallNode[];
   hallways?: GymHallway[];

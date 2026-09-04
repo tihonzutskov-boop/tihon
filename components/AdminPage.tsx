@@ -11,7 +11,7 @@ import { api, DEFAULT_EQUIPMENT } from '../services/api';
 import { evaluateZoneExercises, getZoneEquipmentIds } from '../utils/equipmentMatcher';
 import { getExerciseLocations } from '../utils/exerciseMatcher';
 import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Eraser, Eye, EyeOff, Footprints, MapPin, LayoutTemplate, DoorOpen, Lock, Bath, Droplets, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle, Copy, ClipboardPaste, Dumbbell, Activity, Zap, Target, Layers, Box, Wind, RotateCcw, ArrowUpRight, ArrowUpLeft, ArrowDownRight, ArrowDownLeft, ArrowRight, ArrowUp, ArrowDown, MoveDown, Circle, Waves, Timer, Sparkles, Search, Video, Play, Film, Filter, X, ExternalLink, Compass, SlidersHorizontal, ChevronRight, Bookmark, BookmarkCheck, Camera, Users } from 'lucide-react';
-import { MACHINE_ICONS_LIST as MACHINE_ICONS } from '../utils/equipmentIcons';
+import { MACHINE_ICONS_LIST as MACHINE_ICONS, ICON_GROUPS } from '../utils/equipmentIcons';
 import { snapWallEndpoint } from '../utils/wallSnapping';
 
 interface AdminPageProps {
@@ -910,9 +910,9 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onS
     setDragState({ mode: 'resize-zone', itemId: zone.id, startX: e.clientX, startY: e.clientY, initialData: { x: zone.x, y: zone.y, width: zone.width, height: zone.height }, viewParams: calculateViewParams(null) });
   };
   
-  const handleMainRoomResizeStart = (e: React.MouseEvent, handle: 'right' | 'bottom' | 'corner') => {
+  const handleMainRoomResizeStart = (e: React.MouseEvent, handle: 'left' | 'right' | 'top' | 'bottom' | 'corner') => {
     if (editMode !== 'room') return; e.preventDefault(); snapshot();
-    setDragState({ mode: 'resize-room', itemId: 'main-room', startX: e.clientX, startY: e.clientY, initialData: { x: 0, y: 0, width: dimensions.width, height: dimensions.height }, handle, viewParams: calculateViewParams(null) });
+    setDragState({ mode: 'resize-room', itemId: 'main-room', startX: e.clientX, startY: e.clientY, initialData: { x: dimensions.x || 0, y: dimensions.y || 0, width: dimensions.width, height: dimensions.height }, handle, viewParams: calculateViewParams(null) });
   };
 
   const handleAnnexDragStart = (e: React.MouseEvent, annex: GymAnnex) => {
@@ -1035,7 +1035,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onS
       const deltaX = (e.clientX - dragState.startX) * scaleX, deltaY = (e.clientY - dragState.startY) * scaleY;
       const snapToGrid = (val: number) => Math.round(val / 10) * 10;
       const SNAP_THRESHOLD = 15;
-      const getSnapLines = () => { const xLines = [0, dimensions.width], yLines = [0, dimensions.height]; annexes.forEach(a => { xLines.push(a.x, a.x + a.width); yLines.push(a.y, a.y + a.height); }); return { xLines, yLines }; };
+      const getSnapLines = () => { const roomX = dimensions.x || 0, roomY = dimensions.y || 0; const xLines = [roomX, roomX + dimensions.width], yLines = [roomY, roomY + dimensions.height]; annexes.forEach(a => { xLines.push(a.x, a.x + a.width); yLines.push(a.y, a.y + a.height); }); return { xLines, yLines }; };
       const snapToEdges = (val: number, lines: number[]) => { let best = null, minDiff = SNAP_THRESHOLD; for (const line of lines) { const diff = Math.abs(val - line); if (diff < minDiff) { minDiff = diff; best = line; } } return best; };
       const { xLines, yLines } = getSnapLines();
 
@@ -1062,10 +1062,24 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onS
         });
         update({ ...gym, zones: newZones }, false);
       } else if (dragState.mode === 'resize-room') {
+         // Left/top move the room's origin; right/bottom only change
+         // width/height. The opposite wall from whichever one is being
+         // dragged stays fixed, matching how a real wall drag works.
+         let newX = dragState.initialData.x, newY = dragState.initialData.y;
          let newW = dragState.initialData.width, newH = dragState.initialData.height;
+         const initRight = dragState.initialData.x + dragState.initialData.width;
+         const initBottom = dragState.initialData.y + dragState.initialData.height;
          if (dragState.handle === 'right' || dragState.handle === 'corner') newW = snapToGrid(dragState.initialData.width + deltaX);
          if (dragState.handle === 'bottom' || dragState.handle === 'corner') newH = snapToGrid(dragState.initialData.height + deltaY);
-         update({ ...gym, dimensions: { width: Math.max(200, Math.min(2000, newW)), height: Math.max(200, Math.min(2000, newH)) } }, false);
+         if (dragState.handle === 'left') { newX = snapToGrid(dragState.initialData.x + deltaX); newW = initRight - newX; }
+         if (dragState.handle === 'top') { newY = snapToGrid(dragState.initialData.y + deltaY); newH = initBottom - newY; }
+         const clampedW = Math.max(200, Math.min(2000, newW));
+         const clampedH = Math.max(200, Math.min(2000, newH));
+         if (dragState.handle === 'left' && clampedW !== newW) newX = initRight - clampedW;
+         if (dragState.handle === 'top' && clampedH !== newH) newY = initBottom - clampedH;
+         // Spread the existing dimensions so a resize never silently drops
+         // custom walls/nodes/hallways authored elsewhere in the room editor.
+         update({ ...gym, dimensions: { ...dimensions, x: newX, y: newY, width: clampedW, height: clampedH } }, false);
       } else if (dragState.mode === 'move-annex') {
         const w = dragState.initialData.width;
         const h = dragState.initialData.height;
@@ -1933,8 +1947,12 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onS
                         <div className="text-xs font-bold text-white border-b border-slate-800 pb-2">Selected Machine</div>
                         <div>
                              <label className="block text-xs text-slate-500 mb-2">Icon</label>
-                             <div className="grid grid-cols-4 gap-2 bg-slate-950 p-2 rounded-lg border border-slate-800 max-h-40 overflow-y-auto">
-                                {MACHINE_ICONS.map(({ name, label, icon: Icon }) => {
+                             <div className="bg-slate-950 p-2 rounded-lg border border-slate-800 max-h-52 overflow-y-auto space-y-2">
+                              {ICON_GROUPS.map(group => (
+                               <div key={group}>
+                                <p className="text-[9px] font-bold text-slate-600 uppercase tracking-wider mb-1 px-0.5">{group}</p>
+                                <div className="grid grid-cols-4 gap-2">
+                                {MACHINE_ICONS.filter(i => i.group === group).map(({ name, label, icon: Icon }) => {
                                   const currentMachine = (selectedZone.machines || []).find(m => m.id === selectedMachineId);
                                   const isActive = currentMachine?.icon === name;
                                   return (
@@ -1955,6 +1973,9 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onS
                                     </button>
                                   );
                                 })}
+                                </div>
+                               </div>
+                              ))}
                              </div>
                         </div>
                         {/* Equipment Name / Autocomplete from Equipment Library */}

@@ -159,7 +159,7 @@ interface GymMapProps {
   onZoneDragStart?: (e: React.MouseEvent, zone: GymZone) => void;
   onZoneResizeStart?: (e: React.MouseEvent, zone: GymZone) => void;
 
-  onMainRoomResizeStart?: (e: React.MouseEvent, handle: 'right' | 'bottom' | 'corner') => void;
+  onMainRoomResizeStart?: (e: React.MouseEvent, handle: 'left' | 'right' | 'top' | 'bottom' | 'corner') => void;
   onAnnexDragStart?: (e: React.MouseEvent, annex: GymAnnex) => void;
   onAnnexResizeStart?: (e: React.MouseEvent, annex: GymAnnex, handle?: 'se' | 'sw' | 'ne' | 'nw' | 'right' | 'bottom' | 'top' | 'left' | 'corner') => void;
   selectedAnnexId?: string | null;
@@ -182,7 +182,7 @@ interface GymMapProps {
 
 const GymMap: React.FC<GymMapProps> = ({ 
   zones, 
-  dimensions = { width: 780, height: 580, walls: [], hallways: [], nodes: [] },
+  dimensions = { width: 780, height: 580, x: 0, y: 0, walls: [], hallways: [], nodes: [] },
   entrance = { side: 'bottom', offset: 50, width: 80 },
   floorColor = '#1e293b',
   annexes = [],
@@ -573,10 +573,15 @@ const GymMap: React.FC<GymMapProps> = ({
   }, [focusedZoneId, selectedZoneId]);
 
   const getTotalBounds = () => {
-    let minX = 0;
-    let minY = 0;
-    let maxX = dimensions.width;
-    let maxY = dimensions.height;
+    // Dragging the left/top wall outward moves the room's origin negative;
+    // starting the bounds at a hardcoded 0 would clip that part of the room
+    // out of the viewBox instead of scrolling the view to include it.
+    const roomX = dimensions.x || 0;
+    const roomY = dimensions.y || 0;
+    let minX = roomX;
+    let minY = roomY;
+    let maxX = roomX + dimensions.width;
+    let maxY = roomY + dimensions.height;
 
     annexes.forEach(a => {
       minX = Math.min(minX, a.x);
@@ -632,23 +637,27 @@ const GymMap: React.FC<GymMapProps> = ({
   const getEntrancePath = () => {
     const { side, offset, width } = entrance;
     const { width: gymW, height: gymH } = dimensions;
+    // The left/top walls can now sit away from (0,0), so the entrance has to
+    // be placed relative to the room's actual origin, not the canvas origin.
+    const roomX = dimensions.x || 0;
+    const roomY = dimensions.y || 0;
     const pos = offset / 100;
     let x1, y1, x2, y2, labelX, labelY, labelRotation;
     switch (side) {
       case 'top':
-        x1 = (gymW * pos) - (width / 2); y1 = 0; x2 = x1 + width; y2 = 0;
+        x1 = roomX + (gymW * pos) - (width / 2); y1 = roomY; x2 = x1 + width; y2 = roomY;
         labelX = x1 + width / 2; labelY = y1 - 15; labelRotation = 0;
         break;
       case 'bottom':
-        x1 = (gymW * pos) - (width / 2); y1 = gymH; x2 = x1 + width; y2 = gymH;
+        x1 = roomX + (gymW * pos) - (width / 2); y1 = roomY + gymH; x2 = x1 + width; y2 = roomY + gymH;
         labelX = x1 + width / 2; labelY = y2 + 15; labelRotation = 0;
         break;
       case 'left':
-        x1 = 0; y1 = (gymH * pos) - (width / 2); x2 = 0; y2 = y1 + width;
+        x1 = roomX; y1 = roomY + (gymH * pos) - (width / 2); x2 = roomX; y2 = y1 + width;
         labelX = x1 - 15; labelY = y1 + width / 2; labelRotation = -90;
         break;
       case 'right':
-        x1 = gymW; y1 = (gymH * pos) - (width / 2); x2 = gymW; y2 = y1 + width;
+        x1 = roomX + gymW; y1 = roomY + (gymH * pos) - (width / 2); x2 = roomX + gymW; y2 = y1 + width;
         labelX = x1 + 15; labelY = y1 + width / 2; labelRotation = 90;
         break;
     }
@@ -821,11 +830,16 @@ const GymMap: React.FC<GymMapProps> = ({
             {/* 1. Dark Blueprint Floor Base & Outer Room Boundary matching picture */}
             {(() => {
               const effectiveFloorColor = (floorColor && floorColor !== '#ffffff') ? floorColor : '#141d2f';
+              // The left/top walls are draggable, so the room's top-left
+              // corner is no longer always (0,0) — fall back to 0 for gyms
+              // saved before that origin existed.
+              const roomX = dimensions.x || 0;
+              const roomY = dimensions.y || 0;
               return (
                 <>
                   <rect
-                    x="0"
-                    y="0"
+                    x={roomX}
+                    y={roomY}
                     width={dimensions.width}
                     height={dimensions.height}
                     fill={effectiveFloorColor}
@@ -836,8 +850,8 @@ const GymMap: React.FC<GymMapProps> = ({
                   />
                   {/* Subtle Grid Layer over gym floor */}
                   <rect
-                    x="0"
-                    y="0"
+                    x={roomX}
+                    y={roomY}
                     width={dimensions.width}
                     height={dimensions.height}
                     fill="url(#floorGrid)"
@@ -1071,7 +1085,7 @@ const GymMap: React.FC<GymMapProps> = ({
             })}
 
             {/* 3. Grid overlay & Interactivity on top */}
-            <rect x="0" y="0" width={dimensions.width} height={dimensions.height} fill="url(#grid)" className="pointer-events-none opacity-50"/>
+            <rect x={dimensions.x || 0} y={dimensions.y || 0} width={dimensions.width} height={dimensions.height} fill="url(#grid)" className="pointer-events-none opacity-50"/>
             {annexes.map((annex, i) => {
               const isSelected = isRoomEdit && selectedAnnexId === annex.id;
               const displayName = annex.name || `Extension ${i + 1}`;
@@ -1260,14 +1274,23 @@ const GymMap: React.FC<GymMapProps> = ({
                 </g>
               );
             })}
-            {isRoomEdit && !isThumbnail && (
+            {isRoomEdit && !isThumbnail && (() => {
+               const roomX = dimensions.x || 0;
+               const roomY = dimensions.y || 0;
+               return (
                <>
-                 <rect x="0" y="0" width={dimensions.width} height={dimensions.height} fill="url(#dotGrid)" className="pointer-events-none opacity-100"/>
-                 <rect x={dimensions.width - 4} y={dimensions.height / 2 - 20} width="8" height="40" rx="4" className={handleStyle} onMouseDown={(e) => { e.stopPropagation(); onMainRoomResizeStart && onMainRoomResizeStart(e, 'right'); }} />
-                 <rect x={dimensions.width / 2 - 20} y={dimensions.height - 4} width="40" height="8" rx="4" className={`cursor-ns-resize hover:fill-lime-400 fill-white stroke-slate-900`} onMouseDown={(e) => { e.stopPropagation(); onMainRoomResizeStart && onMainRoomResizeStart(e, 'bottom'); }} />
-                 <rect x={dimensions.width - 8} y={dimensions.height - 8} width="16" height="16" rx="2" className={cornerStyle} onMouseDown={(e) => { e.stopPropagation(); onMainRoomResizeStart && onMainRoomResizeStart(e, 'corner'); }} />
+                 <rect x={roomX} y={roomY} width={dimensions.width} height={dimensions.height} fill="url(#dotGrid)" className="pointer-events-none opacity-100"/>
+                 {/* Every wall is its own handle now, not just the two that
+                     used to be draggable — left/top move the room's origin,
+                     right/bottom only change width/height. */}
+                 <rect x={roomX - 4} y={roomY + dimensions.height / 2 - 20} width="8" height="40" rx="4" className={handleStyle} onMouseDown={(e) => { e.stopPropagation(); onMainRoomResizeStart && onMainRoomResizeStart(e, 'left'); }} />
+                 <rect x={roomX + dimensions.width - 4} y={roomY + dimensions.height / 2 - 20} width="8" height="40" rx="4" className={handleStyle} onMouseDown={(e) => { e.stopPropagation(); onMainRoomResizeStart && onMainRoomResizeStart(e, 'right'); }} />
+                 <rect x={roomX + dimensions.width / 2 - 20} y={roomY - 4} width="40" height="8" rx="4" className={`cursor-ns-resize hover:fill-lime-400 fill-white stroke-slate-900`} onMouseDown={(e) => { e.stopPropagation(); onMainRoomResizeStart && onMainRoomResizeStart(e, 'top'); }} />
+                 <rect x={roomX + dimensions.width / 2 - 20} y={roomY + dimensions.height - 4} width="40" height="8" rx="4" className={`cursor-ns-resize hover:fill-lime-400 fill-white stroke-slate-900`} onMouseDown={(e) => { e.stopPropagation(); onMainRoomResizeStart && onMainRoomResizeStart(e, 'bottom'); }} />
+                 <rect x={roomX + dimensions.width - 8} y={roomY + dimensions.height - 8} width="16" height="16" rx="2" className={cornerStyle} onMouseDown={(e) => { e.stopPropagation(); onMainRoomResizeStart && onMainRoomResizeStart(e, 'corner'); }} />
                </>
-            )}
+               );
+             })()}
             {/* Hallway Walkway Paths */}
             {(dimensions.hallways || []).map((hallway) => {
               if (!hallway.points || hallway.points.length < 2) return null;
