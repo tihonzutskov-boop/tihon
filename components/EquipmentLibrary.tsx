@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
+import { MACHINE_ICONS_LIST, ICON_GROUPS } from '../utils/equipmentIcons';
 import { EquipmentItem, Gym, GymZone, LibraryExercise, Language, GymMachine } from '../types';
 import { translations, getGymTranslation } from '../translations';
 import { 
@@ -36,18 +37,14 @@ export const CATEGORIES = [
 
 export const MUSCLE_GROUPS = ['Chest', 'Back', 'Shoulders', 'Arms', 'Legs', 'Glutes', 'Core', 'Full Body', 'Cardio'];
 
-export const ICON_OPTIONS = [
-  { label: 'Dumbbell', value: 'Dumbbell', icon: Dumbbell },
-  { label: 'Weight & Barbell', value: 'Weight', icon: Disc },
-  { label: 'Power Rack', value: 'Layers', icon: Layers },
-  { label: 'Bench / Box', value: 'Box', icon: Box },
-  { label: 'Cable Station', value: 'Sliders', icon: Sliders },
-  { label: 'Disc / Machine', value: 'Disc', icon: Disc },
-  { label: 'Cardio / Run', value: 'Activity', icon: Activity },
-  { label: 'Rower / Waves', value: 'Waves', icon: Waves },
-  { label: 'Floor Space / Mat', value: 'Sparkles', icon: Sparkles },
-  { label: 'Bands / Wind', value: 'Wind', icon: Wind }
-];
+// Derived from the single grouped icon list so this picker can no longer
+// drift from the floor-plan one. The old hand-written list had "Bands / Wind"
+// storing an icon name that ICON_MAP has no entry for (it silently fell back),
+// and a "Weight & Barbell" option that previewed the Disc drawing while saving
+// "Weight" — the preview disagreed with what was stored.
+export const ICON_OPTIONS = MACHINE_ICONS_LIST.map(({ name, label, group, icon }) => ({
+  label, value: name, group, icon,
+}));
 
 // Category stays free text (not a strict enum) so admins can create their own,
 // but the combobox suggests existing ones first to avoid near-duplicate categories.
@@ -780,8 +777,12 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
                     onChange={(e) => setFormIcon(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:ring-2 focus:ring-lime-500/50 focus:border-lime-500 outline-none min-h-[44px]"
                   >
-                    {ICON_OPTIONS.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    {ICON_GROUPS.map(group => (
+                      <optgroup key={group} label={group}>
+                        {ICON_OPTIONS.filter(o => o.group === group).map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </optgroup>
                     ))}
                   </select>
                 </div>

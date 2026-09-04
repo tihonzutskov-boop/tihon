@@ -77,27 +77,37 @@ export const ICON_MAP: Record<string, React.FC<LucideProps>> = {
   Sparkles
 };
 
-export const MACHINE_ICONS_LIST = [
-  { name: 'Dumbbell', label: 'Dumbbells / Free Weights', icon: Dumbbell },
-  { name: 'Footprints', label: 'Treadmill / Running', icon: Footprints },
-  { name: 'Bike', label: 'Exercise Bike / Cycle', icon: Bike },
-  { name: 'Waves', label: 'Rowing Machine / Rower', icon: Waves },
-  { name: 'Weight', label: 'Squat Rack / Barbell', icon: Weight },
-  { name: 'BicepsFlexed', label: 'Bench Press / Arms', icon: BicepsFlexed },
-  { name: 'Sliders', label: 'Cable Machine / Pulleys', icon: Sliders },
-  { name: 'Disc', label: 'Leg Press / Plate Loaded', icon: Disc },
-  { name: 'HeartPulse', label: 'Cardio / Aerobics', icon: HeartPulse },
-  { name: 'Flame', label: 'Functional Turf / HIIT', icon: Flame },
-  { name: 'Gauge', label: 'Weight Stack / Machine', icon: Gauge },
-  { name: 'Shield', label: 'Power Rig / Safety Cage', icon: Shield },
-  { name: 'DoorOpen', label: 'Reception / Entrance', icon: DoorOpen },
-  { name: 'Lock', label: 'Locker Rooms', icon: Lock },
-  { name: 'Bath', label: 'Restrooms / Toilets', icon: Bath },
-  { name: 'Droplets', label: 'Water Station', icon: Droplets },
-  { name: 'Users', label: 'Group Fitness / Classes', icon: Users },
-  { name: 'Activity', label: 'General Activity', icon: Activity },
-  { name: 'Timer', label: 'Interval Timer', icon: Timer },
+// Grouped so the picker reads like the equipment library itself rather than
+// one long undifferentiated grid. `group` is display-only — the stored value
+// is still `name`, so regrouping never invalidates saved icons.
+export const MACHINE_ICONS_LIST: { name: string; label: string; group: string; icon: React.FC<LucideProps> }[] = [
+  { name: 'Footprints', label: 'Treadmill / running', group: 'Cardio', icon: Footprints },
+  { name: 'Bike', label: 'Exercise bike', group: 'Cardio', icon: Bike },
+  { name: 'Waves', label: 'Rowing machine', group: 'Cardio', icon: Waves },
+  { name: 'HeartPulse', label: 'Cardio / aerobics', group: 'Cardio', icon: HeartPulse },
+
+  { name: 'Dumbbell', label: 'Dumbbells', group: 'Free weights', icon: Dumbbell },
+  { name: 'Weight', label: 'Squat rack / barbell', group: 'Free weights', icon: Weight },
+  { name: 'Shield', label: 'Power rig / cage', group: 'Free weights', icon: Shield },
+
+  { name: 'Gauge', label: 'Weight stack machine', group: 'Machines', icon: Gauge },
+  { name: 'Disc', label: 'Plate loaded / leg press', group: 'Machines', icon: Disc },
+  { name: 'Sliders', label: 'Cable machine', group: 'Machines', icon: Sliders },
+  { name: 'BicepsFlexed', label: 'Bench press', group: 'Machines', icon: BicepsFlexed },
+
+  { name: 'Flame', label: 'Functional turf / HIIT', group: 'Functional and floor', icon: Flame },
+  { name: 'Activity', label: 'Open floor / general', group: 'Functional and floor', icon: Activity },
+  { name: 'Timer', label: 'Interval timer', group: 'Functional and floor', icon: Timer },
+
+  { name: 'DoorOpen', label: 'Reception / entrance', group: 'Facilities', icon: DoorOpen },
+  { name: 'Lock', label: 'Locker rooms', group: 'Facilities', icon: Lock },
+  { name: 'Bath', label: 'Restrooms', group: 'Facilities', icon: Bath },
+  { name: 'Droplets', label: 'Water station', group: 'Facilities', icon: Droplets },
+  { name: 'Users', label: 'Group fitness', group: 'Facilities', icon: Users },
 ];
+
+// Display order for the grouped pickers.
+export const ICON_GROUPS = ['Cardio', 'Free weights', 'Machines', 'Functional and floor', 'Facilities'];
 
 export function isAmenityZone(zone: { type?: string | EquipmentType; name?: string } | string): boolean {
   if (typeof zone === 'string') {
