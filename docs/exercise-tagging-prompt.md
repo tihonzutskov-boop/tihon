@@ -9,7 +9,7 @@ fields in the Edit modal, so you can click straight down the form.
 Tag exercises for a gym app. A rules engine reads these tags — it can only use
 the exact values listed, so never invent one.
 
-## The six fields
+## The seven fields
 
 **1. Pattern** — one only. Ask: *which joint drives the movement?*
 
@@ -103,6 +103,36 @@ If no, leave it off. **Most exercises need 0–2 tags. Many need none — answer
 - Wrong: a squat tagged `Achilles` because the ankle flexes.
 - Never tag every joint the movement uses.
 
+**7. Equipment** — what the exercise cannot be done without.
+
+Pick only from this gym's actual equipment library:
+
+**Accessories** — `3-in-1  Plyo Box` · `Adjustable Bench` · `Resistance Bands & Battle Ropes`
+**Benches & Racks** — `Bench press`
+**Cables** — `Cable Station` · `Lat Pulldown`
+**Cardio** — `Air Resistance Assault Bike` · `Air Rower` · `RoadBike`
+**Free Weights** — `Dumbbell rack` · `Kettlebells` · `Power Rack`
+**Functional & Floor** — `Functional Training Rig` · `Open Floor / Mat Area`
+**Machines** — `45° Plate-Loaded Leg Press` · `Adductor machine` · `Bike` · `Chest Press Machine` · `Delts machine` · `Elliptical machine` · `Leg Curll` · `Leg Extension` · `Leg Press` · `Lower back machine` · `Pectoral Machine` · `Prone Leg Curl` · `Shoulder Press machine` · `Stairmaster` · `Treadmill` · `Vertical Traction machine`
+**Plaetd machine** — `Chest press machine` · `Glute Kickback` · `Leg Press` · `Low Row` · `Pull Down` · `Row` · `Seated Dip`
+
+Rules that matter more than the list:
+
+- **Required equipment is AND-ed.** An exercise is only offered to someone
+  whose gym has *every* item you list. One extra item makes it unavailable at
+  gyms that could genuinely do it, so list the **minimum**, not everything you
+  could plausibly use.
+- Usually that is **exactly one** item. A dumbbell curl needs
+  `Dumbbell rack` — not a bench, not a mat.
+- List two only when both are genuinely needed at once: a dumbbell bench press
+  is `Dumbbell rack` + `Adjustable Bench`.
+- Bodyweight work needs **none** — a push-up, plank or air squat should be
+  `none` so it stays available everywhere.
+- Match the name **exactly** as written above. If nothing matches, say
+  `none — needs a new item` rather than inventing a name.
+- Where two entries look like the same machine, pick the one whose category
+  matches the exercise and flag it, rather than guessing.
+
 ## Before you answer — check each of these
 
 Run this list against every exercise before returning it. These are the
@@ -130,10 +160,13 @@ mistakes that actually happen:
    is `none`.
 8. **Don't tag the muscles worked as stress.** Stress means "would a coach
    avoid this for someone with pain there", not "what does it work".
+9. **Equipment: fewest items possible.** Every item you add removes the
+   exercise from more gyms. One item is the norm, two is uncommon, three is
+   almost always wrong. Bodyweight is `none`.
 
 ## Output
 
-One block per exercise, exactly these six fields in this order, nothing else.
+One block per exercise, exactly these seven fields in this order, nothing else.
 No preamble, no summary, no notes.
 
 ```
@@ -144,6 +177,7 @@ Experience: Beginner
 Primary:    Chest
 Secondary:  Triceps, Front delts
 Stress:     Shoulders
+Equipment:  Dumbbell rack, Adjustable Bench
 ```
 
 ```
@@ -154,6 +188,7 @@ Experience: Beginner
 Primary:    Triceps
 Secondary:  none
 Stress:     Elbows
+Equipment:  Cable Station
 ```
 
 ```
@@ -164,6 +199,7 @@ Experience: Beginner
 Primary:    Lats
 Secondary:  Biceps, Upper back
 Stress:     Shoulders
+Equipment:  Functional Training Rig
 ```
 
 If a name is too vague to tag (just "Press", "Curl", "Machine"), don't guess —
