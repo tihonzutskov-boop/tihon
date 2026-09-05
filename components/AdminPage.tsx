@@ -1095,7 +1095,18 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onS
             nh = Math.max(40, initBottom - finalTop);
             ny = initBottom - nh;
           }
-          return { ...z, x: nx, y: ny, width: nw, height: nh };
+          // Machine x/y are stored relative to the zone's own corner. Dragging
+          // a left/top handle moves that corner, so without this the machines
+          // would appear to slide across the floor even though nothing was
+          // done to them directly — shift them the opposite way to keep every
+          // machine's actual floor position fixed while just the zone outline
+          // gets redrawn around it.
+          const offsetX = nx - dragState.initialData.x;
+          const offsetY = ny - dragState.initialData.y;
+          const newMachines = (offsetX !== 0 || offsetY !== 0)
+            ? (z.machines || []).map(m => ({ ...m, x: m.x - offsetX, y: m.y - offsetY }))
+            : z.machines;
+          return { ...z, x: nx, y: ny, width: nw, height: nh, machines: newMachines };
         });
         update({ ...gym, zones: newZones }, false);
       } else if (dragState.mode === 'resize-room') {

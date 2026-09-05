@@ -180,8 +180,95 @@ interface GymMapProps {
   hideSearch?: boolean;
 }
 
-const GymMap: React.FC<GymMapProps> = ({ 
-  zones, 
+// Traces the outer boundary of the union of a set of axis-aligned rectangles
+// (the main room plus any attached annexes) as one or more closed SVG
+// sub-paths, so a room built from several attached wings renders as a single
+// continuous outline instead of one rectangle per wing with a visible seam
+// where they touch. Works by rasterizing the rectangles onto the grid formed
+// by their own edges, then keeping only the cell edges that border empty
+// space — an edge shared between two covered cells is interior and dropped.
+function buildUnionOutlinePath(rects: { x: number; y: number; width: number; height: number }[]): string {
+  if (rects.length === 0) return '';
+  const xsSet = new Set<number>();
+  const ysSet = new Set<number>();
+  rects.forEach(r => { xsSet.add(r.x); xsSet.add(r.x + r.width); ysSet.add(r.y); ysSet.add(r.y + r.height); });
+  const xs = [...xsSet].sort((a, b) => a - b);
+  const ys = [...ysSet].sort((a, b) => a - b);
+  const nx = xs.length - 1, ny = ys.length - 1;
+  if (nx <= 0 || ny <= 0) return '';
+
+  const covered: boolean[][] = Array.from({ length: nx }, (_, i) => {
+    const cx = (xs[i] + xs[i + 1]) / 2;
+    return Array.from({ length: ny }, (_, j) => {
+      const cy = (ys[j] + ys[j + 1]) / 2;
+      return rects.some(r => cx > r.x && cx < r.x + r.width && cy > r.y && cy < r.y + r.height);
+    });
+  });
+
+  const key = (x: number, y: number) => `${x},${y}`;
+  const adj = new Map<string, string[]>();
+  const addEdge = (x1: number, y1: number, x2: number, y2: number) => {
+    const k = key(x1, y1);
+    if (!adj.has(k)) adj.set(k, []);
+    adj.get(k)!.push(key(x2, y2));
+  };
+
+  for (let i = 0; i < nx; i++) {
+    for (let j = 0; j < ny; j++) {
+      if (!covered[i][j]) continue;
+      const x0 = xs[i], x1 = xs[i + 1], y0 = ys[j], y1 = ys[j + 1];
+      if (j === 0 || !covered[i][j - 1]) addEdge(x0, y0, x1, y0);
+      if (j === ny - 1 || !covered[i][j + 1]) addEdge(x1, y1, x0, y1);
+      if (i === 0 || !covered[i - 1][j]) addEdge(x0, y1, x0, y0);
+      if (i === nx - 1 || !covered[i + 1][j]) addEdge(x1, y0, x1, y1);
+    }
+  }
+
+  const visited = new Set<string>();
+  const loops: [number, number][][] = [];
+  for (const [start, outs] of adj) {
+    for (const firstEnd of outs) {
+      if (visited.has(`${start}->${firstEnd}`)) continue;
+      const pts: [number, number][] = [];
+      let cur = start;
+      let next = firstEnd;
+      let guard = 0;
+      while (guard++ < 5000) {
+        visited.add(`${cur}->${next}`);
+        const [cx, cy] = cur.split(',').map(Number);
+        pts.push([cx, cy]);
+        cur = next;
+        if (cur === start) break;
+        const outsFromCur = adj.get(cur) || [];
+        const nextEdge = outsFromCur.find(o => !visited.has(`${cur}->${o}`));
+        if (!nextEdge) break;
+        next = nextEdge;
+      }
+      if (pts.length >= 4) loops.push(pts);
+    }
+  }
+
+  // Drop redundant points along a straight run so adjacent grid cells that
+  // share a wall collapse back into one clean edge.
+  const simplifiedLoops = loops.map(loop => {
+    const n = loop.length;
+    return loop.filter((cur, k) => {
+      const prev = loop[(k - 1 + n) % n];
+      const next = loop[(k + 1) % n];
+      const sameX = prev[0] === cur[0] && cur[0] === next[0];
+      const sameY = prev[1] === cur[1] && cur[1] === next[1];
+      return !(sameX || sameY);
+    });
+  });
+
+  return simplifiedLoops
+    .filter(loop => loop.length >= 3)
+    .map(loop => `M ${loop.map(([x, y]) => `${x} ${y}`).join(' L ')} Z`)
+    .join(' ');
+}
+
+const GymMap: React.FC<GymMapProps> = ({
+  zones,
   dimensions = { width: 780, height: 580, x: 0, y: 0, walls: [], hallways: [], nodes: [] },
   entrance = { side: 'bottom', offset: 50, width: 80 },
   floorColor = '#1e293b',
@@ -835,6 +922,19 @@ const GymMap: React.FC<GymMapProps> = ({
               // saved before that origin existed.
               const roomX = dimensions.x || 0;
               const roomY = dimensions.y || 0;
+              // Once a room has confirmed wings, render the room + annexes
+              // as one continuous shape (no seam where they touch) rather
+              // than one bordered block per wing. Room editing keeps the
+              // per-wing borders/rounding so each piece stays individually
+              // selectable and draggable.
+              const mergeShape = !isRoomEdit && annexes.length > 0;
+              const cornerRadius = mergeShape ? '0' : '10';
+              const mergedOutline = mergeShape
+                ? buildUnionOutlinePath([
+                    { x: roomX, y: roomY, width: dimensions.width, height: dimensions.height },
+                    ...annexes.map(a => ({ x: a.x, y: a.y, width: a.width, height: a.height })),
+                  ])
+                : '';
               return (
                 <>
                   <rect
@@ -843,9 +943,9 @@ const GymMap: React.FC<GymMapProps> = ({
                     width={dimensions.width}
                     height={dimensions.height}
                     fill={effectiveFloorColor}
-                    stroke={isRoomEdit ? '#84cc16' : '#233554'}
-                    strokeWidth={isThumbnail ? 0 : (isRoomEdit ? 4 : 1.5)}
-                    rx="10"
+                    stroke={isRoomEdit ? '#84cc16' : (mergeShape ? 'none' : '#233554')}
+                    strokeWidth={isThumbnail ? 0 : (isRoomEdit ? 4 : (mergeShape ? 0 : 1.5))}
+                    rx={cornerRadius}
                     className="transition-all duration-300 ease-in-out"
                   />
                   {/* Subtle Grid Layer over gym floor */}
@@ -855,23 +955,23 @@ const GymMap: React.FC<GymMapProps> = ({
                     width={dimensions.width}
                     height={dimensions.height}
                     fill="url(#floorGrid)"
-                    rx="10"
+                    rx={cornerRadius}
                     className="pointer-events-none"
                   />
                   {annexes.map((annex) => {
                     const isSelected = isRoomEdit && selectedAnnexId === annex.id;
                     return (
                       <g key={`annex-group-${annex.id}`}>
-                        <rect 
-                          x={annex.x} 
-                          y={annex.y} 
-                          width={annex.width} 
-                          height={annex.height} 
-                          fill={annex.color || effectiveFloorColor} 
-                          stroke={isRoomEdit ? (isSelected ? '#a3e635' : '#84cc16') : '#233554'} 
-                          strokeWidth={isThumbnail ? 0 : (isSelected ? 4 : 1.5)} 
-                          rx="10" 
-                          className="transition-all duration-300 ease-in-out" 
+                        <rect
+                          x={annex.x}
+                          y={annex.y}
+                          width={annex.width}
+                          height={annex.height}
+                          fill={annex.color || effectiveFloorColor}
+                          stroke={isRoomEdit ? (isSelected ? '#a3e635' : '#84cc16') : (mergeShape ? 'none' : '#233554')}
+                          strokeWidth={isThumbnail ? 0 : (isSelected ? 4 : (mergeShape ? 0 : 1.5))}
+                          rx={cornerRadius}
+                          className="transition-all duration-300 ease-in-out"
                         />
                         <rect
                           x={annex.x}
@@ -879,12 +979,21 @@ const GymMap: React.FC<GymMapProps> = ({
                           width={annex.width}
                           height={annex.height}
                           fill="url(#floorGrid)"
-                          rx="10"
+                          rx={cornerRadius}
                           className="pointer-events-none"
                         />
                       </g>
                     );
                   })}
+                  {mergeShape && mergedOutline && (
+                    <path
+                      d={mergedOutline}
+                      fill="none"
+                      stroke="#233554"
+                      strokeWidth={isThumbnail ? 0 : 1.5}
+                      className="pointer-events-none"
+                    />
+                  )}
                 </>
               );
             })()}
