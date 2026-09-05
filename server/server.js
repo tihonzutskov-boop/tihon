@@ -978,13 +978,13 @@ app.get('/api/exercises', async (req, res) => {
               primary_muscles, secondary_muscles, generation_enabled,
               CASE WHEN image_url <> '' THEN substr(md5(image_url), 1, 8) END AS image_v,
               CASE
-                -- md5() takes bytea directly. Going through encode(…,'hex')
-                -- first built a text value twice the size of the video purely
-                -- to feed the hash — on a list request that covers every
-                -- exercise at once, which is enough to get the backend killed
-                -- and surface as "Connection terminated unexpectedly".
+                -- Read the stored token rather than hashing the video. Hashing
+                -- it here meant every listing pulled every stored video out of
+                -- the table in full, just to build a string that only has to
+                -- change when the video does. COALESCE covers videos uploaded
+                -- before the column existed.
                 WHEN tutorial_video IS NOT NULL
-                  THEN substr(md5(tutorial_video), 1, 8)
+                  THEN COALESCE(tutorial_video_version, 'v1')
                 WHEN tutorial_video_url <> ''
                   THEN substr(md5(tutorial_video_url), 1, 8)
               END AS tutorial_v
@@ -1053,23 +1053,35 @@ app.put(
     if (!contentType.startsWith('video/')) {
       return res.status(415).json({ error: 'Expected a video file' });
     }
+    // The size is the first thing worth knowing when an upload fails, and it
+    // is invisible once the request has died.
+    const sizeMb = (req.body.length / (1024 * 1024)).toFixed(1);
+    console.log(`Tutorial video upload: ${sizeMb}MB (${contentType}) for exercise ${req.params.id}`);
+
+    // Generated here rather than hashed out of the stored bytes: the token is
+    // only there to bust the URL cache when the video changes, so making the
+    // database re-read the whole blob to produce it bought nothing and cost a
+    // second full pass over the video on every upload.
+    const version = Date.now().toString(36);
     let client;
     try {
       client = await pool.connect();
       const result = await client.query(
         `UPDATE exercises
-            SET tutorial_video = $2, tutorial_video_type = $3, tutorial_video_url = ''
+            SET tutorial_video = $2, tutorial_video_type = $3, tutorial_video_url = '',
+                tutorial_video_version = $4
           WHERE id = $1
-        RETURNING substr(md5(tutorial_video), 1, 8) AS v`,
-        [req.params.id, req.body, contentType]
+        RETURNING id`,
+        [req.params.id, req.body, contentType, version]
       );
       if (result.rows.length === 0) return res.status(404).json({ error: 'Exercise not found' });
+      console.log(`Tutorial video stored: ${sizeMb}MB for exercise ${req.params.id}`);
       return res.json({
         success: true,
-        tutorialVideoUrl: mediaUrl('exercises', `${req.params.id}/tutorial-video`, result.rows[0].v),
+        tutorialVideoUrl: mediaUrl('exercises', `${req.params.id}/tutorial-video`, version),
       });
     } catch (err) {
-      console.error(err);
+      console.error(`Tutorial video upload failed after ${sizeMb}MB:`, err.message);
       return res.status(500).json({ error: 'Database error saving video' });
     } finally {
       client?.release();

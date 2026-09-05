@@ -218,3 +218,9 @@ CREATE TABLE IF NOT EXISTS generation_failures (
 -- tutorial_video_url is retained for videos uploaded before this change.
 ALTER TABLE exercises ADD COLUMN IF NOT EXISTS tutorial_video BYTEA;
 ALTER TABLE exercises ADD COLUMN IF NOT EXISTS tutorial_video_type VARCHAR(100);
+-- Cache-busting token for the video's URL. It only has to change when the
+-- video does, so it is written once at upload time. Deriving it from the
+-- bytes instead meant hashing the whole video — on the upload (a second full
+-- pass right after writing it) and again for every row when listing
+-- exercises, which is enough to kill the connection on a small instance.
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS tutorial_video_version VARCHAR(16);
