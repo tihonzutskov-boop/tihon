@@ -1048,7 +1048,13 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onS
           if (snapLeft !== null) finalX = snapLeft; else { const snapRight = snapToEdges(rawX + w, xLines); if (snapRight !== null) finalX = snapRight - w; else finalX = snapToGrid(rawX); }
           let finalY = rawY, snapTop = snapToEdges(rawY, yLines);
           if (snapTop !== null) finalY = snapTop; else { const snapBottom = snapToEdges(rawY + h, yLines); if (snapBottom !== null) finalY = snapBottom - h; else finalY = snapToGrid(rawY); }
-          return { ...z, x: Math.max(0, finalX), y: Math.max(0, finalY) };
+          // The floor used to be a hardcoded (0,0) because the room's
+          // top-left corner always was (0,0). Now that the left/top walls
+          // are draggable, expanding the room that way moves the corner
+          // negative — a hardcoded 0 would have kept zones locked out of
+          // exactly the new space a wall drag was meant to open up.
+          const roomFloorX = dimensions.x || 0, roomFloorY = dimensions.y || 0;
+          return { ...z, x: Math.max(roomFloorX, finalX), y: Math.max(roomFloorY, finalY) };
         });
         update({ ...gym, zones: newZones }, false);
       } else if (dragState.mode === 'resize-zone') {
@@ -1085,21 +1091,26 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onS
         const h = dragState.initialData.height;
         const rawX = dragState.initialData.x + deltaX;
         const rawY = dragState.initialData.y + deltaY;
+        // These snap/clamp targets describe positions relative to the
+        // room's own walls ("flush with the west wall"), so they need the
+        // room's actual origin — no longer always (0,0) now that walls
+        // are draggable — added back in as an absolute canvas offset.
+        const roomX = dimensions.x || 0, roomY = dimensions.y || 0;
 
         // Smart snap targets around parent room walls
         const xTargets = [
-          -w,                                      // Flush against West exterior wall
-          0,                                       // Flush against West interior wall
-          Math.round((dimensions.width - w) / 2),  // Centered horizontally
-          dimensions.width - w,                    // Flush against East interior wall
-          dimensions.width                         // Flush against East exterior wall
+          roomX - w,                                      // Flush against West exterior wall
+          roomX,                                          // Flush against West interior wall
+          roomX + Math.round((dimensions.width - w) / 2),  // Centered horizontally
+          roomX + dimensions.width - w,                    // Flush against East interior wall
+          roomX + dimensions.width                         // Flush against East exterior wall
         ];
         const yTargets = [
-          -h,                                       // Flush against North exterior wall
-          0,                                        // Flush against North interior wall
-          Math.round((dimensions.height - h) / 2),  // Centered vertically
-          dimensions.height - h,                    // Flush against South interior wall
-          dimensions.height                         // Flush against South exterior wall
+          roomY - h,                                       // Flush against North exterior wall
+          roomY,                                           // Flush against North interior wall
+          roomY + Math.round((dimensions.height - h) / 2),  // Centered vertically
+          roomY + dimensions.height - h,                    // Flush against South interior wall
+          roomY + dimensions.height                         // Flush against South exterior wall
         ];
 
         // Magnetic snap if close to target lines
@@ -1117,10 +1128,10 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onS
 
         // Attachment Constraint: keep extension connected to parent room bounds
         const minOverlap = 20; // 2m minimum overlap
-        const minX = -w + minOverlap;
-        const maxX = dimensions.width - minOverlap;
-        const minY = -h + minOverlap;
-        const maxY = dimensions.height - minOverlap;
+        const minX = roomX - w + minOverlap;
+        const maxX = roomX + dimensions.width - minOverlap;
+        const minY = roomY - h + minOverlap;
+        const maxY = roomY + dimensions.height - minOverlap;
 
         let finalX = Math.max(minX, Math.min(maxX, snappedX));
         let finalY = Math.max(minY, Math.min(maxY, snappedY));
