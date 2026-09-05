@@ -1157,27 +1157,31 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onS
           let ny = dragState.initialData.y;
           let nw = dragState.initialData.width;
           let nh = dragState.initialData.height;
+          // Snap thresholds and clamps below describe flush-with-wall
+          // positions, so they need the room's actual origin — no longer
+          // always (0,0) now that walls are draggable.
+          const roomX = dimensions.x || 0, roomY = dimensions.y || 0;
 
           const handle = dragState.handle || 'se';
           if (handle === 'se' || handle === 'corner') {
             nw = Math.max(30, snapToGrid(dragState.initialData.width + deltaX));
             nh = Math.max(30, snapToGrid(dragState.initialData.height + deltaY));
-            if (Math.abs((nx + nw) - dimensions.width) <= 12) nw = dimensions.width - nx;
-            if (Math.abs((ny + nh) - dimensions.height) <= 12) nh = dimensions.height - ny;
+            if (Math.abs((nx + nw) - (roomX + dimensions.width)) <= 12) nw = roomX + dimensions.width - nx;
+            if (Math.abs((ny + nh) - (roomY + dimensions.height)) <= 12) nh = roomY + dimensions.height - ny;
           } else if (handle === 'sw') {
             const rawW = dragState.initialData.width - deltaX;
             nw = Math.max(30, snapToGrid(rawW));
             nx = dragState.initialData.x + (dragState.initialData.width - nw);
             nh = Math.max(30, snapToGrid(dragState.initialData.height + deltaY));
-            if (Math.abs(nx) <= 12) { nw += nx; nx = 0; }
-            if (Math.abs((ny + nh) - dimensions.height) <= 12) nh = dimensions.height - ny;
+            if (Math.abs(nx - roomX) <= 12) { nw += nx - roomX; nx = roomX; }
+            if (Math.abs((ny + nh) - (roomY + dimensions.height)) <= 12) nh = roomY + dimensions.height - ny;
           } else if (handle === 'ne') {
             nw = Math.max(30, snapToGrid(dragState.initialData.width + deltaX));
             const rawH = dragState.initialData.height - deltaY;
             nh = Math.max(30, snapToGrid(rawH));
             ny = dragState.initialData.y + (dragState.initialData.height - nh);
-            if (Math.abs((nx + nw) - dimensions.width) <= 12) nw = dimensions.width - nx;
-            if (Math.abs(ny) <= 12) { nh += ny; ny = 0; }
+            if (Math.abs((nx + nw) - (roomX + dimensions.width)) <= 12) nw = roomX + dimensions.width - nx;
+            if (Math.abs(ny - roomY) <= 12) { nh += ny - roomY; ny = roomY; }
           } else if (handle === 'nw') {
             const rawW = dragState.initialData.width - deltaX;
             nw = Math.max(30, snapToGrid(rawW));
@@ -1185,32 +1189,32 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onS
             const rawH = dragState.initialData.height - deltaY;
             nh = Math.max(30, snapToGrid(rawH));
             ny = dragState.initialData.y + (dragState.initialData.height - nh);
-            if (Math.abs(nx) <= 12) { nw += nx; nx = 0; }
-            if (Math.abs(ny) <= 12) { nh += ny; ny = 0; }
+            if (Math.abs(nx - roomX) <= 12) { nw += nx - roomX; nx = roomX; }
+            if (Math.abs(ny - roomY) <= 12) { nh += ny - roomY; ny = roomY; }
           } else if (handle === 'right') {
             nw = Math.max(30, snapToGrid(dragState.initialData.width + deltaX));
-            if (Math.abs((nx + nw) - dimensions.width) <= 12) nw = dimensions.width - nx;
+            if (Math.abs((nx + nw) - (roomX + dimensions.width)) <= 12) nw = roomX + dimensions.width - nx;
           } else if (handle === 'bottom') {
             nh = Math.max(30, snapToGrid(dragState.initialData.height + deltaY));
-            if (Math.abs((ny + nh) - dimensions.height) <= 12) nh = dimensions.height - ny;
+            if (Math.abs((ny + nh) - (roomY + dimensions.height)) <= 12) nh = roomY + dimensions.height - ny;
           } else if (handle === 'left') {
             const rawW = dragState.initialData.width - deltaX;
             nw = Math.max(30, snapToGrid(rawW));
             nx = dragState.initialData.x + (dragState.initialData.width - nw);
-            if (Math.abs(nx) <= 12) { nw += nx; nx = 0; }
+            if (Math.abs(nx - roomX) <= 12) { nw += nx - roomX; nx = roomX; }
           } else if (handle === 'top') {
             const rawH = dragState.initialData.height - deltaY;
             nh = Math.max(30, snapToGrid(rawH));
             ny = dragState.initialData.y + (dragState.initialData.height - nh);
-            if (Math.abs(ny) <= 12) { nh += ny; ny = 0; }
+            if (Math.abs(ny - roomY) <= 12) { nh += ny - roomY; ny = roomY; }
           }
 
           // Ensure extension attachment to room boundaries
           const minOverlap = 20;
-          const minX = -nw + minOverlap;
-          const maxX = dimensions.width - minOverlap;
-          const minY = -nh + minOverlap;
-          const maxY = dimensions.height - minOverlap;
+          const minX = roomX - nw + minOverlap;
+          const maxX = roomX + dimensions.width - minOverlap;
+          const minY = roomY - nh + minOverlap;
+          const maxY = roomY + dimensions.height - minOverlap;
 
           nx = Math.max(minX, Math.min(maxX, nx));
           ny = Math.max(minY, Math.min(maxY, ny));
