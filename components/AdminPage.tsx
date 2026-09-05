@@ -177,6 +177,10 @@ interface DragState {
   startX: number;
   startY: number;
   initialData: { x: number; y: number; width: number; height: number; };
+  // Machine positions as they were when the drag began. Every mousemove
+  // recomputes from this snapshot rather than from the live positions, so a
+  // long drag can't compound its own corrections.
+  initialMachines?: { id: string; x: number; y: number }[];
   initialWallData?: { x1: number; y1: number; x2: number; y2: number; controlX?: number; controlY?: number; };
   handle?: 'right' | 'bottom' | 'top' | 'left' | 'corner' | 'se' | 'sw' | 'ne' | 'nw';
   viewParams?: { viewBox: string, offsetX: number, offsetY: number, width: number, height: number };
@@ -907,7 +911,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onS
 
   const handleZoneResizeStart = (e: React.MouseEvent, zone: GymZone, handle: 'se' | 'sw' | 'ne' | 'nw' = 'se') => {
     if (editMode !== 'layout') return; e.preventDefault(); snapshot(); setSelectedZoneId(zone.id);
-    setDragState({ mode: 'resize-zone', itemId: zone.id, startX: e.clientX, startY: e.clientY, initialData: { x: zone.x, y: zone.y, width: zone.width, height: zone.height }, handle, viewParams: calculateViewParams(null) });
+    setDragState({ mode: 'resize-zone', itemId: zone.id, startX: e.clientX, startY: e.clientY, initialData: { x: zone.x, y: zone.y, width: zone.width, height: zone.height }, initialMachines: (zone.machines || []).map(m => ({ id: m.id, x: m.x, y: m.y })), handle, viewParams: calculateViewParams(null) });
   };
   
   const handleMainRoomResizeStart = (e: React.MouseEvent, handle: 'left' | 'right' | 'top' | 'bottom' | 'corner') => {
@@ -1100,11 +1104,18 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onS
           // would appear to slide across the floor even though nothing was
           // done to them directly — shift them the opposite way to keep every
           // machine's actual floor position fixed while just the zone outline
-          // gets redrawn around it.
+          // gets redrawn around it. Offsets come off the drag-start snapshot,
+          // never off the live positions: a drag fires many mousemoves, and
+          // correcting an already-corrected position would compound on every
+          // one of them and fling the equipment off the map.
           const offsetX = nx - dragState.initialData.x;
           const offsetY = ny - dragState.initialData.y;
-          const newMachines = (offsetX !== 0 || offsetY !== 0)
-            ? (z.machines || []).map(m => ({ ...m, x: m.x - offsetX, y: m.y - offsetY }))
+          const startMachines = dragState.initialMachines;
+          const newMachines = (offsetX !== 0 || offsetY !== 0) && startMachines
+            ? (z.machines || []).map(m => {
+                const start = startMachines.find(sm => sm.id === m.id);
+                return start ? { ...m, x: start.x - offsetX, y: start.y - offsetY } : m;
+              })
             : z.machines;
           return { ...z, x: nx, y: ny, width: nw, height: nh, machines: newMachines };
         });
