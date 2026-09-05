@@ -91,6 +91,97 @@ export const parseRange = (header, size) => {
   return { start, end };
 };
 
+// Writes a byte range out of exercise_video_chunks, one piece at a time.
+// Nothing larger than a single chunk is ever held in memory, so serving a
+// 300MB video costs the same as serving a 4MB one. Chunk lengths come from
+// the stored byte_len rather than measuring the blobs, so picking the pieces
+// a range needs reads no video bytes at all.
+const streamChunks = async (client, res, exerciseId, start, end) => {
+  const spans = await client.query(
+    `SELECT seq, start_byte, byte_len
+       FROM exercise_video_chunks
+      WHERE exercise_id = $1 AND start_byte <= $3 AND start_byte + byte_len > $2
+      ORDER BY seq`,
+    [exerciseId, start, end]
+  );
+
+  for (const span of spans.rows) {
+    const spanStart = Number(span.start_byte);
+    const from = Math.max(start, spanStart);
+    const to = Math.min(end, spanStart + span.byte_len - 1);
+    if (from > to) continue;
+    // substring() is 1-indexed in Postgres.
+    const piece = await client.query(
+      `SELECT substring(bytes from $3 for $4) AS part
+         FROM exercise_video_chunks WHERE exercise_id = $1 AND seq = $2`,
+      [exerciseId, span.seq, from - spanStart + 1, to - from + 1]
+    );
+    // Respect backpressure: without this a fast database would queue the
+    // whole video in the socket's buffer, reintroducing the memory spike
+    // that chunking exists to avoid.
+    if (!res.write(piece.rows[0].part)) {
+      await new Promise((resolve) => res.once('drain', resolve));
+    }
+  }
+  return res.end();
+};
+
+// Serves a tutorial video, from the chunk table when the upload was chunked
+// and from the single-value column otherwise, so videos stored before
+// chunking existed keep playing untouched.
+export const serveVideo = (pool, table, dataColumn, typeColumn, sizeColumn, fallbackTextColumn) => {
+  const serveSingleValue = serveBinaryColumn(pool, table, dataColumn, typeColumn, fallbackTextColumn);
+
+  return async (req, res) => {
+  let client;
+  try {
+    client = await pool.connect();
+    const meta = await client.query(
+      `SELECT ${sizeColumn} AS chunked_size, ${typeColumn} AS mime
+         FROM ${table} WHERE id = $1`,
+      [req.params.id]
+    );
+    if (meta.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+
+    const chunkedSize = meta.rows[0].chunked_size === null ? null : Number(meta.rows[0].chunked_size);
+    if (!chunkedSize) {
+      // Not chunked — fall through to the original single-column path. Hand
+      // this client back first: that path checks out its own, and holding
+      // both would let enough concurrent requests exhaust the pool with each
+      // one waiting on a client the others are holding.
+      client.release();
+      client = null;
+      return serveSingleValue(req, res);
+    }
+
+    res.set('Content-Type', meta.rows[0].mime || 'application/octet-stream');
+    res.set('Accept-Ranges', 'bytes');
+    res.set('Cache-Control', 'public, max-age=31536000, immutable');
+
+    const range = parseRange(req.headers?.range, chunkedSize);
+    if (range?.unsatisfiable) {
+      res.set('Content-Range', `bytes */${chunkedSize}`);
+      return res.status(416).end();
+    }
+
+    const start = range ? range.start : 0;
+    const end = range ? range.end : chunkedSize - 1;
+    res.set('Content-Length', String(end - start + 1));
+    if (range) {
+      res.set('Content-Range', `bytes ${start}-${end}/${chunkedSize}`);
+      res.status(206);
+    }
+    return await streamChunks(client, res, req.params.id, start, end);
+  } catch (err) {
+    console.error('Error serving video:', err.message);
+    if (!res.headersSent) return res.status(500).json({ error: 'Database error fetching media' });
+    return res.end();
+  } finally {
+    client?.release();
+  }
+  };
+};
+
 // Serves a BYTEA column, honouring Range so the browser can seek — which the
 // step-by-step tutorial depends on, and which a data URI could never support.
 // The slice is taken in SQL (substring), so seeking a large video never pulls

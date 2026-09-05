@@ -13,7 +13,7 @@ import {
   createRequireAdmin,
   isAdminEmail,
 } from './auth.js';
-import { mediaUrl, sendDataUri, serveMediaColumn, serveBinaryColumn, blobWrite } from './media.js';
+import { mediaUrl, sendDataUri, serveMediaColumn, serveVideo, blobWrite } from './media.js';
 // Compiled from utils/planGeneration.ts by `npm run build:engine` — the same
 // engine the frontend and the test suite use, so there is exactly one
 // implementation of the eligibility and safety rules.
@@ -983,6 +983,8 @@ app.get('/api/exercises', async (req, res) => {
                 -- the table in full, just to build a string that only has to
                 -- change when the video does. COALESCE covers videos uploaded
                 -- before the column existed.
+                WHEN tutorial_video_size IS NOT NULL
+                  THEN COALESCE(tutorial_video_version, 'v1')
                 WHEN tutorial_video IS NOT NULL
                   THEN COALESCE(tutorial_video_version, 'v1')
                 WHEN tutorial_video_url <> ''
@@ -1035,66 +1037,130 @@ app.get('/api/exercises', async (req, res) => {
 app.get('/api/exercises/:id/image', serveMediaColumn(pool, 'exercises', 'image_url'));
 app.get(
   '/api/exercises/:id/tutorial-video',
-  serveBinaryColumn(pool, 'exercises', 'tutorial_video', 'tutorial_video_type', 'tutorial_video_url')
+  serveVideo(pool, 'exercises', 'tutorial_video', 'tutorial_video_type', 'tutorial_video_size', 'tutorial_video_url')
 );
 
 // Raw-body upload: the video never passes through JSON, so it is not subject
 // to the JSON body limit and is stored exactly as uploaded — no base64, no
 // re-encoding, no quality ceiling imposed by the transport.
-app.put(
-  '/api/exercises/:id/tutorial-video',
-  requireAdmin,
-  express.raw({ type: () => true, limit: process.env.VIDEO_UPLOAD_LIMIT || '200mb' }),
-  async (req, res) => {
-    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+// How much video is held in memory at once, on the way in and on the way
+// out. Small enough that several concurrent uploads still fit on a small
+// instance; large enough that a long video is not thousands of rows.
+const VIDEO_CHUNK_BYTES = 4 * 1024 * 1024;
+
+// Accepts "200mb" (the express style this used to be configured with) as
+// well as a plain byte count.
+const parseByteLimit = (value, fallbackBytes) => {
+  const match = /^\s*(\d+)\s*(b|kb|mb|gb)?\s*$/i.exec(value || '');
+  if (!match) return fallbackBytes;
+  const scale = { b: 1, kb: 1024, mb: 1024 * 1024, gb: 1024 * 1024 * 1024 };
+  return Number(match[1]) * (scale[(match[2] || 'b').toLowerCase()]);
+};
+const VIDEO_UPLOAD_MAX_BYTES = parseByteLimit(process.env.VIDEO_UPLOAD_LIMIT, 200 * 1024 * 1024);
+
+// No body parser here on purpose: buffering the whole upload first is exactly
+// what could not fit. The request is consumed as a stream and written to the
+// database a chunk at a time, so peak memory is one chunk rather than the
+// whole file.
+app.put('/api/exercises/:id/tutorial-video', requireAdmin, async (req, res) => {
+  const contentType = (req.get('Content-Type') || 'video/mp4').split(';')[0].trim();
+  if (!contentType.startsWith('video/')) {
+    return res.status(415).json({ error: 'Expected a video file' });
+  }
+
+  const version = Date.now().toString(36);
+  const mb = (bytes) => (bytes / (1024 * 1024)).toFixed(1);
+  let received = 0;
+  let client;
+  let inTransaction = false;
+
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+    inTransaction = true;
+    // Replacing a video: drop the previous pieces inside the same
+    // transaction, so a failure part-way leaves the old video intact.
+    await client.query('DELETE FROM exercise_video_chunks WHERE exercise_id = $1', [req.params.id]);
+
+    let seq = 0;
+    let pending = [];
+    let pendingBytes = 0;
+
+    const flush = async () => {
+      if (pendingBytes === 0) return;
+      const buffer = Buffer.concat(pending, pendingBytes);
+      pending = [];
+      pendingBytes = 0;
+      await client.query(
+        `INSERT INTO exercise_video_chunks (exercise_id, seq, start_byte, byte_len, bytes)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [req.params.id, seq++, received, buffer.length, buffer]
+      );
+      received += buffer.length;
+    };
+
+    for await (const piece of req) {
+      pending.push(piece);
+      pendingBytes += piece.length;
+      if (received + pendingBytes > VIDEO_UPLOAD_MAX_BYTES) {
+        await client.query('ROLLBACK');
+        inTransaction = false;
+        return res.status(413).json({
+          error: `Video is larger than the ${mb(VIDEO_UPLOAD_MAX_BYTES)}MB limit`,
+        });
+      }
+      if (pendingBytes >= VIDEO_CHUNK_BYTES) await flush();
+    }
+    await flush();
+
+    if (received === 0) {
+      await client.query('ROLLBACK');
+      inTransaction = false;
       return res.status(400).json({ error: 'Empty upload' });
     }
-    const contentType = (req.get('Content-Type') || 'video/mp4').split(';')[0].trim();
-    if (!contentType.startsWith('video/')) {
-      return res.status(415).json({ error: 'Expected a video file' });
-    }
-    // The size is the first thing worth knowing when an upload fails, and it
-    // is invisible once the request has died.
-    const sizeMb = (req.body.length / (1024 * 1024)).toFixed(1);
-    console.log(`Tutorial video upload: ${sizeMb}MB (${contentType}) for exercise ${req.params.id}`);
 
-    // Generated here rather than hashed out of the stored bytes: the token is
-    // only there to bust the URL cache when the video changes, so making the
-    // database re-read the whole blob to produce it bought nothing and cost a
-    // second full pass over the video on every upload.
-    const version = Date.now().toString(36);
-    let client;
-    try {
-      client = await pool.connect();
-      const result = await client.query(
-        `UPDATE exercises
-            SET tutorial_video = $2, tutorial_video_type = $3, tutorial_video_url = '',
-                tutorial_video_version = $4
-          WHERE id = $1
-        RETURNING id`,
-        [req.params.id, req.body, contentType, version]
-      );
-      if (result.rows.length === 0) return res.status(404).json({ error: 'Exercise not found' });
-      console.log(`Tutorial video stored: ${sizeMb}MB for exercise ${req.params.id}`);
-      return res.json({
-        success: true,
-        tutorialVideoUrl: mediaUrl('exercises', `${req.params.id}/tutorial-video`, version),
-      });
-    } catch (err) {
-      console.error(`Tutorial video upload failed after ${sizeMb}MB:`, err.message);
-      return res.status(500).json({ error: 'Database error saving video' });
-    } finally {
-      client?.release();
+    const result = await client.query(
+      `UPDATE exercises
+          SET tutorial_video = NULL, tutorial_video_type = $2, tutorial_video_url = '',
+              tutorial_video_version = $3, tutorial_video_size = $4
+        WHERE id = $1
+      RETURNING id`,
+      [req.params.id, contentType, version, received]
+    );
+    if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
+      inTransaction = false;
+      return res.status(404).json({ error: 'Exercise not found' });
     }
+
+    await client.query('COMMIT');
+    inTransaction = false;
+    console.log(`Tutorial video stored: ${mb(received)}MB in ${seq} chunks (${contentType}) for exercise ${req.params.id}`);
+    return res.json({
+      success: true,
+      tutorialVideoUrl: mediaUrl('exercises', `${req.params.id}/tutorial-video`, version),
+    });
+  } catch (err) {
+    console.error(`Tutorial video upload failed after ${mb(received)}MB:`, err.message);
+    if (inTransaction) {
+      try { await client.query('ROLLBACK'); } catch { /* connection already gone */ }
+    }
+    if (!res.headersSent) return res.status(500).json({ error: 'Database error saving video' });
+    return res.end();
+  } finally {
+    client?.release();
   }
-);
+});
 
 app.delete('/api/exercises/:id/tutorial-video', requireAdmin, async (req, res) => {
   let client;
   try {
     client = await pool.connect();
+    await client.query('DELETE FROM exercise_video_chunks WHERE exercise_id = $1', [req.params.id]);
     await client.query(
-      `UPDATE exercises SET tutorial_video = NULL, tutorial_video_type = NULL, tutorial_video_url = '' WHERE id = $1`,
+      `UPDATE exercises SET tutorial_video = NULL, tutorial_video_type = NULL, tutorial_video_url = '',
+              tutorial_video_size = NULL, tutorial_video_version = NULL
+        WHERE id = $1`,
       [req.params.id]
     );
     return res.json({ success: true });

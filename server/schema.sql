@@ -224,3 +224,27 @@ ALTER TABLE exercises ADD COLUMN IF NOT EXISTS tutorial_video_type VARCHAR(100);
 -- pass right after writing it) and again for every row when listing
 -- exercises, which is enough to kill the connection on a small instance.
 ALTER TABLE exercises ADD COLUMN IF NOT EXISTS tutorial_video_version VARCHAR(16);
+
+-- Videos are stored in pieces rather than as one value. Writing a whole file
+-- as a single bytea parameter meant the entire thing had to be materialised
+-- in memory three times over — buffered by the web process, serialised into
+-- one protocol message, then held whole by the database before it could be
+-- TOASTed — so anything much past ~13MB killed the backend outright and the
+-- upload came back as "Connection terminated unexpectedly". Chunked, no
+-- single allocation is ever larger than one piece, at either end.
+-- start_byte/byte_len are stored so a range request can find the pieces it
+-- needs without reading any bytes to measure them.
+CREATE TABLE IF NOT EXISTS exercise_video_chunks (
+  exercise_id VARCHAR(100) NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+  seq INTEGER NOT NULL,
+  start_byte BIGINT NOT NULL,
+  byte_len INTEGER NOT NULL,
+  bytes BYTEA NOT NULL,
+  PRIMARY KEY (exercise_id, seq)
+);
+CREATE INDEX IF NOT EXISTS idx_exercise_video_chunks_span
+  ON exercise_video_chunks (exercise_id, start_byte);
+
+-- Set only for chunked videos, and doubles as the marker that the video lives
+-- in exercise_video_chunks rather than in the tutorial_video column.
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS tutorial_video_size BIGINT;
