@@ -39,6 +39,22 @@ pool.on('error', (err) => {
   console.error('Idle Postgres client error (pool will reconnect):', err.message);
 });
 
+// The handler above only covers clients sitting *idle* in the pool. A client
+// checked out with pool.connect() belongs to the caller, and the pool drops
+// its own listener for as long as it is out — so if that connection dies
+// mid-checkout the 'error' event has nobody listening, Node rethrows it as an
+// uncaught exception, and the whole process exits with code 1. It arrives as
+// an event rather than a rejected promise, so the try/catch around the
+// queries cannot see it. This fires once per newly connected client and the
+// listener outlives every checkout, so the dropped connection surfaces as a
+// failed query on that one request — the pool discards the client and
+// reconnects — instead of taking the gym offline.
+pool.on('connect', (client) => {
+  client.on('error', (err) => {
+    console.error('Postgres client error (connection dropped):', err.message);
+  });
+});
+
 // One rejected promise in a single route should not take the gym offline.
 // Node exits with code 1 on an unhandled rejection by default; log it loudly
 // instead so the request fails alone and the service stays up.
