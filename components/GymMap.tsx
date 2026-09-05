@@ -157,7 +157,7 @@ interface GymMapProps {
   editMode?: 'layout' | 'room' | 'machine'; 
   
   onZoneDragStart?: (e: React.MouseEvent, zone: GymZone) => void;
-  onZoneResizeStart?: (e: React.MouseEvent, zone: GymZone) => void;
+  onZoneResizeStart?: (e: React.MouseEvent, zone: GymZone, handle?: 'se' | 'sw' | 'ne' | 'nw') => void;
 
   onMainRoomResizeStart?: (e: React.MouseEvent, handle: 'left' | 'right' | 'top' | 'bottom' | 'corner') => void;
   onAnnexDragStart?: (e: React.MouseEvent, annex: GymAnnex) => void;
@@ -1647,12 +1647,32 @@ const GymMap: React.FC<GymMapProps> = ({
                     )}
 
                     {isSelected && isLayoutEdit && !isThumbnail && (
-                      <rect
-                        x={zone.x + zone.width - 12} y={zone.y + zone.height - 12} width="12" height="12"
-                        fill="white" stroke="#0f172a" strokeWidth="1"
-                        className="cursor-nwse-resize hover:fill-lime-400"
-                        onMouseDown={(e) => { e.stopPropagation(); if (onZoneResizeStart) onZoneResizeStart(e, zone); }}
-                      />
+                      <>
+                        <rect
+                          x={zone.x - 6} y={zone.y - 6} width="12" height="12"
+                          fill="white" stroke="#0f172a" strokeWidth="1"
+                          className="cursor-nwse-resize hover:fill-lime-400"
+                          onMouseDown={(e) => { e.stopPropagation(); if (onZoneResizeStart) onZoneResizeStart(e, zone, 'nw'); }}
+                        />
+                        <rect
+                          x={zone.x + zone.width - 6} y={zone.y - 6} width="12" height="12"
+                          fill="white" stroke="#0f172a" strokeWidth="1"
+                          className="cursor-nesw-resize hover:fill-lime-400"
+                          onMouseDown={(e) => { e.stopPropagation(); if (onZoneResizeStart) onZoneResizeStart(e, zone, 'ne'); }}
+                        />
+                        <rect
+                          x={zone.x + zone.width - 6} y={zone.y + zone.height - 6} width="12" height="12"
+                          fill="white" stroke="#0f172a" strokeWidth="1"
+                          className="cursor-nwse-resize hover:fill-lime-400"
+                          onMouseDown={(e) => { e.stopPropagation(); if (onZoneResizeStart) onZoneResizeStart(e, zone, 'se'); }}
+                        />
+                        <rect
+                          x={zone.x - 6} y={zone.y + zone.height - 6} width="12" height="12"
+                          fill="white" stroke="#0f172a" strokeWidth="1"
+                          className="cursor-nesw-resize hover:fill-lime-400"
+                          onMouseDown={(e) => { e.stopPropagation(); if (onZoneResizeStart) onZoneResizeStart(e, zone, 'sw'); }}
+                        />
+                      </>
                     )}
                   </g>
                 );

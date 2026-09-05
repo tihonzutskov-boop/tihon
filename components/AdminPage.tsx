@@ -905,9 +905,9 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onS
     setDragState({ mode: 'move-zone', itemId: zone.id, startX: e.clientX, startY: e.clientY, initialData: { x: zone.x, y: zone.y, width: zone.width, height: zone.height }, viewParams: calculateViewParams(null) });
   };
 
-  const handleZoneResizeStart = (e: React.MouseEvent, zone: GymZone) => {
+  const handleZoneResizeStart = (e: React.MouseEvent, zone: GymZone, handle: 'se' | 'sw' | 'ne' | 'nw' = 'se') => {
     if (editMode !== 'layout') return; e.preventDefault(); snapshot(); setSelectedZoneId(zone.id);
-    setDragState({ mode: 'resize-zone', itemId: zone.id, startX: e.clientX, startY: e.clientY, initialData: { x: zone.x, y: zone.y, width: zone.width, height: zone.height }, viewParams: calculateViewParams(null) });
+    setDragState({ mode: 'resize-zone', itemId: zone.id, startX: e.clientX, startY: e.clientY, initialData: { x: zone.x, y: zone.y, width: zone.width, height: zone.height }, handle, viewParams: calculateViewParams(null) });
   };
   
   const handleMainRoomResizeStart = (e: React.MouseEvent, handle: 'left' | 'right' | 'top' | 'bottom' | 'corner') => {
@@ -1058,13 +1058,44 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onS
         });
         update({ ...gym, zones: newZones }, false);
       } else if (dragState.mode === 'resize-zone') {
+        const handle = dragState.handle || 'se';
         const newZones = gym.zones.map(z => {
           if (z.id !== dragState.itemId) return z;
-          let rawWidth = dragState.initialData.width + deltaX, rawHeight = dragState.initialData.height + deltaY;
-          if (e.shiftKey) { const ratio = dragState.initialData.width / dragState.initialData.height; if (Math.abs(deltaX) > Math.abs(deltaY)) rawHeight = rawWidth / ratio; else rawWidth = rawHeight * ratio; return { ...z, width: Math.max(40, snapToGrid(rawWidth)), height: Math.max(40, snapToGrid(rawHeight)) }; }
-          const currentX = dragState.initialData.x, targetRight = currentX + rawWidth, snapRight = snapToEdges(targetRight, xLines), finalWidth = snapRight !== null ? snapRight - currentX : snapToGrid(rawWidth);
-          const currentY = dragState.initialData.y, targetBottom = currentY + rawHeight, snapBottom = snapToEdges(targetBottom, yLines), finalHeight = snapBottom !== null ? snapBottom - currentY : snapToGrid(rawHeight);
-          return { ...z, width: Math.max(40, finalWidth), height: Math.max(40, finalHeight) };
+          if (handle === 'se' && e.shiftKey) {
+            let rawWidth = dragState.initialData.width + deltaX, rawHeight = dragState.initialData.height + deltaY;
+            const ratio = dragState.initialData.width / dragState.initialData.height;
+            if (Math.abs(deltaX) > Math.abs(deltaY)) rawHeight = rawWidth / ratio; else rawWidth = rawHeight * ratio;
+            return { ...z, width: Math.max(40, snapToGrid(rawWidth)), height: Math.max(40, snapToGrid(rawHeight)) };
+          }
+          const growsRight = handle === 'se' || handle === 'ne';
+          const growsDown = handle === 'se' || handle === 'sw';
+          const growsLeft = handle === 'sw' || handle === 'nw';
+          const growsUp = handle === 'ne' || handle === 'nw';
+          const initRight = dragState.initialData.x + dragState.initialData.width;
+          const initBottom = dragState.initialData.y + dragState.initialData.height;
+
+          let nx = dragState.initialData.x, ny = dragState.initialData.y;
+          let nw = dragState.initialData.width, nh = dragState.initialData.height;
+
+          if (growsRight) {
+            const targetRight = initRight + deltaX, snapRight = snapToEdges(targetRight, xLines);
+            nw = Math.max(40, (snapRight !== null ? snapRight : snapToGrid(targetRight)) - dragState.initialData.x);
+          } else if (growsLeft) {
+            const targetLeft = dragState.initialData.x + deltaX, snapLeft = snapToEdges(targetLeft, xLines);
+            const finalLeft = snapLeft !== null ? snapLeft : snapToGrid(targetLeft);
+            nw = Math.max(40, initRight - finalLeft);
+            nx = initRight - nw;
+          }
+          if (growsDown) {
+            const targetBottom = initBottom + deltaY, snapBottom = snapToEdges(targetBottom, yLines);
+            nh = Math.max(40, (snapBottom !== null ? snapBottom : snapToGrid(targetBottom)) - dragState.initialData.y);
+          } else if (growsUp) {
+            const targetTop = dragState.initialData.y + deltaY, snapTop = snapToEdges(targetTop, yLines);
+            const finalTop = snapTop !== null ? snapTop : snapToGrid(targetTop);
+            nh = Math.max(40, initBottom - finalTop);
+            ny = initBottom - nh;
+          }
+          return { ...z, x: nx, y: ny, width: nw, height: nh };
         });
         update({ ...gym, zones: newZones }, false);
       } else if (dragState.mode === 'resize-room') {
