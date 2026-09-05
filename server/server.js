@@ -978,8 +978,13 @@ app.get('/api/exercises', async (req, res) => {
               primary_muscles, secondary_muscles, generation_enabled,
               CASE WHEN image_url <> '' THEN substr(md5(image_url), 1, 8) END AS image_v,
               CASE
+                -- md5() takes bytea directly. Going through encode(…,'hex')
+                -- first built a text value twice the size of the video purely
+                -- to feed the hash — on a list request that covers every
+                -- exercise at once, which is enough to get the backend killed
+                -- and surface as "Connection terminated unexpectedly".
                 WHEN tutorial_video IS NOT NULL
-                  THEN substr(md5(encode(tutorial_video, 'hex')), 1, 8)
+                  THEN substr(md5(tutorial_video), 1, 8)
                 WHEN tutorial_video_url <> ''
                   THEN substr(md5(tutorial_video_url), 1, 8)
               END AS tutorial_v
@@ -1055,7 +1060,7 @@ app.put(
         `UPDATE exercises
             SET tutorial_video = $2, tutorial_video_type = $3, tutorial_video_url = ''
           WHERE id = $1
-        RETURNING substr(md5(encode(tutorial_video, 'hex')), 1, 8) AS v`,
+        RETURNING substr(md5(tutorial_video), 1, 8) AS v`,
         [req.params.id, req.body, contentType]
       );
       if (result.rows.length === 0) return res.status(404).json({ error: 'Exercise not found' });
