@@ -55,6 +55,32 @@ pool.on('connect', (client) => {
   });
 });
 
+// The free tier drops idle Postgres connections, so the first query after a
+// quiet spell can find the socket already gone. The pool reconnects on its
+// own, but whichever request was in flight has still failed — which is what
+// makes the gym intermittently fail to load. Retry that query once on a fresh
+// connection, but only when it is a read: after a dropped connection there is
+// no way to tell whether an INSERT/UPDATE committed before the socket died,
+// and a statement belonging to a BEGIN/COMMIT block cannot be replayed on its
+// own anyway. Writes still surface the error to the caller. This only covers
+// pool.query(); the routes that check a client out to run a transaction are
+// deliberately left alone.
+const CONNECTION_LOST = /Connection terminated|terminating connection|server closed the connection|ECONNRESET|EPIPE/i;
+const isReadOnlySql = (sql) => typeof sql === 'string' && /^\s*select\b/i.test(sql);
+
+const runPoolQuery = pool.query.bind(pool);
+pool.query = (...args) => {
+  const sql = typeof args[0] === 'string' ? args[0] : args[0]?.text;
+  // pg also accepts a callback form; only the promise form is retried.
+  const usesCallback = args.some((arg) => typeof arg === 'function');
+  if (usesCallback || !isReadOnlySql(sql)) return runPoolQuery(...args);
+  return runPoolQuery(...args).catch((err) => {
+    if (!CONNECTION_LOST.test(err?.message || '')) throw err;
+    console.warn('Read lost its connection, retrying once:', err.message);
+    return runPoolQuery(...args);
+  });
+};
+
 // One rejected promise in a single route should not take the gym offline.
 // Node exits with code 1 on an unhandled rejection by default; log it loudly
 // instead so the request fails alone and the service stays up.
