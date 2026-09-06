@@ -416,9 +416,12 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
       [req.user.id, JSON.stringify(answers)]
     );
 
-    // Auto-assign a matching plan template, if one exists, so the user
-    // sees a real weekly schedule immediately rather than waiting on an
-    // admin to hand-build one.
+    // Every plan comes from the rules engine now — there is no admin-authored
+    // content left to fall back to. A matching plan_templates row (if one
+    // exists) contributes only two things a template still legitimately
+    // controls: the target session length and a friendlier display name for
+    // this goal/day combination. It has no exercises of its own; the engine
+    // builds those from goal + days/week alone, the same way for every user.
     let assignedPlan = false;
     const goals = answers.goals || [];
     if (goals.length > 0) {
@@ -456,32 +459,15 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
 
       let planDays = null;
       let generationMeta = null;
-      let planName = match ? match.name : `${goalForPlan} — ${profile.daysPerWeek} Day Plan`;
+      const planName = match ? match.name : `${goalForPlan} — ${profile.daysPerWeek} Day Plan`;
 
-      // A fixed template an admin actually filled in is a deliberate choice —
-      // use it as-is rather than generating over the top of it. Generation is
-      // the path for everyone else, which is most clients.
-      const hasAuthoredFixedDays = match && Array.isArray(match.days)
-        && match.days.some(d => (d.exercises || []).length > 0);
+      const gym = gymId ? await loadGymForGeneration(gymId) : null;
 
-      const gym = hasAuthoredFixedDays ? null : (gymId ? await loadGymForGeneration(gymId) : null);
-
-      if (hasAuthoredFixedDays) {
-        planDays = assignWeekdaysToTemplateDays(match.days, answers.preferredDays, null);
-      } else if (!gym) {
+      if (!gym) {
         await recordGenerationFailure(req.user.id, match?.id || null, gymId, 'no_gym',
           'No gym selected, so available equipment could not be determined');
       } else {
-        // The matcher picks the *closest* days-per-week, not an exact one, so
-        // an admin blueprint can carry a different day count than the client
-        // committed to. Generating from it then fails validation on the day
-        // count and the client gets nothing, so fall back to the default
-        // blueprint, which is always built for the requested number of days.
-        const authored = Array.isArray(match?.blueprint_days) && match.blueprint_days.length > 0
-          ? match.blueprint_days
-          : null;
-        const adminBlueprint = authored && authored.length === profile.daysPerWeek ? authored : null;
-        const blueprintDays = adminBlueprint || buildDefaultBlueprint(goalForPlan, profile.daysPerWeek);
+        const blueprintDays = buildDefaultBlueprint(goalForPlan, profile.daysPerWeek);
 
         const library = await loadLibraryForGeneration();
         const result = generatePlan(
@@ -510,7 +496,7 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
             planDays = assignWeekdaysToTemplateDays(result.days, answers.preferredDays, null);
             generationMeta = {
               generatedAt: new Date().toISOString(),
-              source: adminBlueprint ? 'blueprint' : 'default_blueprint',
+              source: 'rules_engine',
               templateId: match?.id || null,
               gymId,
               decisions: result.decisions,
@@ -641,9 +627,7 @@ app.get('/api/plan-templates', requireAdmin, async (req, res) => {
     const result = await pool.query('SELECT * FROM plan_templates ORDER BY created_at DESC');
     res.json({
       templates: result.rows.map(r => ({
-        id: r.id, name: r.name, goal: r.goal, daysPerWeek: r.days_per_week, durationMin: r.duration_min, days: r.days,
-        blueprintDays: r.blueprint_days || undefined,
-        minExperience: r.min_experience || undefined,
+        id: r.id, name: r.name, goal: r.goal, daysPerWeek: r.days_per_week, durationMin: r.duration_min,
       })),
     });
   } catch (err) {
@@ -652,13 +636,17 @@ app.get('/api/plan-templates', requireAdmin, async (req, res) => {
   }
 });
 
+// A template is category metadata only — goal, days/week, duration, name.
+// The rules engine builds every plan's actual exercises from goal + days/week
+// alone (see buildDefaultBlueprint), the same way for every client, so there
+// is no content here for an admin to author or for editing one template to
+// push out to clients already assigned from it.
 app.post('/api/plan-templates', requireAdmin, async (req, res) => {
-  const { id, name, goal, daysPerWeek, durationMin, days, blueprintDays, minExperience } = req.body;
+  const { id, name, goal, daysPerWeek, durationMin } = req.body;
   try {
     await pool.query(
-      'INSERT INTO plan_templates (id, name, goal, days_per_week, duration_min, days, blueprint_days, min_experience) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-      [id, name, goal, daysPerWeek, durationMin || 45, JSON.stringify(days || []),
-       blueprintDays ? JSON.stringify(blueprintDays) : null, minExperience || null]
+      'INSERT INTO plan_templates (id, name, goal, days_per_week, duration_min) VALUES ($1, $2, $3, $4, $5)',
+      [id, name, goal, daysPerWeek, durationMin || 45]
     );
     res.json({ success: true });
   } catch (err) {
@@ -668,37 +656,15 @@ app.post('/api/plan-templates', requireAdmin, async (req, res) => {
 });
 
 app.put('/api/plan-templates/:id', requireAdmin, async (req, res) => {
-  const { name, goal, daysPerWeek, durationMin, days, blueprintDays, minExperience } = req.body;
-  const templateDays = days || [];
+  const { name, goal, daysPerWeek, durationMin } = req.body;
   try {
     await pool.query(
-      `INSERT INTO plan_templates (id, name, goal, days_per_week, duration_min, days, blueprint_days, min_experience)
-       VALUES ($6, $1, $2, $3, $4, $5, $7, $8)
-       ON CONFLICT (id) DO UPDATE SET name=$1, goal=$2, days_per_week=$3, duration_min=$4, days=$5, blueprint_days=$7, min_experience=$8`,
-      [name, goal, daysPerWeek, durationMin || 45, JSON.stringify(templateDays), req.params.id,
-       blueprintDays ? JSON.stringify(blueprintDays) : null, minExperience || null]
+      `INSERT INTO plan_templates (id, name, goal, days_per_week, duration_min)
+       VALUES ($5, $1, $2, $3, $4)
+       ON CONFLICT (id) DO UPDATE SET name=$1, goal=$2, days_per_week=$3, duration_min=$4`,
+      [name, goal, daysPerWeek, durationMin || 45, req.params.id]
     );
-
-    // Push this edit to every client whose plan was assigned from this
-    // template, so adding/changing an exercise here doesn't leave already-
-    // matched clients stuck looking at a stale snapshot from whenever they
-    // first submitted their questionnaire.
-    const dependents = await pool.query(
-      `SELECT up.user_id, up.days, tq.answers->'preferredDays' AS preferred_days
-       FROM user_plans up
-       LEFT JOIN training_questionnaires tq ON tq.user_id = up.user_id
-       WHERE up.source_template_id = $1`,
-      [req.params.id]
-    );
-    for (const row of dependents.rows) {
-      const resyncedDays = assignWeekdaysToTemplateDays(templateDays, row.preferred_days, row.days);
-      await pool.query(
-        `UPDATE user_plans SET name = $1, days = $2, updated_at = now() WHERE user_id = $3`,
-        [name, JSON.stringify(resyncedDays), row.user_id]
-      );
-    }
-
-    res.json({ success: true, syncedClients: dependents.rows.length });
+    res.json({ success: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error saving plan template' });

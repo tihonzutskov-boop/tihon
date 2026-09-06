@@ -367,17 +367,22 @@ export interface BlueprintDay {
   slots: ExerciseSlot[];
 }
 
+// A template is category metadata only — which goal it targets, the
+// days/week and session length it's for, and a display name. The rules
+// engine (buildDefaultBlueprint in utils/planGeneration.ts) builds every
+// plan's actual exercises from goal + days/week alone, the same way for
+// every client, so there is nothing here for an admin to author.
+//
+// days/blueprintDays are kept only so a template saved before this change
+// still round-trips through this type without a cast; nothing reads them
+// any more, on either the client or the server.
 export interface PlanTemplate {
   id: string;
   name: string;
   goal: string;          // one of QUESTIONNAIRE_GOALS
   daysPerWeek: string;    // '1'..'4'
   durationMin: number;    // target single-session length in minutes (e.g. 45), set by the admin
-  days: WorkoutDay[];     // authored with no weekday set
-
-  // When present, this template is a *blueprint*: the generator resolves
-  // these slots per user instead of copying days[] verbatim. Absent means a
-  // classic fixed template, which keeps working exactly as before.
+  days?: WorkoutDay[];
   blueprintDays?: BlueprintDay[];
   minExperience?: ExperienceLevel;
 }

@@ -1,11 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { PlanTemplate, WorkoutDay, LibraryExercise, CoachingClient, BlueprintDay, GenerationFailureRecord } from '../types';
+import { PlanTemplate, CoachingClient, GenerationFailureRecord } from '../types';
 import { QUESTIONNAIRE_GOALS } from '../constants';
 import { api } from '../services/api';
-import SessionBuilder from './SessionBuilder';
-import BlueprintDayEditor from './BlueprintDayEditor';
-import { selectSplit } from '../utils/planGeneration';
-import { ClipboardList, Loader2, X, ChevronRight, Plus, AlertTriangle } from 'lucide-react';
+import { ClipboardList, Loader2, ChevronRight, Plus, AlertTriangle } from 'lucide-react';
 
 // Engine failure reasons, phrased as what an admin can actually act on.
 const FAILURE_LABELS: Record<string, string> = {
@@ -22,7 +19,7 @@ const FAILURE_FIXES: Record<string, string> = {
   no_gym: 'Ask the client to resubmit the questionnaire and pick a gym.',
   no_candidate_for_slot: 'Tag more exercises for this movement pattern in the Exercise Library, or add the missing equipment to this gym.',
   cannot_fit_duration: 'Shorten the required work for this goal, or the client needs a longer session.',
-  no_blueprint_days: 'The matched template is in blueprint mode but has no days — add days or switch it back to fixed.',
+  no_blueprint_days: 'The rules engine could not build any days for this goal/day count — check the Exercise Library has exercises tagged for the needed movement patterns.',
   validation_failed: 'A generated plan broke a safety or structure rule. The detail above says which.',
 };
 
@@ -34,15 +31,15 @@ type View = 'catalog' | 'clients' | 'issues';
 
 const hasScheduledPlan = (client: CoachingClient) => !!client.plan && client.plan.days.some(d => d.weekday);
 
-// goal/daysPerWeek/durationMin start unset — the questionnaire fills them in
-// before the builder ever appears, so every template is categorized up front.
+// A template is category metadata only — goal, days/week, duration, name.
+// Every plan's actual exercises come from the rules engine (goal + days/week
+// alone), the same way for every client, so there is nothing else to fill in.
 const blankTemplate = (goal: string): PlanTemplate => ({
   id: `tpl-${Date.now()}`,
   name: '',
   goal,
   daysPerWeek: '',
   durationMin: 0,
-  days: [{ id: `day-${Date.now()}`, name: 'Workout 1', exercises: [] }],
 });
 const isFullyCategorized = (t: PlanTemplate) => !!(t.goal && t.daysPerWeek && t.durationMin);
 
@@ -74,29 +71,19 @@ const AdminCoaching: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [templates, setTemplates] = useState<PlanTemplate[]>([]);
   const [clients, setClients] = useState<CoachingClient[]>([]);
-  const [libraryExercises, setLibraryExercises] = useState<LibraryExercise[]>([]);
   const [openGoals, setOpenGoals] = useState<Set<string>>(new Set());
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
   const [failures, setFailures] = useState<GenerationFailureRecord[]>([]);
-  // Holds authored slots while the editor is toggled to Fixed, so flipping
-  // back doesn't silently discard the admin's work.
-  const [stashedBlueprint, setStashedBlueprint] = useState<BlueprintDay[] | null>(null);
 
   const [editingTemplate, setEditingTemplate] = useState<PlanTemplate | null>(null);
-  const [wizardStep, setWizardStep] = useState<1 | 2>(1); // 1 = questionnaire (category/days/duration), 2 = session builder
-  const [activeDayIndex, setActiveDayIndex] = useState(0);
-  const [showCreateExercise, setShowCreateExercise] = useState(false);
-  const [newExName, setNewExName] = useState('');
-  const [newExMuscle, setNewExMuscle] = useState('');
-  const [newExCategory, setNewExCategory] = useState('');
-  const [newExInstructions, setNewExInstructions] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([api.fetchPlanTemplates(), api.fetchExercises(), api.fetchCoachingClients(), api.fetchGenerationFailures()]).then(([t, e, c, f]) => {
+    Promise.all([api.fetchPlanTemplates(), api.fetchCoachingClients(), api.fetchGenerationFailures()]).then(([t, c, f]) => {
       setTemplates(t);
-      setLibraryExercises(e);
       setClients(c);
       setFailures(f);
       setLoading(false);
@@ -110,14 +97,14 @@ const AdminCoaching: React.FC = () => {
     .map(goal => ({ goal, clients: clients.filter(c => c.answers.goals?.includes(goal)) }))
     .filter(g => g.clients.length > 0);
 
-  // Every (goal, days-per-week) combo a client could submit — a ● means a
-  // template exists for that exact pair; even without one, the goal-only
-  // fallback in the questionnaire matcher still assigns *something* as long
-  // as the goal row has at least one ● somewhere.
+  // Every (goal, days-per-week) combo a client could submit gets a plan
+  // regardless — the rules engine builds one from goal + days/week alone. A
+  // ● here just means a category exists to set a display name and target
+  // session length for that combo; without one, generation still succeeds,
+  // it just uses a generic name and the client's own answer for duration.
   const coverage = QUESTIONNAIRE_GOALS.map(goal => ({
     goal,
     perDays: DAYS_OPTIONS.map(d => templates.some(t => t.goal === goal && t.daysPerWeek === d)),
-    anyMatch: templates.some(t => t.goal === goal),
   }));
 
   const toggleGoal = (goal: string) => {
@@ -130,125 +117,38 @@ const AdminCoaching: React.FC = () => {
 
   const startNewTemplate = (goal: string) => {
     if (!openGoals.has(goal)) toggleGoal(goal);
-    setStashedBlueprint(null);
+    setSaveError(null);
     setEditingTemplate(blankTemplate(goal));
-    setActiveDayIndex(0);
-    setWizardStep(1);
   };
   const editTemplate = (t: PlanTemplate) => {
+    setSaveError(null);
     setEditingTemplate({ ...t });
-    setStashedBlueprint(null);
-    setActiveDayIndex(0);
-    setWizardStep(2); // already categorized — skip straight to the builder
   };
-  const closeTemplateEditor = () => setEditingTemplate(null);
-
-  // Pre-creates exactly as many days as answered, and auto-fills the name
-  // from the categorization, before dropping into the builder.
-  const goToBuilder = (t: PlanTemplate) => {
-    const n = parseInt(t.daysPerWeek, 10) || 1;
-    const days: WorkoutDay[] = Array.from({ length: n }, (_, i) => ({ id: `day-${Date.now()}-${i}`, name: `Workout ${i + 1}`, exercises: [] }));
-    const name = t.name.trim() ? t.name : `${t.goal} — ${n} Day${n === 1 ? '' : 's'} Plan`;
-    setEditingTemplate({ ...t, days, name });
-    setActiveDayIndex(0);
-    setWizardStep(2);
+  const closeTemplateEditor = () => {
+    setEditingTemplate(null);
+    setSaveError(null);
   };
   const pickField = (field: 'goal' | 'daysPerWeek' | 'durationMin', value: string | number) => {
     if (!editingTemplate) return;
-    const next = { ...editingTemplate, [field]: value };
     if (field === 'goal' && !openGoals.has(value as string)) toggleGoal(value as string);
-    setEditingTemplate(next);
-    if (isFullyCategorized(next)) goToBuilder(next);
+    setEditingTemplate({ ...editingTemplate, [field]: value });
   };
 
-  const updateDays = (updater: (days: WorkoutDay[]) => WorkoutDay[]) => {
-    setEditingTemplate(prev => (prev ? { ...prev, days: updater(prev.days) } : prev));
-  };
-  const onChangeDay = (day: WorkoutDay) => {
-    updateDays(days => days.map((d, i) => (i === activeDayIndex ? day : d)));
-  };
-  const onAddDay = () => {
-    updateDays(days => [...days, { id: `day-${Date.now()}`, name: `Workout ${days.length + 1}`, exercises: [] }]);
-  };
-  const onRemoveDay = (dayId: string) => {
-    updateDays(days => {
-      const next = days.filter(d => d.id !== dayId);
-      return next.length > 0 ? next : days;
-    });
-    setActiveDayIndex(0);
-  };
-  const onClear = () => {
-    setEditingTemplate(prev => (prev ? { ...prev, days: [{ id: `day-${Date.now()}`, name: 'Workout 1', exercises: [] }] } : prev));
-    setActiveDayIndex(0);
-  };
-
-  // A template with blueprintDays is resolved per client by the generator;
-  // without them it stays a fixed template and is copied verbatim, exactly
-  // as before. Both authoring modes stay available so existing templates
-  // keep working untouched.
-  const isBlueprint = (editingTemplate?.blueprintDays?.length ?? 0) > 0;
-  const blueprintDays = editingTemplate?.blueprintDays || [];
-
-  const switchToBlueprint = () => {
-    if (!editingTemplate) return;
-    setActiveDayIndex(0);
-    // Already in blueprint mode, or coming back after a detour through Fixed —
-    // never overwrite slots that already exist.
-    if ((editingTemplate.blueprintDays?.length ?? 0) > 0) return;
-    if (stashedBlueprint && stashedBlueprint.length > 0) {
-      setEditingTemplate({ ...editingTemplate, blueprintDays: stashedBlueprint });
-      return;
-    }
-    // Day names come from the same split rules the generator uses, rather
-    // than a second copy that can drift out of sync with it.
-    const n = parseInt(editingTemplate.daysPerWeek, 10) || 1;
-    const names = selectSplit(n).dayNames;
-    setEditingTemplate({
-      ...editingTemplate,
-      blueprintDays: names.map((name, i) => ({
-        id: `bpday-${Date.now()}-${i}`,
-        name,
-        slots: [],
-      })),
-    });
-  };
-  const switchToFixed = () => {
-    if (!editingTemplate) return;
-    if ((editingTemplate.blueprintDays?.length ?? 0) > 0) {
-      setStashedBlueprint(editingTemplate.blueprintDays!);
-    }
-    setEditingTemplate({ ...editingTemplate, blueprintDays: undefined });
-    setActiveDayIndex(0);
-  };
-  const onChangeBlueprintDay = (day: BlueprintDay) => {
-    setEditingTemplate(prev => prev
-      ? { ...prev, blueprintDays: (prev.blueprintDays || []).map((d, i) => (i === activeDayIndex ? day : d)) }
-      : prev);
-  };
-  const onAddBlueprintDay = () => {
-    setEditingTemplate(prev => prev
-      ? { ...prev, blueprintDays: [...(prev.blueprintDays || []), { id: `bpday-${Date.now()}`, name: `Day ${(prev.blueprintDays || []).length + 1}`, slots: [] }] }
-      : prev);
-  };
-  const onRemoveBlueprintDay = (dayId: string) => {
-    setEditingTemplate(prev => {
-      if (!prev) return prev;
-      const next = (prev.blueprintDays || []).filter(d => d.id !== dayId);
-      return { ...prev, blueprintDays: next.length > 0 ? next : prev.blueprintDays };
-    });
-    setActiveDayIndex(0);
-  };
   const onSavePlan = async () => {
-    if (!editingTemplate || !editingTemplate.name.trim()) return;
-    const exists = templates.some(t => t.id === editingTemplate.id);
-    if (exists) {
-      const result = await api.savePlanTemplate(editingTemplate);
-      if (!result.ok) throw new Error(result.error ? `Not saved to the server: ${result.error}` : 'Not saved to the server — check your connection.');
-      setTemplates(prev => prev.map(t => (t.id === editingTemplate.id ? editingTemplate : t)));
-    } else {
-      const result = await api.createPlanTemplate(editingTemplate);
-      if (!result.ok) throw new Error(result.error ? `Not saved to the server: ${result.error}` : 'Not saved to the server — check your connection.');
-      setTemplates(prev => [editingTemplate, ...prev]);
+    if (!editingTemplate || !editingTemplate.name.trim() || !isFullyCategorized(editingTemplate)) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const exists = templates.some(t => t.id === editingTemplate.id);
+      const result = exists ? await api.savePlanTemplate(editingTemplate) : await api.createPlanTemplate(editingTemplate);
+      if (!result.ok) {
+        setSaveError(result.error ? `Not saved to the server: ${result.error}` : 'Not saved to the server — check your connection.');
+        return;
+      }
+      setTemplates(prev => (exists ? prev.map(t => (t.id === editingTemplate.id ? editingTemplate : t)) : [editingTemplate, ...prev]));
+      setEditingTemplate(null);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -274,22 +174,6 @@ const AdminCoaching: React.FC = () => {
     } finally {
       setResetting(false);
     }
-  };
-
-  const createExercise = () => {
-    if (!newExName.trim() || !newExMuscle.trim() || !newExCategory.trim() || !newExInstructions.trim()) return;
-    const newEx: LibraryExercise = {
-      id: `ex-${Date.now()}`,
-      name: newExName.trim(),
-      targetMuscle: newExMuscle.trim(),
-      equipmentRequired: '',
-      category: newExCategory.trim(),
-      instructions: newExInstructions.trim(),
-    };
-    api.createExercise(newEx);
-    setLibraryExercises(prev => [...prev, newEx]);
-    setNewExName(''); setNewExMuscle(''); setNewExCategory(''); setNewExInstructions('');
-    setShowCreateExercise(false);
   };
 
   if (loading) {
@@ -339,17 +223,14 @@ const AdminCoaching: React.FC = () => {
               ))}
               {coverage.map(row => (
                 <React.Fragment key={row.goal}>
-                  <span
-                    className={`text-[9.5px] font-semibold truncate pr-1 ${row.anyMatch ? 'text-slate-400' : 'text-amber-400'}`}
-                    title={row.anyMatch ? row.goal : `${row.goal} — no template covers this goal at all`}
-                  >
+                  <span className="text-[9.5px] font-semibold truncate pr-1 text-slate-400" title={row.goal}>
                     {row.goal}
                   </span>
                   {row.perDays.map((has, i) => (
                     <span
                       key={i}
                       className={`text-[10px] text-center leading-none ${has ? 'text-lime-400' : 'text-slate-700'}`}
-                      title={`${row.goal} · ${DAYS_OPTIONS[i]} day${DAYS_OPTIONS[i] === '1' ? '' : 's'}/week — ${has ? 'covered' : 'no exact template (falls back to any template for this goal, if one exists)'}`}
+                      title={`${row.goal} · ${DAYS_OPTIONS[i]} day${DAYS_OPTIONS[i] === '1' ? '' : 's'}/week — ${has ? 'a named category with a set duration exists' : 'no category yet, but a plan still generates automatically'}`}
                     >
                       {has ? '●' : '·'}
                     </span>
@@ -413,7 +294,7 @@ const AdminCoaching: React.FC = () => {
                 </div>
                 <button
                   onClick={e => { e.stopPropagation(); startNewTemplate(group.goal); }}
-                  title={`Add a plan to ${group.goal}`}
+                  title={`Add a category to ${group.goal}`}
                   className="w-5 h-5 rounded-md border border-dashed border-slate-700 text-slate-500 hover:border-lime-500 hover:text-lime-400 hover:bg-lime-500/10 flex items-center justify-center transition-colors flex-shrink-0"
                 >
                   <Plus className="w-3 h-3" />
@@ -423,7 +304,9 @@ const AdminCoaching: React.FC = () => {
                 <div className="px-3 pb-3 space-y-1.5">
                   {group.templates.length === 0 ? (
                     <div className="p-3 text-center border border-dashed border-slate-800 rounded-lg">
-                      <p className="text-[10.5px] text-slate-500">No plans yet — click + to add the first one.</p>
+                      <p className="text-[10.5px] text-slate-500">
+                        No categories yet — clients aiming for {group.goal} still get a generated plan; click + to name one and set its session length.
+                      </p>
                     </div>
                   ) : (
                     group.templates.map(t => (
@@ -434,7 +317,7 @@ const AdminCoaching: React.FC = () => {
                           editingTemplate?.id === t.id ? 'border-lime-500 bg-lime-500/5' : 'border-slate-800 bg-slate-950/40 hover:border-slate-700'
                         }`}
                       >
-                        <div className="text-xs font-bold text-white truncate mb-1">{t.name || 'Untitled template'}</div>
+                        <div className="text-xs font-bold text-white truncate mb-1">{t.name || 'Untitled category'}</div>
                         <div className="flex gap-1.5 flex-wrap">
                           <Tag>{t.daysPerWeek}x/week</Tag>
                           <Tag>{t.durationMin} min</Tag>
@@ -561,7 +444,7 @@ const AdminCoaching: React.FC = () => {
                 {hasScheduledPlan(selectedClient) ? (
                   <>Assigned plan: <span className="text-lime-400 font-semibold">{selectedClient.plan?.name}</span></>
                 ) : (
-                  'No plan assigned yet — add a matching template to the catalog.'
+                  'No plan assigned yet — this appears in Issues if generation failed, otherwise it is still in progress.'
                 )}
               </p>
               {resetError && (
@@ -618,13 +501,19 @@ const AdminCoaching: React.FC = () => {
         ) : !editingTemplate ? (
           <div className="h-full flex flex-col items-center justify-center text-center text-slate-500">
             <ClipboardList className="w-8 h-8 mb-3 opacity-40" />
-            <p className="text-sm">Select a template to edit it, or create a new one.</p>
+            <p className="text-sm">Select a category to edit it, or create a new one.</p>
           </div>
-        ) : wizardStep === 1 ? (
+        ) : (
           <div className="max-w-lg mx-auto pt-6">
             <div className="text-center mb-7">
-              <h2 className="text-lg font-extrabold text-white mb-1">New Training Plan</h2>
-              <p className="text-xs text-slate-500">Answer these and you'll drop straight into the session builder — no extra click.</p>
+              <h2 className="text-lg font-extrabold text-white mb-1">
+                {templates.some(t => t.id === editingTemplate.id) ? 'Edit Category' : 'New Category'}
+              </h2>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                This just tags a session length and a display name onto a goal/days-per-week combination. The
+                exercises in every client's plan are always built automatically by the rules engine from their
+                gym and goal — there is nothing to author here.
+              </p>
             </div>
 
             <div className="mb-6">
@@ -645,7 +534,7 @@ const AdminCoaching: React.FC = () => {
               </div>
             </div>
 
-            <div className="mb-8">
+            <div className="mb-6">
               <div className="text-[10px] font-extrabold text-lime-400 uppercase tracking-wide mb-2.5">Session duration</div>
               <div className="flex flex-wrap gap-2">
                 {DURATIONS.map(d => (
@@ -654,29 +543,8 @@ const AdminCoaching: React.FC = () => {
               </div>
             </div>
 
-            <button
-              onClick={closeTemplateEditor}
-              className="px-5 py-2.5 rounded-xl border border-slate-700 bg-slate-800 text-slate-400 hover:text-white text-xs font-bold transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        ) : (
-          <div className="max-w-3xl">
-            <div className="flex items-center gap-2 mb-4 flex-wrap">
-              <Tag>{editingTemplate.goal}</Tag>
-              <Tag>{editingTemplate.daysPerWeek}x/week</Tag>
-              <Tag>{editingTemplate.durationMin} min</Tag>
-              <button
-                onClick={() => setWizardStep(1)}
-                className="ml-auto text-[11px] font-bold text-slate-500 hover:text-slate-300 underline transition-colors"
-              >
-                ← Change
-              </button>
-            </div>
-
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 mb-6">
-              <label className="block text-[9.5px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Name</label>
+            <div className="mb-8">
+              <label className="block text-[10px] font-extrabold text-lime-400 uppercase tracking-wide mb-2.5">Display name</label>
               <input
                 value={editingTemplate.name}
                 onChange={e => setEditingTemplate({ ...editingTemplate, name: e.target.value })}
@@ -685,133 +553,30 @@ const AdminCoaching: React.FC = () => {
               />
             </div>
 
-            <div className="flex gap-1 bg-slate-950 border border-slate-800 rounded-xl p-1 mb-4">
-              <button
-                onClick={switchToFixed}
-                className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 rounded-lg text-[11.5px] font-bold transition-colors ${
-                  !isBlueprint ? 'bg-slate-800 text-lime-400' : 'text-slate-500 hover:text-slate-300'
-                }`}
-              >
-                <span>Fixed exercises</span>
-                <span className="text-[9px] font-semibold text-slate-500">Every client gets these exact exercises</span>
-              </button>
-              <button
-                onClick={switchToBlueprint}
-                className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 rounded-lg text-[11.5px] font-bold transition-colors ${
-                  isBlueprint ? 'bg-slate-800 text-sky-400' : 'text-slate-500 hover:text-slate-300'
-                }`}
-              >
-                <span>Dynamic slots</span>
-                <span className="text-[9px] font-semibold text-slate-500">Generated per client from their gym</span>
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2 mb-3 overflow-x-auto">
-              {(isBlueprint ? blueprintDays : editingTemplate.days).map((d, idx) => (
-                <div key={d.id} className="flex-shrink-0 flex items-center">
-                  <button
-                    onClick={() => setActiveDayIndex(idx)}
-                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border ${
-                      activeDayIndex === idx ? 'bg-lime-500 border-lime-500 text-slate-950' : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'
-                    }`}
-                  >
-                    {isBlueprint ? ((d as BlueprintDay).name || `Day ${idx + 1}`) : `Day ${idx + 1}`}
-                  </button>
-                  {(isBlueprint ? blueprintDays.length : editingTemplate.days.length) > 1 && (
-                    <button onClick={() => (isBlueprint ? onRemoveBlueprintDay(d.id) : onRemoveDay(d.id))} className="ml-1 p-1 text-slate-600 hover:text-red-400 transition-colors" title="Remove day" aria-label="Remove day">
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-              ))}
-              <button
-                onClick={isBlueprint ? onAddBlueprintDay : onAddDay}
-                className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg border border-dashed border-slate-700 text-slate-500 hover:border-lime-500 hover:text-lime-400 transition-colors"
-                title="Add day"
-                aria-label="Add day"
-              >
-                <Plus className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden h-[600px]">
-              {isBlueprint ? (
-                <BlueprintDayEditor
-                  day={blueprintDays[activeDayIndex] || blueprintDays[0]}
-                  onChange={onChangeBlueprintDay}
-                  libraryExercises={libraryExercises}
-                  targetDurationMin={editingTemplate.durationMin}
-                />
-              ) : (
-                <SessionBuilder
-                  day={editingTemplate.days[activeDayIndex] || editingTemplate.days[0]}
-                  onChange={onChangeDay}
-                  targetDurationMin={editingTemplate.durationMin}
-                  libraryExercises={libraryExercises}
-                  onCreateLibraryExercise={() => setShowCreateExercise(true)}
-                  onSave={onSavePlan}
-                  onClear={onClear}
-                  onClose={closeTemplateEditor}
-                />
-              )}
-            </div>
-
-            {isBlueprint && (
-              <div className="flex gap-2.5 mt-4">
-                <button
-                  onClick={closeTemplateEditor}
-                  className="flex-1 py-2.5 rounded-xl border border-slate-800 text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={() => { onSavePlan().catch(err => window.alert(err?.message || 'Failed to save')); }}
-                  className="flex-1 py-2.5 rounded-xl bg-lime-500 hover:bg-lime-400 text-slate-950 text-xs font-extrabold transition-colors"
-                >
-                  Save Blueprint
-                </button>
+            {saveError && (
+              <div className="mb-4 p-3 rounded-xl bg-red-950/30 border border-red-800/40 text-xs text-red-400">
+                {saveError}
               </div>
             )}
+
+            <div className="flex gap-2.5">
+              <button
+                onClick={closeTemplateEditor}
+                className="flex-1 py-2.5 rounded-xl border border-slate-700 bg-slate-800 text-slate-400 hover:text-white text-xs font-bold transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={onSavePlan}
+                disabled={saving || !editingTemplate.name.trim() || !isFullyCategorized(editingTemplate)}
+                className="flex-1 py-2.5 rounded-xl bg-lime-500 hover:bg-lime-400 disabled:opacity-40 disabled:hover:bg-lime-500 text-slate-950 text-xs font-extrabold transition-colors"
+              >
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
           </div>
         )}
       </div>
-
-      {showCreateExercise && (
-        <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white">New exercise</h3>
-              <button onClick={() => setShowCreateExercise(false)} className="text-slate-500 hover:text-white transition-colors">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div>
-              <label className="block text-[9.5px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Name</label>
-              <input value={newExName} onChange={e => setNewExName(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-lime-500" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[9.5px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Target muscle</label>
-                <input value={newExMuscle} onChange={e => setNewExMuscle(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-lime-500" />
-              </div>
-              <div>
-                <label className="block text-[9.5px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Category</label>
-                <input value={newExCategory} onChange={e => setNewExCategory(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-lime-500" />
-              </div>
-            </div>
-            <div>
-              <label className="block text-[9.5px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Instructions</label>
-              <textarea value={newExInstructions} onChange={e => setNewExInstructions(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-lime-500 min-h-[80px]" />
-            </div>
-            <button
-              onClick={createExercise}
-              className="w-full py-2.5 bg-lime-500 hover:bg-lime-400 text-slate-950 font-bold rounded-xl text-xs uppercase tracking-wider transition-colors"
-            >
-              Add to library
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
