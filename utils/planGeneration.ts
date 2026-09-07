@@ -454,7 +454,7 @@ export const selectBookendExercise = (
 // Emitted whether or not the library can fill it. A library with nothing
 // suitable costs the client a locatable warm-up, never the warm-up itself —
 // the entry still appears with its steps, just without a place on the map.
-const buildBookendExercise = (
+export const buildBookendExercise = (
   kind: 'warmup' | 'cooldown',
   block: { name: string; minutes: number; steps: string[] },
   le: LibraryExercise | null,

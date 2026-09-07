@@ -205,6 +205,25 @@ describe('selectSubstitute', () => {
     expect(pick?.id).toBe('machine-press');
   });
 
+  // The pool handed to this function is the caller's responsibility, and the
+  // adapted-plan endpoint used to hand it the entire exercise table. These
+  // assert the contract that makes that dangerous: nothing in here re-checks
+  // equipment, declared injuries or experience level, so an ineligible
+  // exercise passed in will be returned.
+  it('returns whatever the pool contains — eligibility is the caller\'s job', () => {
+    const needsEquipment = ex({
+      id: 'cable', primaryMuscles: ['Chest'], jointStress: [],
+      requiredEquipmentIds: ['cable-machine'], minExperience: 'Advanced',
+    });
+    const pick = selectSubstitute({
+      withdrawn: barbellBench,
+      pool: [needsEquipment],
+      painArea: 'Shoulders',
+    });
+    // It comes back, which is why the endpoint must filter the pool first.
+    expect(pick?.id).toBe('cable');
+  });
+
   it('returns null when every candidate loads the painful area', () => {
     const pick = selectSubstitute({
       withdrawn: barbellBench,

@@ -17,7 +17,9 @@ import { mediaUrl, sendDataUri, serveMediaColumn, serveVideo, blobWrite } from '
 // Compiled from utils/planGeneration.ts by `npm run build:engine` — the same
 // engine the frontend and the test suite use, so there is exactly one
 // implementation of the eligibility and safety rules.
-import { generatePlan, validatePlan, buildDefaultBlueprint } from './generated/utils/planGeneration.js';
+import { generatePlan, validatePlan, buildDefaultBlueprint, eligibleExercises, gymEquipmentIds,
+         selectBookendExercise, buildBookendExercise } from './generated/utils/planGeneration.js';
+import { shapeFor, bookendsFor } from './generated/utils/sessionShape.js';
 // The same priority chain the frontend and tests run: pain, then failure, then
 // stall, then progression.
 import { evaluateExercise, needsProgramReview, selectSubstitute, applyWeeklyVolumeCeiling } from './generated/utils/planAdaptation.js';
@@ -506,6 +508,30 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
       generationEnabled: r.generation_enabled !== false,
     }]));
 
+    // A substitute has to clear the same bar a generated exercise does. Without
+    // this the pool is the whole exercises table, so someone whose shoulder
+    // hurt could be handed a movement their gym has no equipment for, one that
+    // loads a different injury they declared at intake, or one pitched above a
+    // beginner — at the exact moment they are already hurt.
+    const qRes = await client.query(
+      'SELECT answers FROM training_questionnaires WHERE user_id = $1', [req.user.id]
+    );
+    const answers = qRes.rows[0]?.answers || null;
+    const genProfile = answers
+      ? buildGenerationProfile(answers, Array.isArray(answers.goals) ? (answers.goals[0] || 'General fitness') : 'General fitness')
+      : null;
+    const planGym = planRow.generated_for_gym_id
+      ? await loadGymForGeneration(planRow.generated_for_gym_id)
+      : null;
+    // Falls back to the unfiltered library only when we genuinely have no
+    // profile to filter against — a client with no questionnaire on file.
+    const substitutionPool = genProfile
+      ? eligibleExercises([...libraryById.values()], {
+          profile: genProfile,
+          availableEquipmentIds: gymEquipmentIds(planGym),
+        })
+      : [...libraryById.values()];
+
     const startedAt = planRow.started_at || planRow.updated_at;
     const weeksTrained = startedAt
       ? Math.floor((Date.now() - new Date(startedAt).getTime()) / (7 * 24 * 60 * 60 * 1000))
@@ -556,7 +582,7 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
           const substitute = original
             ? selectSubstitute({
                 withdrawn: original,
-                pool: [...libraryById.values()],
+                pool: substitutionPool,
                 painArea: withdrawal.pain_area || null,
                 alreadyUsedIds: usedInDay,
               })
@@ -653,10 +679,32 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
       list.push(r.build(finalDecision));
       exercisesByDay.set(r.dayIdx, list);
     });
-    const adaptedDays = days.map((day, dayIdx) => ({
-      ...day,
-      exercises: exercisesByDay.get(dayIdx) || [],
-    }));
+    // Plans stored before the warm-up and cooldown became real entries have
+    // none in their exercise list, and the session only renders them from
+    // there — so without this every existing client silently loses their
+    // warm-up until their plan happens to be regenerated. Synthesised on read
+    // rather than migrated, for the same reason nothing else here is: the
+    // stored plan stays the authored intent.
+    const shape = shapeFor(genProfile?.sessionMinutes || 60);
+    const adaptedDays = days.map((day, dayIdx) => {
+      const exercises = exercisesByDay.get(dayIdx) || [];
+      if (exercises.some(ex => ex.bookend)) {
+        return { ...day, exercises };
+      }
+      const blocks = bookendsFor(shape);
+      const warmup = day.warmup || blocks.warmup;
+      const cooldown = day.cooldown || blocks.cooldown;
+      return {
+        ...day,
+        warmup,
+        cooldown,
+        exercises: [
+          buildBookendExercise('warmup', warmup, selectBookendExercise('warmup', substitutionPool), `${dayIdx}-warmup`),
+          ...exercises,
+          buildBookendExercise('cooldown', cooldown, selectBookendExercise('cooldown', substitutionPool), `${dayIdx}-cooldown`),
+        ],
+      };
+    });
 
     return res.json({
       plan: { id: planRow.id, name: planRow.name, days: adaptedDays },
