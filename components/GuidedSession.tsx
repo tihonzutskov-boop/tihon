@@ -3,7 +3,7 @@ import { X, ArrowLeft, Check, Plus, Minus, Dumbbell, PlayCircle } from 'lucide-r
 import { WorkoutDay, Gym, EquipmentItem, LibraryExercise, Exercise, EffortRating, ExerciseLog, EFFORT_SCALE, JointStressArea, ALL_JOINT_STRESS_AREAS } from '../types';
 import { api } from '../services/api';
 import GymMap from './GymMap';
-import { getExerciseLocations } from '../utils/exerciseMatcher';
+import { planSessionRoute } from '../utils/sessionRoute';
 import { getYouTubeEmbedUrl } from '../utils/youtubeEmbed';
 
 interface GuidedSessionProps {
@@ -110,28 +110,37 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
     setVariationOverlay(null);
   }, [exIdx]);
 
-  // Exercises built in the plan-template builder (Coaching > Catalog) are
-  // never tied to a specific gym's zone — they're created with
-  // equipmentId: 'manual' and no machineId, since a template is meant to be
-  // reusable across whichever gym a trainee ends up training at. A direct
-  // id lookup always misses for those, so fall back to the same
-  // name/equipment matching ExerciseLibrary and GymMap already use to
-  // resolve "where does this actually live" dynamically in the trainee's
-  // current gym.
+  // Planned for the whole day at once rather than per exercise, so each
+  // exercise is sent to the copy of its equipment nearest to wherever the last
+  // one left the client — starting from the door. Resolving each exercise
+  // independently picked an arbitrary copy and could send someone back and
+  // forth across the building between sets.
+  //
+  // Routing resolves locations by name/equipment matching, which is what makes
+  // plan-template exercises work at all: those are authored with
+  // equipmentId 'manual' and no machineId, since a template is meant to be
+  // reusable across whichever gym the trainee ends up in, so a direct id
+  // lookup always misses for them.
+  const route = useMemo(() => planSessionRoute(exercises, gym), [exercises, gym]);
+  const routeStop = route[exIdx];
+  // Everywhere else in the gym this same exercise could be done. Kept so a
+  // client who finds their machine occupied has somewhere to go.
+  const alternatives = routeStop?.alternatives || [];
+
   const zone = useMemo(() => {
     if (!exercise) return undefined;
+    // An explicitly assigned zone always wins: an admin who pinned a machine
+    // meant that machine, and routing must not second-guess it.
     const direct = gym.zones.find(z => z.id === exercise.equipmentId);
     if (direct) return direct;
-    const location = getExerciseLocations(exercise, gym);
-    return location.primaryZone || location.matchedZones[0] || undefined;
-  }, [gym, exercise]);
+    return routeStop?.zone || undefined;
+  }, [gym, exercise, routeStop]);
   const machine = useMemo(() => {
     if (!exercise) return undefined;
     const direct = zone?.machines?.find(m => m.id === exercise.machineId);
     if (direct) return direct;
-    const location = getExerciseLocations(exercise, gym);
-    return location.primaryMachine || undefined;
-  }, [zone, exercise, gym]);
+    return routeStop?.machine || undefined;
+  }, [zone, exercise, routeStop]);
   const equipmentItem = useMemo(() => {
     if (!machine) return undefined;
     // Machines placed before addMachineFromEquipment started setting
@@ -364,6 +373,17 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
             )}
           </div>
           <div className="flex-shrink-0 p-4 border-t border-slate-800 bg-slate-900/70">
+            {/* The app can't know what's free, so the honest help is telling
+                someone where else the same thing is. Kept quiet — it matters
+                only to the person who walked over and found it taken. */}
+            {alternatives.length > 0 && (
+              <p className="text-[11px] text-slate-500 mb-2.5 leading-relaxed">
+                {alternatives.length === 1 ? "There's another" : `There are ${alternatives.length} more`}
+                {' in '}
+                {Array.from(new Set(alternatives.map(a => a.zone.name))).join(', ')}
+                {' if this one is busy.'}
+              </p>
+            )}
             <button
               onClick={() => go(1)}
               className="w-full py-3.5 rounded-xl text-sm font-extrabold bg-lime-500 hover:bg-lime-400 active:scale-95 text-slate-950 transition-all duration-150"
