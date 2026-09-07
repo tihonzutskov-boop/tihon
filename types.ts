@@ -184,6 +184,13 @@ export interface ExerciseAdaptation {
   suggestedWeight?: number;
 }
 
+export interface SessionBookend {
+  kind: 'warmup' | 'cooldown';
+  name: string;
+  minutes: number;
+  steps: string[];
+}
+
 export type SessionBlockType = 'single' | 'superset' | 'circuit' | 'warmup' | 'cooldown';
 
 export interface SessionBlock {
@@ -319,6 +326,14 @@ export interface WorkoutDay {
   id: string;
   name: string;
   exercises: Exercise[];
+  // Emitted by the generator for every day, whatever the exercise library
+  // contains — a library gap should cost a better warm-up, never the warm-up
+  // itself. Absent on hand-authored plans predating this.
+  warmup?: SessionBookend;
+  cooldown?: SessionBookend;
+  // Ramp-up sets before the first working set of each compound. Scales with the
+  // session length: extra time buys preparation, not extra working volume.
+  warmupSetsPerCompound?: number;
   weekday?: Weekday;
   blocks?: SessionBlock[]; // optional grouping/authoring metadata built by the session builder; exercises[] stays the flat source of truth so existing consumers (GuidedSession, self-service builder) work unchanged when this is absent
 }

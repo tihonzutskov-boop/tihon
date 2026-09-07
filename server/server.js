@@ -780,7 +780,10 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
         await recordGenerationFailure(req.user.id, match?.id || null, gymId, 'no_gym',
           'No gym selected, so available equipment could not be determined');
       } else {
-        const blueprintDays = buildDefaultBlueprint(goalForPlan, profile.daysPerWeek);
+        // Session length shapes the blueprint itself — a 30-minute session is
+        // composed of the priority work, not a 90-minute session with the end
+        // trimmed off.
+        const blueprintDays = buildDefaultBlueprint(goalForPlan, profile.daysPerWeek, profile.sessionMinutes);
 
         const library = await loadLibraryForGeneration();
         const result = generatePlan(

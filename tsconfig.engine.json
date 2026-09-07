@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "types": []
   },
-  "files": ["utils/planGeneration.ts", "utils/planAdaptation.ts"]
+  "files": ["utils/planGeneration.ts", "utils/planAdaptation.ts", "utils/sessionShape.ts"]
 }

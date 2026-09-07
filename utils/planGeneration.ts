@@ -6,6 +6,10 @@ import type {
   ExperienceLevel, JointStressArea, WorkoutDay, Exercise, SetDetail,
   MovementPattern, MuscleGroup,
 } from '../types';
+// A real import, not type-only: the session's length decides its whole shape,
+// so these run at generation time. Compiled alongside planGeneration into the
+// engine build the server uses.
+import { shapeFor, bookendsFor, trainingMinutesAvailable } from './sessionShape';
 
 // ---------------------------------------------------------------------------
 // Inputs
@@ -196,11 +200,6 @@ const LEGS: SlotSpec[] = [
   { pattern: 'core', kind: 'isolation', optional: true },
 ];
 
-// Every day opens with a short mobility warm-up. Optional so a very short
-// session can still be produced, but first in the order so it's trained
-// first when it is included.
-const WARMUP: SlotSpec = { pattern: 'mobility', kind: 'isolation', optional: true };
-
 const DAY_TEMPLATES: { match: (name: string) => boolean; slots: SlotSpec[] }[] = [
   { match: n => n.startsWith('Upper'), slots: UPPER },
   { match: n => n.startsWith('Lower'), slots: LOWER },
@@ -215,16 +214,24 @@ const GOALS_WITH_CONDITIONING = new Set(['Weight loss', 'Endurance']);
 // Builds a complete blueprint from goal + days/week alone — no admin
 // authoring required. An admin-authored blueprint always wins when one
 // exists; this is what every other client falls back to.
-export const buildDefaultBlueprint = (goal: string, daysPerWeek: number): BlueprintDay[] => {
+export const buildDefaultBlueprint = (goal: string, daysPerWeek: number, sessionMinutes = 60): BlueprintDay[] => {
   const { dayNames } = selectSplit(daysPerWeek);
   const rx = GOAL_PRESCRIPTION[goal] || GOAL_PRESCRIPTION[DEFAULT_GOAL];
+  // Session length shapes what gets built, rather than trimming what was built.
+  // A short session is composed of the priority work only; it is not a long
+  // session with the end cut off.
+  const shape = shapeFor(sessionMinutes);
 
   return dayNames.map((name, dayIdx) => {
     const base = DAY_TEMPLATES.find(t => t.match(name))?.slots || FULL_BODY;
-    const withFinisher: SlotSpec[] = GOALS_WITH_CONDITIONING.has(goal)
-      ? [...base, { pattern: 'conditioning', kind: 'isolation', optional: true }]
-      : base;
-    const specs: SlotSpec[] = [WARMUP, ...withFinisher];
+    const focused = shape.includeAccessories ? base : base.filter(sp => !sp.optional);
+    const withFinisher: SlotSpec[] = GOALS_WITH_CONDITIONING.has(goal) && shape.includeAccessories
+      ? [...focused, { pattern: 'conditioning', kind: 'isolation', optional: true }]
+      : focused;
+    // The warm-up is no longer a mobility slot competing for library coverage —
+    // it is emitted as a structured block by the generator, so a library with
+    // no mobility exercises still produces a warmed-up session.
+    const specs: SlotSpec[] = withFinisher;
 
     return {
       id: `defbp-${dayIdx}`,
@@ -318,9 +325,15 @@ export const TIMING = {
 export const estimateExerciseSeconds = (sets: number, reps: number, restSeconds: number): number =>
   sets * reps * TIMING.secondsPerRep + Math.max(sets - 1, 0) * restSeconds + TIMING.setupSecondsPerExercise;
 
-export const estimateDayMinutes = (exercises: { sets: number; reps: number; restSeconds: number }[]): number => {
+// bookendMinutes defaults to the old flat warm-up allowance so existing
+// callers keep their previous behaviour; the generator passes the real
+// warm-up + cooldown for the session's tier.
+export const estimateDayMinutes = (
+  exercises: { sets: number; reps: number; restSeconds: number }[],
+  bookendMinutes: number = TIMING.warmupMinutes,
+): number => {
   const seconds = exercises.reduce((a, e) => a + estimateExerciseSeconds(e.sets, e.reps, e.restSeconds), 0);
-  return Math.round(seconds / 60) + TIMING.warmupMinutes;
+  return Math.round(seconds / 60) + bookendMinutes;
 };
 
 // ---------------------------------------------------------------------------
@@ -333,7 +346,11 @@ export const estimateDayMinutes = (exercises: { sets: number; reps: number; rest
 const prescriptionFor = (slot: ExerciseSlot, profile: GenerationProfile) => {
   const sets = profile.experience === 'Beginner' ? slot.setsMin : slot.setsMax;
   const reps = Math.round((slot.repsMin + slot.repsMax) / 2);
-  return { sets, reps, restSeconds: slot.restSeconds };
+  // Time available buys longer rest, which is the cheapest quality upgrade
+  // there is: better performance on later sets, no extra recovery cost.
+  const shape = shapeFor(profile.sessionMinutes);
+  const restSeconds = Math.round(slot.restSeconds * shape.restMultiplier);
+  return { sets, reps, restSeconds };
 };
 
 // ---------------------------------------------------------------------------
@@ -437,13 +454,18 @@ export const generatePlan = (
     // Fit the session length by dropping the lowest-priority optional slot
     // first. Required slots are never dropped — if the required work alone
     // overruns, that's a real failure, not something to silently trim.
+    // Bookends are reserved off the top, so the fitter only ever competes with
+    // training time — a session can never be squeezed until there is no room
+    // left to warm up.
+    const shape = shapeFor(profile.sessionMinutes);
+    const trainingBudget = trainingMinutesAvailable(profile.sessionMinutes, shape);
     const measure = () => estimateDayMinutes(picked.map(p => {
       const { sets, reps, restSeconds } = prescriptionFor(p.slot, profile);
       return { sets, reps, restSeconds };
-    }));
+    }), 0);
 
     const droppedIds: string[] = [];
-    while (measure() > profile.sessionMinutes) {
+    while (measure() > trainingBudget) {
       let dropIdx = -1;
       let worstPriority = -Infinity;
       picked.forEach((p, i) => {
@@ -456,7 +478,7 @@ export const generatePlan = (
         return {
           ok: false,
           reason: 'cannot_fit_duration',
-          detail: `"${bpDay.name}" needs ${measure()} min of required work but the session is ${profile.sessionMinutes} min`,
+          detail: `"${bpDay.name}" needs ${measure()} min of required work but only ${trainingBudget} min is available after warm-up and cooldown`,
         };
       }
       droppedIds.push(picked[dropIdx].slot.id);
@@ -502,10 +524,17 @@ export const generatePlan = (
       droppedReason: 'duration',
     }));
 
+    // Always present, whatever the library contains. Training cold is a
+    // beginner injury risk, and it is the first thing skipped when it is left
+    // to chance.
+    const { warmup, cooldown } = bookendsFor(shape);
     days.push({
       id: `gday-${d}`,
       name: bpDay.name,
       exercises: picked.map((p, i) => buildExercise(p.le, p.slot, profile, `${d}-${i}`)),
+      warmup,
+      cooldown,
+      warmupSetsPerCompound: shape.warmupSetsPerCompound,
     });
   }
 

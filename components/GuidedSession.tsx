@@ -817,6 +817,37 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
           </div>
         )}
 
+        {/* Warm-up and cooldown are part of the session, not advice around it —
+            shown at the ends where they are actually performed. Their content
+            varies with how long the client has, so a longer session gets a more
+            thorough preparation rather than the same one padded out. */}
+        {(day.warmup || day.cooldown) && (
+          <div className="mb-5 grid gap-2.5">
+            {[day.warmup, day.cooldown].filter(Boolean).map(block => (
+              <details
+                key={block!.kind}
+                open={block!.kind === 'warmup' && current === 0}
+                className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden"
+              >
+                <summary className="px-4 py-3 cursor-pointer flex items-center justify-between gap-3 list-none">
+                  <span className="text-[11px] font-extrabold uppercase tracking-wide text-lime-400">
+                    {block!.name}
+                  </span>
+                  <span className="text-[11px] font-bold text-slate-500">{block!.minutes} min</span>
+                </summary>
+                <ul className="px-4 pb-3.5 space-y-1.5">
+                  {block!.steps.map((step, i) => (
+                    <li key={i} className="text-xs text-slate-400 leading-relaxed flex gap-2">
+                      <span className="text-slate-600 font-bold shrink-0">{i + 1}</span>
+                      <span>{step}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ))}
+          </div>
+        )}
+
         <div>
           <h4 className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wide mb-2.5">Today's exercises</h4>
           <div>

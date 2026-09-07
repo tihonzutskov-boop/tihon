@@ -521,18 +521,67 @@ describe('split coverage at higher day counts', () => {
   });
 });
 
-describe('warm-up slots', () => {
-  it('opens every day with an optional mobility slot', () => {
-    ['Muscle gain', 'Weight loss', 'Endurance', 'General fitness'].forEach(goal => {
-      buildDefaultBlueprint(goal, 4).forEach(day => {
-        expect(day.slots[0].movementPattern).toBe('mobility');
-        expect(day.slots[0].optional).toBe(true);
-      });
-    });
+describe('warm-up and cooldown', () => {
+  // Previously the warm-up was an optional mobility slot, so it only appeared
+  // when the library happened to carry a mobility-tagged exercise and could be
+  // dropped to save time. It is now emitted structurally instead.
+  it('gives every generated day a warm-up and a cooldown', () => {
+    const pool = [
+      exercise({ id: 'p1', name: 'Push' }),
+      exercise({ id: 'p2', name: 'Pull', movementPattern: 'horizontal_pull' }),
+    ];
+    const blueprint: PlanTemplate = {
+      id: 't1', name: 'T', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 60, days: [],
+      blueprintDays: [{
+        id: 'bd1', name: 'Day 1', slots: [slot({ id: 's1', movementPattern: 'horizontal_push', priority: 1 })],
+      }],
+    };
+    const result = generatePlan(blueprint, pool, gym([]), profile({ sessionMinutes: 60, daysPerWeek: 1 }));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.days[0].warmup?.steps.length).toBeGreaterThan(0);
+      expect(result.days[0].cooldown?.steps.length).toBeGreaterThan(0);
+    }
   });
 
-  it('leaves the warm-up uncategorized so any mobility exercise can fill it', () => {
-    expect(buildDefaultBlueprint('Muscle gain', 3)[0].slots[0].exerciseCategory).toBeUndefined();
+  // The point of the change: an empty library costs a better warm-up, not the
+  // warm-up itself.
+  it('still warms up when the library has no mobility exercise at all', () => {
+    const pool = [exercise({ id: 'p1', name: 'Push' })];
+    const blueprint: PlanTemplate = {
+      id: 't1', name: 'T', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 60, days: [],
+      blueprintDays: [{
+        id: 'bd1', name: 'Day 1', slots: [slot({ id: 's1', movementPattern: 'horizontal_push', priority: 1 })],
+      }],
+    };
+    const result = generatePlan(blueprint, pool, gym([]), profile({ sessionMinutes: 60, daysPerWeek: 1 }));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.days[0].warmup?.steps.length).toBeGreaterThan(0);
+  });
+
+  it('builds a focused session short of accessories, and a full one when there is time', () => {
+    const short = buildDefaultBlueprint('Muscle gain', 3, 30);
+    const long = buildDefaultBlueprint('Muscle gain', 3, 90);
+    expect(short[0].slots.length).toBeLessThan(long[0].slots.length);
+    expect(short[0].slots.every(sl => !sl.optional)).toBe(true);
+  });
+
+  it('rests longer in a long session than a short one for the same slot', () => {
+    const pool = [exercise({ id: 'p1', name: 'Push' })];
+    const blueprint: PlanTemplate = {
+      id: 't1', name: 'T', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 90, days: [],
+      blueprintDays: [{
+        id: 'bd1', name: 'Day 1', slots: [slot({ id: 's1', movementPattern: 'horizontal_push', priority: 1 })],
+      }],
+    };
+    const shortRun = generatePlan(blueprint, pool, gym([]), profile({ sessionMinutes: 30, daysPerWeek: 1 }));
+    const longRun = generatePlan(blueprint, pool, gym([]), profile({ sessionMinutes: 90, daysPerWeek: 1 }));
+    expect(shortRun.ok && longRun.ok).toBe(true);
+    if (shortRun.ok && longRun.ok) {
+      const shortRest = shortRun.days[0].exercises[0].setDetails![0].restSec;
+      const longRest = longRun.days[0].exercises[0].setDetails![0].restSec;
+      expect(longRest).toBeGreaterThan(shortRest);
+    }
   });
 
   it('still generates when no mobility exercise is tagged', () => {
