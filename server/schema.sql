@@ -303,3 +303,8 @@ ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
 -- Nullable: logs recorded before this existed simply fall back to the guess.
 ALTER TABLE exercise_logs ADD COLUMN IF NOT EXISTS pain_area VARCHAR(40);
 ALTER TABLE exercise_withdrawals ADD COLUMN IF NOT EXISTS pain_area VARCHAR(40);
+
+-- Backfill for plans created before started_at existed, or before anything
+-- wrote it. Idempotent by the IS NULL guard: once a row has a real start date
+-- this never touches it again, and rows created from here on get one at insert.
+UPDATE user_plans SET started_at = updated_at WHERE started_at IS NULL;

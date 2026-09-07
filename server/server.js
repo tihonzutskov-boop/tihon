@@ -329,6 +329,18 @@ app.post('/api/exercise-logs', requireAuth, async (req, res) => {
         // Second time this movement has hurt: it stops being a programming
         // problem, so it is never automatically retried again.
         const isRepeat = priorRes.rows[0].n >= 1;
+
+        // Close out any withdrawal still open for this movement before opening
+        // a new one. Without this, a retry that hurts again leaves two open
+        // rows for the same exercise, and the read side — which keys them by
+        // exercise id — would pick whichever the database happened to return
+        // last rather than the one that actually applies.
+        await client.query(
+          `UPDATE exercise_withdrawals SET resolved_at = now()
+            WHERE user_id = $1 AND exercise_id = $2 AND resolved_at IS NULL`,
+          [req.user.id, e.exerciseId]
+        );
+
         await client.query(
           `INSERT INTO exercise_withdrawals (user_id, exercise_id, reason, pain_area, retry_after)
            VALUES ($1, $2, $3, $4, $5)`,
@@ -339,6 +351,23 @@ app.post('/api/exercise-logs', requireAuth, async (req, res) => {
             e.painArea || null,
             isRepeat ? null : new Date(Date.now() + PAIN_FREE_DAYS_BEFORE_RETRY * 24 * 60 * 60 * 1000),
           ]
+        );
+      } else {
+        // A clean session on a movement that was withdrawn, logged once its
+        // retry window had opened, is what closes the withdrawal — the client
+        // did the movement again and it was fine. Without this nothing ever
+        // sets resolved_at, so PAIN-6's "back at half the weight" state would
+        // be permanent: the exercise would keep being offered at half load
+        // forever and never return to normal progression.
+        //
+        // retry_after IS NOT NULL is what keeps a PAIN-7 referral out of this:
+        // a referral is stored with no retry date precisely because it is not
+        // meant to clear itself.
+        await client.query(
+          `UPDATE exercise_withdrawals SET resolved_at = now()
+            WHERE user_id = $1 AND exercise_id = $2 AND resolved_at IS NULL
+              AND retry_after IS NOT NULL AND retry_after <= now()`,
+          [req.user.id, e.exerciseId]
         );
       }
     }
@@ -446,9 +475,13 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
       logsByExercise.set(row.exercise_id, list);
     }
 
+    // Oldest first, so that if more than one withdrawal is somehow open for
+    // the same movement, building the map by exercise id leaves the most
+    // recent one in place rather than whichever the database returned last.
     const wRes = await client.query(
       `SELECT exercise_id, reason, pain_area, retry_after FROM exercise_withdrawals
-        WHERE user_id = $1 AND resolved_at IS NULL`,
+        WHERE user_id = $1 AND resolved_at IS NULL
+        ORDER BY withdrawn_at ASC`,
       [req.user.id]
     );
     const withdrawals = new Map(wRes.rows.map(r => [r.exercise_id, r]));
@@ -634,8 +667,12 @@ app.put('/api/plans/me', requireAuth, async (req, res) => {
   const { name, days } = req.body;
   try {
     await pool.query(
-      `INSERT INTO user_plans (user_id, name, days, updated_at)
-       VALUES ($1, $2, $3, now())
+      // started_at is set on the first insert and deliberately left out of the
+      // update clause, so it survives every later save. It is what the week-12
+      // checkpoint counts from — taking it from updated_at instead would reset
+      // the clock every time the plan was touched.
+      `INSERT INTO user_plans (user_id, name, days, updated_at, started_at)
+       VALUES ($1, $2, $3, now(), now())
        ON CONFLICT (user_id) DO UPDATE SET
          name=$2, days=$3, updated_at=now()`,
       [req.user.id, name || 'My Training Plan', JSON.stringify(days || [])]
@@ -867,8 +904,11 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
 
       if (planDays) {
         await pool.query(
-          `INSERT INTO user_plans (user_id, name, days, source_template_id, generated_for_gym_id, generation_meta, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, now())
+          // As above: started_at is only ever set when the row is first
+          // created, so regenerating a plan does not restart the 12-week clock
+          // on someone who has already been training for weeks.
+          `INSERT INTO user_plans (user_id, name, days, source_template_id, generated_for_gym_id, generation_meta, updated_at, started_at)
+           VALUES ($1, $2, $3, $4, $5, $6, now(), now())
            ON CONFLICT (user_id) DO UPDATE SET name=$2, days=$3, source_template_id=$4, generated_for_gym_id=$5, generation_meta=$6, updated_at=now()`,
           [req.user.id, planName, JSON.stringify(planDays), match?.id || null, gymId,
            generationMeta ? JSON.stringify(generationMeta) : null]
