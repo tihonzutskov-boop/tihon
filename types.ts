@@ -170,6 +170,11 @@ export interface Exercise {
   adaptation?: ExerciseAdaptation;
   withdrawn?: boolean;
   substitutedFor?: { id: string; name: string };
+  // Marks the warm-up and cooldown, which are real entries in the day so they
+  // can be found on the map like anything else — but are not training work.
+  // Every consumer that progresses load, counts weekly volume, or logs a set
+  // skips them: warming up is not something you add weight to.
+  bookend?: 'warmup' | 'cooldown';
 }
 
 export type AdaptationActionName =

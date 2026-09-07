@@ -5,7 +5,7 @@ import {
   GenerationProfile, EligibilityContext,
 } from './planGeneration';
 import type { GenerationFailure } from './planGeneration';
-import { LibraryExercise, Gym, ExerciseSlot, PlanTemplate, ALL_JOINT_STRESS_AREAS } from '../types';
+import { LibraryExercise, Gym, ExerciseSlot, PlanTemplate, Exercise, ALL_JOINT_STRESS_AREAS } from '../types';
 
 // --- fixtures ---------------------------------------------------------------
 
@@ -43,6 +43,11 @@ const ctx = (g: Gym, p = profile()): EligibilityContext => ({
   profile: p,
   availableEquipmentIds: gymEquipmentIds(g),
 });
+
+// The warm-up and cooldown are now real entries bracketing every generated
+// day. Assertions about training content use this so they express "the working
+// exercises" rather than depending on where the bookends sit.
+const working = (day: { exercises: Exercise[] }) => day.exercises.filter(e => !e.bookend);
 
 const slot = (over: Partial<ExerciseSlot> & { id: string }): ExerciseSlot => ({
   movementPattern: 'horizontal_push',
@@ -190,7 +195,7 @@ describe('duration handling', () => {
     const result = generatePlan(blueprint, pool, gym([]), profile({ sessionMinutes: 12, daysPerWeek: 1 }));
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.days[0].exercises).toHaveLength(1);
+      expect(working(result.days[0])).toHaveLength(1);
       expect(result.decisions.some(d => d.dropped && d.droppedReason === 'duration')).toBe(true);
     }
   });
@@ -237,7 +242,7 @@ describe('generation failure', () => {
     };
     const result = generatePlan(blueprint, [exercise({ id: 'p1', name: 'Push' })], gym([]), profile());
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.days[0].exercises).toHaveLength(1);
+    if (result.ok) expect(working(result.days[0])).toHaveLength(1);
   });
 });
 
@@ -267,7 +272,7 @@ describe('end to end generation', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    expect(result.days[0].exercises.map(e => e.name)).toEqual(['Bench Press', 'Dumbbell Row']);
+    expect(working(result.days[0]).map(e => e.name)).toEqual(['Bench Press', 'Dumbbell Row']);
     expect(validatePlan(result.days, library, g, p).valid).toBe(true);
   });
 
@@ -275,14 +280,14 @@ describe('end to end generation', () => {
     const g = gym(['dumbbell']);
     const result = generatePlan(blueprint, library, g, profile({ daysPerWeek: 1 }));
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.days[0].exercises[0].name).toBe('Push-up');
+    if (result.ok) expect(working(result.days[0])[0].name).toBe('Push-up');
   });
 
   it('never prescribes a weight it has no basis for', () => {
     const result = generatePlan(blueprint, library, gym(['barbell', 'bench', 'dumbbell']), profile({ daysPerWeek: 1 }));
     expect(result.ok).toBe(true);
     if (result.ok) {
-      result.days[0].exercises.forEach(ex => {
+      working(result.days[0]).forEach(ex => {
         ex.setDetails?.forEach(sd => expect(sd.weight).toBe(''));
       });
     }
@@ -346,7 +351,7 @@ describe('weekly variety across repeated slot templates', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     result.days.forEach(d => {
-      expect(d.exercises.map(e => e.name).sort()).toEqual(['Barbell Row', 'Bench Press']);
+      expect(working(d).map(e => e.name).sort()).toEqual(['Barbell Row', 'Bench Press']);
     });
   });
 
@@ -360,7 +365,7 @@ describe('weekly variety across repeated slot templates', () => {
     };
     const result = generatePlan(singleDayBlueprint, library, gym([]), profile({ daysPerWeek: 1, sessionMinutes: 60 }));
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.days[0].exercises).toHaveLength(2);
+    if (result.ok) expect(working(result.days[0])).toHaveLength(2);
   });
 });
 
@@ -387,7 +392,7 @@ describe('graceful skip when a required slot cannot be filled', () => {
     const r = generatePlan(bp, library, gym([]), profile({ daysPerWeek: 1, sessionMinutes: 90 }));
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.days[0].exercises.map(e => e.name)).toEqual(['Push-up', 'Row']);
+    expect(working(r.days[0]).map(e => e.name)).toEqual(['Push-up', 'Row']);
   });
 
   it('records the skipped slot so the gap is not silent', () => {
@@ -577,7 +582,7 @@ describe('default blueprints', () => {
     const result = generatePlan(template, library, gym([]), p);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.days[0].exercises.map(e => e.name).sort())
+    expect(working(result.days[0]).map(e => e.name).sort())
       .toEqual(['Dumbbell Row', 'Goblet Squat', 'Push-up']);
     expect(validatePlan(result.days, library, gym([]), p).valid).toBe(true);
   });
@@ -596,7 +601,7 @@ describe('default blueprints', () => {
     };
     const result = generatePlan(template, library, gym([]), profile({ daysPerWeek: 1 }));
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.days[0].exercises).toHaveLength(3);
+    if (result.ok) expect(working(result.days[0])).toHaveLength(3);
   });
 });
 
@@ -654,6 +659,63 @@ describe('warm-up and cooldown', () => {
     if (result.ok) expect(result.days[0].warmup?.steps.length).toBeGreaterThan(0);
   });
 
+  // The warm-up has to be findable in the room, not just described — "2
+  // minutes easy cardio" is useless to a beginner who doesn't know where the
+  // bike is. So it rides in the day as a real entry with a location.
+  it('emits the warm-up and cooldown as real, locatable exercises', () => {
+    const pool = [
+      exercise({ id: 'p1', name: 'Push' }),
+      exercise({ id: 'bike', name: 'Exercise Bike', movementPattern: 'mobility', exerciseCategory: 'cardio', equipmentId: 'zone-cardio' }),
+    ];
+    const blueprint: PlanTemplate = {
+      id: 't1', name: 'T', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 60, days: [],
+      blueprintDays: [{ id: 'bd1', name: 'Day 1', slots: [slot({ id: 's1', movementPattern: 'horizontal_push', priority: 1 })] }],
+    };
+    const result = generatePlan(blueprint, pool, gym([]), profile({ daysPerWeek: 1, sessionMinutes: 60 }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const day = result.days[0];
+    expect(day.exercises[0].bookend).toBe('warmup');
+    expect(day.exercises[day.exercises.length - 1].bookend).toBe('cooldown');
+    // Backed by a real library exercise, so the map can place it.
+    expect(day.exercises[0].libraryExerciseId).toBe('bike');
+    expect(day.exercises[0].equipmentId).toBe('zone-cardio');
+  });
+
+  // The safety property from before still holds: a library with nothing
+  // suitable costs a locatable warm-up, never the warm-up itself.
+  it('still emits bookends when nothing in the library can back them', () => {
+    const pool = [exercise({ id: 'p1', name: 'Push' })];
+    const blueprint: PlanTemplate = {
+      id: 't1', name: 'T', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 60, days: [],
+      blueprintDays: [{ id: 'bd1', name: 'Day 1', slots: [slot({ id: 's1', movementPattern: 'horizontal_push', priority: 1 })] }],
+    };
+    const result = generatePlan(blueprint, pool, gym([]), profile({ daysPerWeek: 1, sessionMinutes: 60 }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.days[0].exercises[0].bookend).toBe('warmup');
+    expect(result.days[0].exercises[0].libraryExerciseId).toBeUndefined();
+    expect(result.days[0].warmup?.steps.length).toBeGreaterThan(0);
+  });
+
+  // Bookends are in the day but are not training work — validation must not
+  // hold them to the rules that govern the working exercises, or a plan whose
+  // library can't back a warm-up would fail outright.
+  it('does not fail validation over a bookend with no library entry', () => {
+    const pool = [exercise({ id: 'p1', name: 'Push', requiredEquipmentIds: [] })];
+    const blueprint: PlanTemplate = {
+      id: 't1', name: 'T', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 60, days: [],
+      blueprintDays: [{ id: 'bd1', name: 'Day 1', slots: [slot({ id: 's1', movementPattern: 'horizontal_push', priority: 1 })] }],
+    };
+    const p = profile({ daysPerWeek: 1, sessionMinutes: 60 });
+    const result = generatePlan(blueprint, pool, gym([]), p);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const validation = validatePlan(result.days, pool, gym([]), p);
+    expect(validation.errors).toEqual([]);
+  });
+
   it('builds a focused session short of accessories, and a full one when there is time', () => {
     const short = buildDefaultBlueprint('Muscle gain', 3, 30);
     const long = buildDefaultBlueprint('Muscle gain', 3, 90);
@@ -673,8 +735,8 @@ describe('warm-up and cooldown', () => {
     const longRun = generatePlan(blueprint, pool, gym([]), profile({ sessionMinutes: 90, daysPerWeek: 1 }));
     expect(shortRun.ok && longRun.ok).toBe(true);
     if (shortRun.ok && longRun.ok) {
-      const shortRest = shortRun.days[0].exercises[0].setDetails![0].restSec;
-      const longRest = longRun.days[0].exercises[0].setDetails![0].restSec;
+      const shortRest = working(shortRun.days[0])[0].setDetails![0].restSec;
+      const longRest = working(longRun.days[0])[0].setDetails![0].restSec;
       expect(longRest).toBeGreaterThan(shortRest);
     }
   });
@@ -764,7 +826,7 @@ describe('thin library does not break generation', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    const names = result.days[0].exercises.map(e => e.name);
+    const names = working(result.days[0]).map(e => e.name);
     expect(new Set(names).size).toBe(names.length);           // no duplicates
     expect(validatePlan(result.days, library, gym([]), p).valid).toBe(true);
   });
@@ -782,6 +844,6 @@ describe('thin library does not break generation', () => {
     };
     const result = generatePlan(tpl, only, gym([]), profile({ daysPerWeek: 1, sessionMinutes: 90 }));
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.days[0].exercises).toHaveLength(1);
+    if (result.ok) expect(working(result.days[0])).toHaveLength(1);
   });
 });

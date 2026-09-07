@@ -422,6 +422,58 @@ const buildExercise = (
   };
 };
 
+// The warm-up and cooldown are real entries in the day, not just a block of
+// text beside it, so a beginner can find where to do them the same way they
+// find anything else — the "2 minutes easy cardio" step is useless if you
+// don't know where the bike is.
+//
+// Preference order: an exercise explicitly tagged for this bookend, then
+// general mobility work, then a cardio machine — which is what the steps
+// actually describe, and the most locatable thing in the room.
+const BOOKEND_SCORING = { taggedForBookend: 30, mobility: 20, mobilityPattern: 15, cardio: 10 };
+
+export const selectBookendExercise = (
+  kind: 'warmup' | 'cooldown',
+  pool: LibraryExercise[],
+): LibraryExercise | null => {
+  const scoreOne = (ex: LibraryExercise): number => {
+    let score = 0;
+    if (ex.exerciseCategory === kind) score += BOOKEND_SCORING.taggedForBookend;
+    if (ex.exerciseCategory === 'mobility') score += BOOKEND_SCORING.mobility;
+    if (ex.movementPattern === 'mobility') score += BOOKEND_SCORING.mobilityPattern;
+    if (ex.exerciseCategory === 'cardio') score += BOOKEND_SCORING.cardio;
+    return score;
+  };
+  const scored = pool
+    .filter(ex => ex.generationEnabled !== false && scoreOne(ex) > 0)
+    .map(ex => ({ ex, score: scoreOne(ex) }))
+    .sort((a, b) => (b.score - a.score) || a.ex.id.localeCompare(b.ex.id));
+  return scored.length > 0 ? scored[0].ex : null;
+};
+
+// Emitted whether or not the library can fill it. A library with nothing
+// suitable costs the client a locatable warm-up, never the warm-up itself —
+// the entry still appears with its steps, just without a place on the map.
+const buildBookendExercise = (
+  kind: 'warmup' | 'cooldown',
+  block: { name: string; minutes: number; steps: string[] },
+  le: LibraryExercise | null,
+  idSuffix: string,
+): Exercise => ({
+  id: `gbk-${idSuffix}`,
+  name: le ? le.name : block.name,
+  targetMuscle: le?.targetMuscle || 'Full body',
+  // Tracked by duration rather than sets, which is what these actually are.
+  sets: 0,
+  reps: '',
+  isCardio: true,
+  cardioMinutes: block.minutes,
+  equipmentId: le?.equipmentId || 'manual',
+  ...(le ? { libraryExerciseId: le.id } : {}),
+  bookend: kind,
+  notes: block.steps.join(' · '),
+});
+
 export const generatePlan = (
   blueprint: PlanTemplate,
   library: LibraryExercise[],
@@ -555,7 +607,12 @@ export const generatePlan = (
     days.push({
       id: `gday-${d}`,
       name: bpDay.name,
-      exercises: picked.map((p, i) => buildExercise(p.le, p.slot, profile, `${d}-${i}`)),
+      // Bookends bracket the working exercises, in the order they're done.
+      exercises: [
+        buildBookendExercise('warmup', warmup, selectBookendExercise('warmup', pool), `${d}-warmup`),
+        ...picked.map((p, i) => buildExercise(p.le, p.slot, profile, `${d}-${i}`)),
+        buildBookendExercise('cooldown', cooldown, selectBookendExercise('cooldown', pool), `${d}-cooldown`),
+      ],
       warmup,
       cooldown,
       warmupSetsPerCompound: shape.warmupSetsPerCompound,
@@ -613,6 +670,11 @@ export const validatePlan = (
 
     const seen = new Set<string>();
     day.exercises.forEach(ex => {
+      // The warm-up and cooldown are legitimately allowed to have no library
+      // entry and no sets — they are emitted whether or not the library can
+      // fill them, so holding them to the training-work rules would turn a
+      // thin library into a failed plan.
+      if (ex.bookend) return;
       const le = ex.libraryExerciseId ? byId.get(ex.libraryExerciseId) : undefined;
       if (!le) {
         errors.push(`"${ex.name}" in "${day.name}" is not a library exercise`);
@@ -635,7 +697,7 @@ export const validatePlan = (
     // client's stated time — and the whole point of this check is to be an
     // independent guard, not a weaker one.
     const shape = shapeFor(profile.sessionMinutes);
-    const minutes = estimateDayMinutes(day.exercises.map(ex => ({
+    const minutes = estimateDayMinutes(day.exercises.filter(ex => !ex.bookend).map(ex => ({
       sets: ex.setDetails?.length || ex.sets || 0,
       reps: parseInt(ex.setDetails?.[0]?.reps || '0', 10) || 0,
       restSeconds: ex.setDetails?.[0]?.restSec ?? 60,
@@ -654,6 +716,7 @@ export const validatePlan = (
   if (tagged.length > 0) {
     const trained = new Set<MuscleGroup>();
     days.forEach(day => day.exercises.forEach(ex => {
+      if (ex.bookend) return;
       const le = ex.libraryExerciseId ? byId.get(ex.libraryExerciseId) : undefined;
       (le?.primaryMuscles || []).forEach(m => trained.add(m));
     }));

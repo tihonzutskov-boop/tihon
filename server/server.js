@@ -527,6 +527,16 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
       (day.exercises || []).forEach((ex, exIdx) => {
         const key = `${dayIdx}-${exIdx}`;
         const id = ex.libraryExerciseId;
+
+        // The warm-up and cooldown ride along in the day so they can be found
+        // on the map, but they are not training work: no progression, no
+        // weekly volume, no add-set. Passed through exactly as authored.
+        if (ex.bookend) {
+          resolved.push({ dayIdx, key, muscles: [], baseSets: 0,
+            decision: { action: 'maintain', rule: '', reason: '' }, build: () => ex });
+          return;
+        }
+
         if (!id) {
           resolved.push({ dayIdx, key, muscles: [], baseSets: 0,
             decision: { action: 'maintain', rule: '', reason: '' }, build: () => ex });

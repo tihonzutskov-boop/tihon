@@ -205,6 +205,10 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
     const logs: ExerciseLog[] = [];
     exercises.forEach((ex, i) => {
       if (!ex.libraryExerciseId) return;
+      // A warm-up is not training work — logging it would feed the progression
+      // rules a set they should never act on, and ask the client to rate the
+      // effort of their own warm-up.
+      if (ex.bookend) return;
       const exRows = setState[i];
       if (!exRows) return;
       const completed = exRows.map((r, idx) => ({ r, idx })).filter(({ r }) => r.done);
@@ -571,6 +575,27 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
               </div>
             )}
 
+            {/* A warm-up gets its steps instead of an effort rating — nothing
+                about it is logged or progressed, so asking how hard it was
+                would be asking for a number nothing reads. Rendered outside
+                the cardio/sets split because a bookend is duration-tracked and
+                would otherwise fall through both branches. */}
+            {stage.key === 'tutorial' && exercise.bookend && (
+              <div className="mt-5 pt-4 border-t border-slate-800">
+                <p className="text-xs font-extrabold text-lime-400 uppercase tracking-wide">
+                  {exercise.bookend === 'warmup' ? 'Warm-up' : 'Cooldown'}
+                </p>
+                <ul className="mt-2.5 space-y-1.5">
+                  {(exercise.bookend === 'warmup' ? day.warmup : day.cooldown)?.steps.map((step, i) => (
+                    <li key={i} className="text-xs text-slate-400 leading-relaxed flex gap-2">
+                      <span className="text-slate-600 font-bold shrink-0">{i + 1}</span>
+                      <span>{step}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {stage.key === 'tutorial' && exercise.isCardio && (
               <div className="mt-5 pt-4 border-t border-slate-800">
                 <div className="flex items-center justify-between gap-3 bg-slate-800/60 border border-slate-700 rounded-xl p-4">
@@ -693,6 +718,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                   </div>
                 )}
 
+                {!exercise.bookend && (
                 <div className="mt-5 pt-4 border-t border-slate-800">
                   <p className="text-xs font-extrabold text-slate-300 uppercase tracking-wide">How hard was that?</p>
                   <div className="grid grid-cols-5 gap-1.5 mt-2.5">
@@ -767,6 +793,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                     </div>
                   )}
                 </div>
+                )}
               </div>
             )}
           </div>
@@ -814,37 +841,6 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                 ? 'Next exercise →'
                 : 'Next →'}
             </button>
-          </div>
-        )}
-
-        {/* Warm-up and cooldown are part of the session, not advice around it —
-            shown at the ends where they are actually performed. Their content
-            varies with how long the client has, so a longer session gets a more
-            thorough preparation rather than the same one padded out. */}
-        {(day.warmup || day.cooldown) && (
-          <div className="mb-5 grid gap-2.5">
-            {[day.warmup, day.cooldown].filter(Boolean).map(block => (
-              <details
-                key={block!.kind}
-                open={block!.kind === 'warmup' && current === 0}
-                className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden"
-              >
-                <summary className="px-4 py-3 cursor-pointer flex items-center justify-between gap-3 list-none">
-                  <span className="text-[11px] font-extrabold uppercase tracking-wide text-lime-400">
-                    {block!.name}
-                  </span>
-                  <span className="text-[11px] font-bold text-slate-500">{block!.minutes} min</span>
-                </summary>
-                <ul className="px-4 pb-3.5 space-y-1.5">
-                  {block!.steps.map((step, i) => (
-                    <li key={i} className="text-xs text-slate-400 leading-relaxed flex gap-2">
-                      <span className="text-slate-600 font-bold shrink-0">{i + 1}</span>
-                      <span>{step}</span>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            ))}
           </div>
         )}
 
