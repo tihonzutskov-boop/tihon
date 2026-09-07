@@ -257,6 +257,104 @@ app.get('/api/workouts/me', requireAuth, async (req, res) => {
   }
 });
 
+// --- Training Log Routes ---
+//
+// What the client did, as opposed to what the plan asked for. This is the only
+// input the adaptive engine has: progression, stall detection and the pain
+// rules are all derived from these rows, so the write path is deliberately
+// small — anything that makes logging tedious ends with the client not logging
+// and the engine going blind.
+
+app.post('/api/exercise-logs', requireAuth, async (req, res) => {
+  const entries = Array.isArray(req.body) ? req.body : [req.body];
+  if (entries.length === 0) return res.status(400).json({ error: 'Nothing to log' });
+
+  const invalid = entries.find(e =>
+    !e || typeof e.exerciseId !== 'string' || !e.exerciseId ||
+    !Array.isArray(e.sets) ||
+    (e.effort != null && !(Number.isInteger(e.effort) && e.effort >= 1 && e.effort <= 5))
+  );
+  if (invalid) return res.status(400).json({ error: 'Each entry needs an exerciseId, a sets array, and effort 1-5 if given' });
+
+  let client;
+  try {
+    client = await pool.connect();
+    // A session is logged as one batch, so it commits or it doesn't — a
+    // half-written session would make the progression rule compare against
+    // a set count the client never actually performed.
+    await client.query('BEGIN');
+    const saved = [];
+    for (const e of entries) {
+      const result = await client.query(
+        `INSERT INTO exercise_logs
+           (user_id, exercise_id, plan_day_id, weight, weight_unit, sets, effort, pain, pain_note)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING id, logged_at`,
+        [
+          req.user.id,
+          e.exerciseId,
+          e.planDayId || null,
+          e.weight ?? null,
+          e.weightUnit || 'kg',
+          JSON.stringify(e.sets || []),
+          e.effort ?? null,
+          e.pain === true,
+          e.painNote || null,
+        ]
+      );
+      saved.push({ id: result.rows[0].id, loggedAt: result.rows[0].logged_at });
+    }
+    await client.query('COMMIT');
+    return res.json({ success: true, saved });
+  } catch (err) {
+    try { await client?.query('ROLLBACK'); } catch { /* connection already gone */ }
+    console.error('Failed to save training log:', err.message);
+    return res.status(500).json({ error: 'Database error saving training log' });
+  } finally {
+    client?.release();
+  }
+});
+
+// History for the engine. Defaults to the whole log so the caller can compute
+// weekly volume; narrows to one exercise when the progression rule only needs
+// that movement's recent sessions.
+app.get('/api/exercise-logs/me', requireAuth, async (req, res) => {
+  const exerciseId = typeof req.query.exerciseId === 'string' ? req.query.exerciseId : null;
+  const limit = Math.min(parseInt(req.query.limit, 10) || 200, 500);
+  let client;
+  try {
+    client = await pool.connect();
+    const result = await client.query(
+      `SELECT id, exercise_id, plan_day_id, weight, weight_unit, sets, effort, pain, pain_note, logged_at
+         FROM exercise_logs
+        WHERE user_id = $1 AND ($2::varchar IS NULL OR exercise_id = $2)
+        ORDER BY logged_at DESC
+        LIMIT $3`,
+      [req.user.id, exerciseId, limit]
+    );
+    return res.json({
+      logs: result.rows.map(row => ({
+        id: row.id,
+        exerciseId: row.exercise_id,
+        planDayId: row.plan_day_id,
+        // NUMERIC arrives as a string from pg; the engine does arithmetic on it.
+        weight: row.weight === null ? null : Number(row.weight),
+        weightUnit: row.weight_unit,
+        sets: row.sets || [],
+        effort: row.effort,
+        pain: row.pain,
+        painNote: row.pain_note,
+        loggedAt: row.logged_at,
+      })),
+    });
+  } catch (err) {
+    console.error('Failed to fetch training log:', err.message);
+    return res.status(500).json({ error: 'Database error fetching training log' });
+  } finally {
+    client?.release();
+  }
+});
+
 // --- Personal Training Plan Routes ---
 
 app.get('/api/plans/me', requireAuth, async (req, res) => {

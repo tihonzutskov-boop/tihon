@@ -1,5 +1,5 @@
 
-import { Gym, User, LibraryExercise, EquipmentItem, GymZone, GymMachine, EquipmentType, WorkoutDay, QuestionnaireAnswers, PlanTemplate, CoachingClient, GenerationFailureRecord } from '../types';
+import { Gym, User, LibraryExercise, EquipmentItem, GymZone, GymMachine, EquipmentType, WorkoutDay, QuestionnaireAnswers, PlanTemplate, CoachingClient, GenerationFailureRecord, ExerciseLog } from '../types';
 import { DEFAULT_GYM } from '../constants';
 
 // Relative path: works same-origin in production (Express serves the built
@@ -240,6 +240,47 @@ export const api = {
       return await response.json();
     } catch {
       return { logs: [], stats: { workoutsCompleted: 0, totalMinutes: 0, streakDays: 0 } };
+    }
+  },
+
+  // --- TRAINING LOG ---
+  //
+  // What was actually lifted, as opposed to what was prescribed. The adaptive
+  // engine reads nothing else, so a silent failure here would leave the plan
+  // frozen while appearing to work — hence the explicit ok flag rather than a
+  // fire-and-forget like completeWorkout above.
+
+  async logExercises(entries: ExerciseLog[]): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const response = await fetch(`${API_BASE}/exercise-logs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(entries),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        return { ok: false, error: body.error || `Server responded with ${response.status}` };
+      }
+      return { ok: true };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Could not save training log' };
+    }
+  },
+
+  // Omit exerciseId for the full log (weekly volume); pass one when only that
+  // movement's recent sessions matter (progression, stall detection).
+  async fetchMyExerciseLogs(exerciseId?: string, limit?: number): Promise<ExerciseLog[]> {
+    try {
+      const params = new URLSearchParams();
+      if (exerciseId) params.set('exerciseId', exerciseId);
+      if (limit) params.set('limit', String(limit));
+      const query = params.toString();
+      const response = await fetch(`${API_BASE}/exercise-logs/me${query ? `?${query}` : ''}`);
+      if (!response.ok) throw new Error(`Status: ${response.status}`);
+      const body = await response.json();
+      return body.logs || [];
+    } catch {
+      return [];
     }
   },
 

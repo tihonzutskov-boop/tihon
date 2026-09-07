@@ -415,3 +415,51 @@ export interface AuthResponse {
   user: User;
   token?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Training log — the input the adaptive engine runs on
+// ---------------------------------------------------------------------------
+
+// How hard a set felt, 1–5. The client is asked "how hard was that?", but each
+// point is anchored in reps left, because the rules key off proximity to
+// failure rather than mood. Beginners are never programmed to failure, so they
+// have no felt reference for it — the anchors are what keep the answer usable.
+export type EffortRating = 1 | 2 | 3 | 4 | 5;
+
+export interface EffortLevel {
+  value: EffortRating;
+  label: string;       // what the client taps
+  repsLeft: string;    // the anchor that makes the number mean something
+}
+
+export const EFFORT_SCALE: EffortLevel[] = [
+  { value: 1, label: 'Very easy',           repsLeft: '5 or more left' },
+  { value: 2, label: 'Easy',                repsLeft: 'about 4 left' },
+  { value: 3, label: 'About right',         repsLeft: '2–3 left' },
+  { value: 4, label: 'Hard',                repsLeft: '1 left' },
+  { value: 5, label: "Couldn't do another", repsLeft: 'none left' },
+];
+
+// One set as it was actually performed. targetReps is carried alongside so the
+// progression rule can compare done-versus-prescribed without re-deriving what
+// the plan said at the time — the plan may since have changed.
+export interface LoggedSet {
+  reps: number;
+  targetReps: number;
+}
+
+// One exercise, as performed in one session. Weight is what the client actually
+// used: in week 1 they choose it and the app records it, and from then on it is
+// the working weight the progression rule advances.
+export interface ExerciseLog {
+  id?: number;
+  exerciseId: string;
+  planDayId?: string;
+  weight?: number | null;      // null for bodyweight movements
+  weightUnit?: 'kg' | 'lb';
+  sets: LoggedSet[];
+  effort?: EffortRating | null;
+  pain?: boolean;
+  painNote?: string;
+  loggedAt?: string;
+}

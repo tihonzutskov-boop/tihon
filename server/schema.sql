@@ -248,3 +248,26 @@ CREATE INDEX IF NOT EXISTS idx_exercise_video_chunks_span
 -- Set only for chunked videos, and doubles as the marker that the video lives
 -- in exercise_video_chunks rather than in the tutorial_video column.
 ALTER TABLE exercises ADD COLUMN IF NOT EXISTS tutorial_video_size BIGINT;
+
+-- Training log. One row per exercise performed in one session; the per-set reps
+-- live in the JSONB array rather than as separate rows, matching how the plan
+-- itself stores setDetails. This is the sole input to the adaptive engine: the
+-- progression, stall and pain rules all read from here.
+CREATE TABLE IF NOT EXISTS exercise_logs (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  exercise_id VARCHAR(100) NOT NULL,
+  plan_day_id VARCHAR(100),
+  weight NUMERIC(7,2),
+  weight_unit VARCHAR(4) NOT NULL DEFAULT 'kg',
+  sets JSONB NOT NULL DEFAULT '[]',
+  effort SMALLINT CHECK (effort BETWEEN 1 AND 5),
+  pain BOOLEAN NOT NULL DEFAULT false,
+  pain_note TEXT,
+  logged_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- The engine's only read pattern: the most recent sessions for one exercise by
+-- one user, newest first. Progression needs the last two, stall detection more.
+CREATE INDEX IF NOT EXISTS idx_exercise_logs_lookup
+  ON exercise_logs (user_id, exercise_id, logged_at DESC);
