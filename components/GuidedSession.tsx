@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { X, ArrowLeft, Check, Plus, Minus, Dumbbell, PlayCircle } from 'lucide-react';
-import { WorkoutDay, Gym, EquipmentItem, LibraryExercise, Exercise } from '../types';
+import { WorkoutDay, Gym, EquipmentItem, LibraryExercise, Exercise, EffortRating, ExerciseLog, EFFORT_SCALE } from '../types';
+import { api } from '../services/api';
 import GymMap from './GymMap';
 import { getExerciseLocations } from '../utils/exerciseMatcher';
 import { getYouTubeEmbedUrl } from '../utils/youtubeEmbed';
@@ -74,6 +75,13 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   const total = steps.length;
   const [current, setCurrent] = useState(0);
   const [setState, setSetState] = useState<Record<number, SetRow[]>>({});
+  // How hard each exercise felt, and whether anything hurt. Keyed by exercise
+  // index like setState. These two answers are what the adaptive engine reads
+  // to decide whether the load moves next session.
+  const [effortState, setEffortState] = useState<Record<number, EffortRating>>({});
+  const [painState, setPainState] = useState<Record<number, boolean>>({});
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const curStep = steps[current];
   const exIdx = curStep?.exIdx ?? 0;
@@ -168,6 +176,56 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   const addSet = () => setRows([...rows, { reps: exercise.reps || '', duration: '', weight: '', done: false }]);
   const removeSet = () => { if (rows.length > 1) setRows(rows.slice(0, -1)); };
   const completeAll = () => setRows(rows.map(r => ({ ...r, done: true })));
+  const setEffort = (value: EffortRating) =>
+    setEffortState(prev => ({ ...prev, [exIdx]: prev[exIdx] === value ? undefined as any : value }));
+  const togglePain = () => setPainState(prev => ({ ...prev, [exIdx]: !prev[exIdx] }));
+
+  // Only completed sets on library-linked exercises are logged. A set the
+  // client never ticked did not happen, and logging it would hand the
+  // progression rule reps that were never performed.
+  const buildLogs = (): ExerciseLog[] => {
+    const logs: ExerciseLog[] = [];
+    exercises.forEach((ex, i) => {
+      if (!ex.libraryExerciseId) return;
+      const exRows = setState[i];
+      if (!exRows) return;
+      const completed = exRows.map((r, idx) => ({ r, idx })).filter(({ r }) => r.done);
+      if (completed.length === 0) return;
+
+      // What the plan asked for at the time, carried alongside what was done,
+      // so the rule can compare the two without re-deriving a prescription
+      // that may since have changed.
+      const targetReps = (idx: number) =>
+        parseInt(ex.setDetails?.[idx]?.reps || ex.reps || '0', 10) || 0;
+
+      const weightText = completed.find(({ r }) => r.weight.trim() !== '')?.r.weight;
+      const weight = weightText != null ? parseFloat(weightText) : NaN;
+
+      logs.push({
+        exerciseId: ex.libraryExerciseId,
+        planDayId: day.id,
+        weight: Number.isFinite(weight) ? weight : null,
+        sets: completed.map(({ r, idx }) => ({
+          reps: parseInt(r.reps, 10) || 0,
+          targetReps: targetReps(idx),
+        })),
+        effort: effortState[i] ?? null,
+        pain: painState[i] === true,
+      });
+    });
+    return logs;
+  };
+
+  const finishSession = async () => {
+    const logs = buildLogs();
+    if (logs.length === 0) return onFinish();
+    setSaving(true);
+    setSaveError(null);
+    const result = await api.logExercises(logs);
+    setSaving(false);
+    if (!result.ok) return setSaveError(result.error || 'Could not save your training log');
+    onFinish();
+  };
 
   const go = (dir: number) => {
     const next = current + dir;
@@ -586,10 +644,74 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                     <Check className="w-3.5 h-3.5" />
                   </span>
                 </button>
+
+                {/* How hard it was, and whether anything hurt. Each number is
+                    labelled with reps left rather than left as a bare score —
+                    the rules key off how close to failure the set was, and a
+                    number on its own would mean something different to
+                    everyone answering it. */}
+                <div className="mt-5 pt-4 border-t border-slate-800">
+                  <p className="text-xs font-extrabold text-slate-300 uppercase tracking-wide">How hard was that?</p>
+                  <div className="grid grid-cols-5 gap-1.5 mt-2.5">
+                    {EFFORT_SCALE.map(level => {
+                      const selected = effortState[exIdx] === level.value;
+                      return (
+                        <button
+                          key={level.value}
+                          onClick={() => setEffort(level.value)}
+                          aria-pressed={selected}
+                          className={`flex flex-col items-center gap-1 py-2 px-1 rounded-lg border text-center transition-colors ${
+                            selected
+                              ? 'bg-lime-500 border-lime-500 text-slate-950'
+                              : 'bg-slate-800/60 border-slate-700 text-slate-300 hover:bg-slate-800'
+                          }`}
+                        >
+                          <span className="text-base font-extrabold leading-none">{level.value}</span>
+                          <span className={`text-[8.5px] font-bold leading-tight ${selected ? 'text-slate-900' : 'text-slate-500'}`}>
+                            {level.repsLeft}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {effortState[exIdx] && (
+                    <p className="text-[11px] font-bold text-lime-400 mt-2">
+                      {EFFORT_SCALE.find(l => l.value === effortState[exIdx])?.label}
+                    </p>
+                  )}
+
+                  <button
+                    onClick={togglePain}
+                    aria-pressed={painState[exIdx] === true}
+                    className={`w-full mt-3 py-2.5 rounded-lg border text-xs font-extrabold transition-colors ${
+                      painState[exIdx]
+                        ? 'bg-amber-500/15 border-amber-500/60 text-amber-300'
+                        : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {painState[exIdx] ? 'Something hurt — we\'ll swap this out' : 'Something hurt?'}
+                  </button>
+                </div>
               </div>
             )}
           </div>
         </div>
+
+        {/* A failed save would otherwise be invisible: the session closes, the
+            client believes it was recorded, and the plan silently never
+            advances. Surface it and let them retry rather than trapping them
+            in the session. */}
+        {saveError && (
+          <div className="mb-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/40">
+            <p className="text-xs font-bold text-amber-300">{saveError}</p>
+            <button
+              onClick={finishSession}
+              className="mt-2 text-xs font-extrabold text-amber-200 underline underline-offset-2 hover:text-white"
+            >
+              Try saving again
+            </button>
+          </div>
+        )}
 
         {stage.key !== 'locate' && (
           <div className="flex gap-2.5 mb-6">
@@ -601,11 +723,16 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
               ← Previous
             </button>
             <button
-              onClick={() => (isLastStage ? onFinish() : go(1))}
-              className="flex-1 py-3 rounded-xl text-sm font-extrabold bg-lime-500 hover:bg-lime-400 active:scale-95 text-slate-950 transition-all duration-150"
+              onClick={() => (isLastStage ? (saveError ? onFinish() : finishSession()) : go(1))}
+              disabled={saving}
+              className="flex-1 py-3 rounded-xl text-sm font-extrabold bg-lime-500 hover:bg-lime-400 active:scale-95 text-slate-950 transition-all duration-150 disabled:opacity-60 disabled:active:scale-100"
             >
               {isLastStage
-                ? 'Finish session'
+                ? saving
+                  ? 'Saving…'
+                  : saveError
+                  ? 'Finish anyway'
+                  : 'Finish session'
                 : stage.key === 'video'
                 ? 'Mark Complete →'
                 : stage.key === 'tutorial'
