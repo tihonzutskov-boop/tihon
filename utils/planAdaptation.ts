@@ -13,7 +13,7 @@
 // progression never runs. Someone stalling AND owed a set gets the stall
 // protocol, not more volume. Every rule below cites the spec rule it encodes.
 
-import { ExerciseLog, EffortRating } from '../types';
+import { ExerciseLog, EffortRating, LibraryExercise, JointStressArea, MuscleGroup } from '../types';
 
 export type AdaptationAction =
   | 'refer'        // stop, recommend a professional — the app does not self-manage this
@@ -206,6 +206,75 @@ export const evaluateExercise = (input: AdaptationInput): AdaptationDecision => 
   }
 
   return { action: 'maintain', rule: 'LOAD-2', reason: 'Same again — the target has not been beaten twice in a row yet.' };
+};
+
+// ---------------------------------------------------------------------------
+// Substitution (PAIN-5)
+// ---------------------------------------------------------------------------
+//
+// A withdrawn movement is replaced, not deleted — the session keeps its shape,
+// and the client still trains the muscles the slot existed to cover.
+
+export const SUBSTITUTION_SCORING = {
+  samePattern: 30,          // keeps the session's structure intact
+  perSharedMuscle: 10,      // still trains what the slot was there for
+  beginnerAppropriate: 8,   // SAFE-4: simpler movement when something already hurts
+  perSharedStressArea: -12, // used only when the painful area is unknown
+};
+
+export interface SubstituteInput {
+  /** The movement being replaced. */
+  withdrawn: LibraryExercise;
+  /** Exercises already filtered for this gym's equipment and the client's injuries. */
+  pool: LibraryExercise[];
+  /** Where it hurt. Absent for logs recorded before the area was captured. */
+  painArea?: JointStressArea | null;
+  /** Exercises already in this day, so a substitute never duplicates one. */
+  alreadyUsedIds?: Set<string>;
+}
+
+const shared = <T,>(a: T[] | undefined, b: T[] | undefined): number => {
+  if (!a?.length || !b?.length) return 0;
+  const set = new Set(b);
+  return a.filter(x => set.has(x)).length;
+};
+
+// Returns null when nothing qualifies. That is a real outcome — a thin library
+// or a widely-loaded painful area can leave no safe option — and the caller
+// leaves the slot empty rather than substituting something that also hurts.
+export const selectSubstitute = (input: SubstituteInput): LibraryExercise | null => {
+  const { withdrawn, pool, painArea, alreadyUsedIds } = input;
+
+  const candidates = pool.filter(ex => {
+    if (ex.id === withdrawn.id) return false;
+    if (alreadyUsedIds?.has(ex.id)) return false;
+    if (ex.generationEnabled === false) return false;
+    // A known painful area is a hard exclusion, not a penalty. Anything loading
+    // it is disqualified however well it scores otherwise.
+    if (painArea && (ex.jointStress || []).includes(painArea)) return false;
+    return true;
+  });
+  if (candidates.length === 0) return null;
+
+  const scoreOne = (ex: LibraryExercise): number => {
+    let score = 0;
+    if (ex.movementPattern === withdrawn.movementPattern) score += SUBSTITUTION_SCORING.samePattern;
+    score += shared<MuscleGroup>(ex.primaryMuscles, withdrawn.primaryMuscles) * SUBSTITUTION_SCORING.perSharedMuscle;
+    if (ex.minExperience === 'Beginner') score += SUBSTITUTION_SCORING.beginnerAppropriate;
+    // Without a reported area, the withdrawn exercise's own stress profile is
+    // the best available guess at what hurt — so overlap with it is penalised
+    // rather than excluded, since one of those joints is the likely culprit.
+    if (!painArea) {
+      score += shared<JointStressArea>(ex.jointStress, withdrawn.jointStress) * SUBSTITUTION_SCORING.perSharedStressArea;
+    }
+    return score;
+  };
+
+  // Ties break by id so the same inputs always produce the same substitute,
+  // matching how slot selection behaves in the generator.
+  return candidates
+    .map(ex => ({ ex, score: scoreOne(ex) }))
+    .sort((a, b) => (b.score - a.score) || a.ex.id.localeCompare(b.ex.id))[0].ex;
 };
 
 // FP-1 / H-1: every rule in the beginner spec is evidenced for 8–12 weeks. Past

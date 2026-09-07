@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { evaluateExercise, needsProgramReview, AdaptationInput } from './planAdaptation';
-import { ExerciseLog } from '../types';
+import { evaluateExercise, needsProgramReview, selectSubstitute, AdaptationInput } from './planAdaptation';
+import { ExerciseLog, LibraryExercise } from '../types';
 
 // --- fixtures ---------------------------------------------------------------
 
@@ -169,6 +169,101 @@ describe('evaluateExercise — no history', () => {
     const d = evaluateExercise(input([]));
     expect(d.action).toBe('maintain');
     expect(d.rule).toBe('LOAD-1');
+  });
+});
+
+describe('selectSubstitute', () => {
+  const ex = (over: Partial<LibraryExercise> & { id: string }): LibraryExercise => ({
+    name: over.id,
+    targetMuscle: 'Chest',
+    equipmentRequired: '',
+    category: 'Compound (Strength)',
+    instructions: '',
+    movementPattern: 'horizontal_push',
+    exerciseCategory: 'compound',
+    generationEnabled: true,
+    requiredEquipmentIds: [],
+    ...over,
+  });
+
+  const barbellBench = ex({
+    id: 'bench',
+    movementPattern: 'horizontal_push',
+    primaryMuscles: ['Chest'],
+    jointStress: ['Shoulders', 'Elbows'],
+  });
+
+  it('excludes anything loading the painful area, however well it otherwise fits', () => {
+    // A perfect pattern and muscle match — but it loads the shoulder.
+    const alsoShoulders = ex({ id: 'dip', primaryMuscles: ['Chest'], jointStress: ['Shoulders'] });
+    const shoulderSafe = ex({ id: 'machine-press', primaryMuscles: ['Chest'], jointStress: ['Elbows'] });
+    const pick = selectSubstitute({
+      withdrawn: barbellBench,
+      pool: [alsoShoulders, shoulderSafe],
+      painArea: 'Shoulders',
+    });
+    expect(pick?.id).toBe('machine-press');
+  });
+
+  it('returns null when every candidate loads the painful area', () => {
+    const pick = selectSubstitute({
+      withdrawn: barbellBench,
+      pool: [ex({ id: 'a', jointStress: ['Shoulders'] }), ex({ id: 'b', jointStress: ['Shoulders'] })],
+      painArea: 'Shoulders',
+    });
+    expect(pick).toBeNull();
+  });
+
+  it('prefers the same movement pattern so the session keeps its shape', () => {
+    const samePattern = ex({ id: 'push', movementPattern: 'horizontal_push', jointStress: [] });
+    const otherPattern = ex({ id: 'pull', movementPattern: 'horizontal_pull', jointStress: [] });
+    const pick = selectSubstitute({
+      withdrawn: barbellBench,
+      pool: [otherPattern, samePattern],
+      painArea: 'Shoulders',
+    });
+    expect(pick?.id).toBe('push');
+  });
+
+  it('prefers an exercise training the same muscles', () => {
+    const sameMuscle = ex({ id: 'same', movementPattern: 'squat', primaryMuscles: ['Chest'], jointStress: [] });
+    const otherMuscle = ex({ id: 'other', movementPattern: 'squat', primaryMuscles: ['Calves'], jointStress: [] });
+    const pick = selectSubstitute({
+      withdrawn: barbellBench,
+      pool: [otherMuscle, sameMuscle],
+      painArea: 'Shoulders',
+    });
+    expect(pick?.id).toBe('same');
+  });
+
+  // Without a reported area the withdrawn exercise's own stress profile is the
+  // best guess at the culprit, so overlap with it is penalised.
+  it('avoids the same joints when the painful area is unknown', () => {
+    const sameJoints = ex({ id: 'same-joints', primaryMuscles: ['Chest'], jointStress: ['Shoulders', 'Elbows'] });
+    const differentJoints = ex({ id: 'diff-joints', primaryMuscles: ['Chest'], jointStress: ['Wrists'] });
+    const pick = selectSubstitute({
+      withdrawn: barbellBench,
+      pool: [sameJoints, differentJoints],
+    });
+    expect(pick?.id).toBe('diff-joints');
+  });
+
+  it('never returns the withdrawn exercise or one already in the day', () => {
+    const other = ex({ id: 'other', jointStress: [] });
+    const pick = selectSubstitute({
+      withdrawn: barbellBench,
+      pool: [barbellBench, other],
+      alreadyUsedIds: new Set(['other']),
+    });
+    expect(pick).toBeNull();
+  });
+
+  it('is deterministic when candidates tie', () => {
+    const a = ex({ id: 'aaa', jointStress: [] });
+    const b = ex({ id: 'bbb', jointStress: [] });
+    const first = selectSubstitute({ withdrawn: barbellBench, pool: [b, a] });
+    const second = selectSubstitute({ withdrawn: barbellBench, pool: [a, b] });
+    expect(first?.id).toBe(second?.id);
   });
 });
 

@@ -297,3 +297,9 @@ CREATE INDEX IF NOT EXISTS idx_exercise_withdrawals_lookup
 -- When the current plan began, for the week-12 checkpoint. Nullable: plans
 -- created before this column fall back to their last update.
 ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
+
+-- Where it hurt, so a substitute can exclude everything loading that area
+-- rather than guessing from the withdrawn exercise's own joint profile.
+-- Nullable: logs recorded before this existed simply fall back to the guess.
+ALTER TABLE exercise_logs ADD COLUMN IF NOT EXISTS pain_area VARCHAR(40);
+ALTER TABLE exercise_withdrawals ADD COLUMN IF NOT EXISTS pain_area VARCHAR(40);

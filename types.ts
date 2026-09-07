@@ -460,6 +460,10 @@ export interface ExerciseLog {
   sets: LoggedSet[];
   effort?: EffortRating | null;
   pain?: boolean;
+  // Where it hurt. Without this a substitute can only avoid the joints the
+  // withdrawn exercise happened to load, which is a guess; with it, anything
+  // loading the painful area is excluded outright.
+  painArea?: JointStressArea | null;
   painNote?: string;
   loggedAt?: string;
 }

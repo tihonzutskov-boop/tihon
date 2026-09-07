@@ -20,7 +20,7 @@ import { mediaUrl, sendDataUri, serveMediaColumn, serveVideo, blobWrite } from '
 import { generatePlan, validatePlan, buildDefaultBlueprint } from './generated/utils/planGeneration.js';
 // The same priority chain the frontend and tests run: pain, then failure, then
 // stall, then progression.
-import { evaluateExercise, needsProgramReview } from './generated/utils/planAdaptation.js';
+import { evaluateExercise, needsProgramReview, selectSubstitute } from './generated/utils/planAdaptation.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -299,8 +299,8 @@ app.post('/api/exercise-logs', requireAuth, async (req, res) => {
     for (const e of entries) {
       const result = await client.query(
         `INSERT INTO exercise_logs
-           (user_id, exercise_id, plan_day_id, weight, weight_unit, sets, effort, pain, pain_note)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           (user_id, exercise_id, plan_day_id, weight, weight_unit, sets, effort, pain, pain_area, pain_note)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING id, logged_at`,
         [
           req.user.id,
@@ -311,6 +311,7 @@ app.post('/api/exercise-logs', requireAuth, async (req, res) => {
           JSON.stringify(e.sets || []),
           e.effort ?? null,
           e.pain === true,
+          e.painArea || null,
           e.painNote || null,
         ]
       );
@@ -329,12 +330,13 @@ app.post('/api/exercise-logs', requireAuth, async (req, res) => {
         // problem, so it is never automatically retried again.
         const isRepeat = priorRes.rows[0].n >= 1;
         await client.query(
-          `INSERT INTO exercise_withdrawals (user_id, exercise_id, reason, retry_after)
-           VALUES ($1, $2, $3, $4)`,
+          `INSERT INTO exercise_withdrawals (user_id, exercise_id, reason, pain_area, retry_after)
+           VALUES ($1, $2, $3, $4, $5)`,
           [
             req.user.id,
             e.exerciseId,
             isRepeat ? 'referred' : 'pain',
+            e.painArea || null,
             isRepeat ? null : new Date(Date.now() + PAIN_FREE_DAYS_BEFORE_RETRY * 24 * 60 * 60 * 1000),
           ]
         );
@@ -445,18 +447,46 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
     }
 
     const wRes = await client.query(
-      `SELECT exercise_id, reason, retry_after FROM exercise_withdrawals
+      `SELECT exercise_id, reason, pain_area, retry_after FROM exercise_withdrawals
         WHERE user_id = $1 AND resolved_at IS NULL`,
       [req.user.id]
     );
     const withdrawals = new Map(wRes.rows.map(r => [r.exercise_id, r]));
+
+    // The substitution pool. Loaded only when something is actually withdrawn,
+    // since most sessions need none of it.
+    let libraryById = new Map();
+    if (withdrawals.size > 0) {
+      const libRes = await client.query(
+        `SELECT id, name, target_muscle, movement_pattern, exercise_category,
+                min_experience, joint_stress, primary_muscles, generation_enabled
+           FROM exercises`
+      );
+      libraryById = new Map(libRes.rows.map(r => [r.id, {
+        id: r.id,
+        name: r.name,
+        targetMuscle: r.target_muscle,
+        movementPattern: r.movement_pattern,
+        exerciseCategory: r.exercise_category,
+        minExperience: r.min_experience,
+        jointStress: r.joint_stress || [],
+        primaryMuscles: r.primary_muscles || [],
+        generationEnabled: r.generation_enabled !== false,
+      }]));
+    }
 
     const startedAt = planRow.started_at || planRow.updated_at;
     const weeksTrained = startedAt
       ? Math.floor((Date.now() - new Date(startedAt).getTime()) / (7 * 24 * 60 * 60 * 1000))
       : 0;
 
-    const adaptedDays = days.map(day => ({
+    const adaptedDays = days.map(day => {
+      // A substitute must not duplicate something already in the same day.
+      const usedInDay = new Set(
+        (day.exercises || []).map(e => e.libraryExerciseId).filter(Boolean)
+      );
+
+      return {
       ...day,
       exercises: (day.exercises || []).map(ex => {
         const id = ex.libraryExerciseId;
@@ -467,17 +497,47 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
         const withdrawal = withdrawals.get(id);
         if (withdrawal) {
           const retryDue = withdrawal.retry_after && new Date(withdrawal.retry_after) <= new Date();
+
+          // PAIN-5: replaced, not deleted — the client still trains the muscles
+          // this slot existed to cover. Anything loading the painful area is
+          // excluded outright rather than merely scored down.
+          const original = libraryById.get(id);
+          const substitute = original
+            ? selectSubstitute({
+                withdrawn: original,
+                pool: [...libraryById.values()],
+                painArea: withdrawal.pain_area || null,
+                alreadyUsedIds: usedInDay,
+              })
+            : null;
+
+          const replaceWith = (reasonText, rule) => {
+            if (!substitute) {
+              // No safe option exists — leaving the slot empty is the honest
+              // outcome, rather than substituting something that also hurts.
+              return { ...ex, withdrawn: true, adaptation: { action: 'withdraw', rule, reason: reasonText } };
+            }
+            usedInDay.add(substitute.id);
+            return {
+              ...ex,
+              libraryExerciseId: substitute.id,
+              name: substitute.name,
+              substitutedFor: { id, name: ex.name },
+              adaptation: { action: 'substitute', rule, reason: reasonText },
+            };
+          };
+
           if (withdrawal.reason === 'referred') {
-            return { ...ex, withdrawn: true, adaptation: {
-              action: 'refer', rule: 'PAIN-7',
-              reason: 'This movement has hurt more than once. It stays out, and it is worth having looked at.',
-            } };
+            return replaceWith(
+              'This movement has hurt more than once, so it stays out and something else takes its place. Worth having the original looked at.',
+              'PAIN-7'
+            );
           }
           if (!retryDue) {
-            return { ...ex, withdrawn: true, adaptation: {
-              action: 'withdraw', rule: 'PAIN-5',
-              reason: 'This movement hurt, so it is out of the plan while it settles.',
-            } };
+            return replaceWith(
+              'This movement hurt, so it is swapped for one that trains the same muscles while it settles.',
+              'PAIN-5'
+            );
           }
           // PAIN-6: the pain-free window has passed, so it comes back once at
           // half load in a shortened range.
@@ -508,7 +568,8 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
 
         return { ...ex, sets, adaptation };
       }),
-    }));
+      };
+    });
 
     return res.json({
       plan: { id: planRow.id, name: planRow.name, days: adaptedDays },

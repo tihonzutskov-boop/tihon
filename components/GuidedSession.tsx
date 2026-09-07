@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { X, ArrowLeft, Check, Plus, Minus, Dumbbell, PlayCircle } from 'lucide-react';
-import { WorkoutDay, Gym, EquipmentItem, LibraryExercise, Exercise, EffortRating, ExerciseLog, EFFORT_SCALE } from '../types';
+import { WorkoutDay, Gym, EquipmentItem, LibraryExercise, Exercise, EffortRating, ExerciseLog, EFFORT_SCALE, JointStressArea, ALL_JOINT_STRESS_AREAS } from '../types';
 import { api } from '../services/api';
 import GymMap from './GymMap';
 import { getExerciseLocations } from '../utils/exerciseMatcher';
@@ -80,6 +80,10 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   // to decide whether the load moves next session.
   const [effortState, setEffortState] = useState<Record<number, EffortRating>>({});
   const [painState, setPainState] = useState<Record<number, boolean>>({});
+  // Where it hurt. Without this the engine can only avoid the joints this
+  // exercise happened to load; with it, every replacement loading that area is
+  // ruled out.
+  const [painAreaState, setPainAreaState] = useState<Record<number, JointStressArea>>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -178,7 +182,15 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   const completeAll = () => setRows(rows.map(r => ({ ...r, done: true })));
   const setEffort = (value: EffortRating) =>
     setEffortState(prev => ({ ...prev, [exIdx]: prev[exIdx] === value ? undefined as any : value }));
-  const togglePain = () => setPainState(prev => ({ ...prev, [exIdx]: !prev[exIdx] }));
+  const togglePain = () => setPainState(prev => {
+    const next = !prev[exIdx];
+    // Clearing the flag clears the area with it, so a mis-tap can't leave a
+    // stale location attached to a session with no pain reported.
+    if (!next) setPainAreaState(areas => { const copy = { ...areas }; delete copy[exIdx]; return copy; });
+    return { ...prev, [exIdx]: next };
+  });
+  const setPainArea = (area: JointStressArea) =>
+    setPainAreaState(prev => (prev[exIdx] === area ? (() => { const c = { ...prev }; delete c[exIdx]; return c; })() : { ...prev, [exIdx]: area }));
 
   // Only completed sets on library-linked exercises are logged. A set the
   // client never ticked did not happen, and logging it would hand the
@@ -211,6 +223,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
         })),
         effort: effortState[i] ?? null,
         pain: painState[i] === true,
+        painArea: painState[i] === true ? painAreaState[i] ?? null : null,
       });
     });
     return logs;
@@ -691,6 +704,38 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                   >
                     {painState[exIdx] ? 'Something hurt — we\'ll swap this out' : 'Something hurt?'}
                   </button>
+
+                  {/* Asked only once pain is flagged, so the common case stays a
+                      single tap. The answer decides what the replacement can
+                      be: anything loading this area is ruled out entirely. */}
+                  {painState[exIdx] && (
+                    <div className="mt-2.5 p-3 rounded-lg bg-slate-900/70 border border-slate-800">
+                      <p className="text-[11px] font-extrabold text-slate-300 uppercase tracking-wide">Where?</p>
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {ALL_JOINT_STRESS_AREAS.map(area => {
+                          const selected = painAreaState[exIdx] === area;
+                          return (
+                            <button
+                              key={area}
+                              onClick={() => setPainArea(area)}
+                              aria-pressed={selected}
+                              className={`px-2.5 py-1.5 rounded-md border text-[11px] font-bold transition-colors ${
+                                selected
+                                  ? 'bg-amber-500 border-amber-500 text-slate-950'
+                                  : 'bg-slate-800/70 border-slate-700 text-slate-300 hover:bg-slate-800'
+                              }`}
+                            >
+                              {area}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="text-[10.5px] text-slate-500 mt-2.5 leading-snug">
+                        If it was sharp, or it hurt during the set rather than afterwards, stop this
+                        exercise for today.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
