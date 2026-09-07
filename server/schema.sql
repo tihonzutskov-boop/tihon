@@ -271,3 +271,29 @@ CREATE TABLE IF NOT EXISTS exercise_logs (
 -- one user, newest first. Progression needs the last two, stall detection more.
 CREATE INDEX IF NOT EXISTS idx_exercise_logs_lookup
   ON exercise_logs (user_id, exercise_id, logged_at DESC);
+
+-- Withdrawn movements. A withdrawal is the one adaptation that cannot be
+-- derived from the log: once a movement is pulled, the client stops logging it,
+-- so the pain that justified the withdrawal stops appearing and the rule would
+-- erase itself. It is a decision with a lifespan, so it is stored.
+-- Load, reps and sets stay derived; only this is persisted.
+CREATE TABLE IF NOT EXISTS exercise_withdrawals (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  exercise_id VARCHAR(100) NOT NULL,
+  -- 'pain' retries once after the pain-free window; 'referred' never does.
+  reason VARCHAR(20) NOT NULL DEFAULT 'pain',
+  withdrawn_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- PAIN-6: the earliest the movement may be offered again.
+  retry_after TIMESTAMPTZ,
+  -- Set when the movement returns to the plan; history is kept rather than
+  -- deleted because PAIN-7 counts how many times this has happened.
+  resolved_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_exercise_withdrawals_lookup
+  ON exercise_withdrawals (user_id, exercise_id, withdrawn_at DESC);
+
+-- When the current plan began, for the week-12 checkpoint. Nullable: plans
+-- created before this column fall back to their last update.
+ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;

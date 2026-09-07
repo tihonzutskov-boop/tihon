@@ -18,6 +18,9 @@ import { mediaUrl, sendDataUri, serveMediaColumn, serveVideo, blobWrite } from '
 // engine the frontend and the test suite use, so there is exactly one
 // implementation of the eligibility and safety rules.
 import { generatePlan, validatePlan, buildDefaultBlueprint } from './generated/utils/planGeneration.js';
+// The same priority chain the frontend and tests run: pain, then failure, then
+// stall, then progression.
+import { evaluateExercise, needsProgramReview } from './generated/utils/planAdaptation.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -257,6 +260,15 @@ app.get('/api/workouts/me', requireAuth, async (req, res) => {
   }
 });
 
+// PAIN-6: a withdrawn movement is offered again after this many pain-free days,
+// once, at reduced load. A second withdrawal never retries.
+const PAIN_FREE_DAYS_BEFORE_RETRY = 7;
+
+// The load change the evaluator asks for lands on real equipment, so it is
+// rounded to something a gym can actually make. 0.5kg is the finest increment
+// worth expressing; the client rounds further to whatever plates exist.
+const roundLoad = (kg) => Math.round(kg * 2) / 2;
+
 // --- Training Log Routes ---
 //
 // What the client did, as opposed to what the plan asked for. This is the only
@@ -303,6 +315,30 @@ app.post('/api/exercise-logs', requireAuth, async (req, res) => {
         ]
       );
       saved.push({ id: result.rows[0].id, loggedAt: result.rows[0].logged_at });
+
+      // A withdrawal is recorded here, at write time, rather than derived when
+      // the next session is read. Once a movement is pulled the client stops
+      // logging it, so the pain that justified it stops appearing — a derived
+      // withdrawal would erase itself. PAIN-5/6/7.
+      if (e.pain === true) {
+        const priorRes = await client.query(
+          'SELECT COUNT(*)::int AS n FROM exercise_withdrawals WHERE user_id = $1 AND exercise_id = $2',
+          [req.user.id, e.exerciseId]
+        );
+        // Second time this movement has hurt: it stops being a programming
+        // problem, so it is never automatically retried again.
+        const isRepeat = priorRes.rows[0].n >= 1;
+        await client.query(
+          `INSERT INTO exercise_withdrawals (user_id, exercise_id, reason, retry_after)
+           VALUES ($1, $2, $3, $4)`,
+          [
+            req.user.id,
+            e.exerciseId,
+            isRepeat ? 'referred' : 'pain',
+            isRepeat ? null : new Date(Date.now() + PAIN_FREE_DAYS_BEFORE_RETRY * 24 * 60 * 60 * 1000),
+          ]
+        );
+      }
     }
     await client.query('COMMIT');
     return res.json({ success: true, saved });
@@ -368,6 +404,124 @@ app.get('/api/plans/me', requireAuth, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error fetching plan' });
+  }
+});
+
+// The plan as it stands today: the stored plan plus whatever the training log
+// justifies changing. The stored plan is never rewritten — it is the authored
+// intent, and this derives from it on every read. That way correcting a
+// mis-logged set immediately corrects the plan, and no adaptation is ever
+// unrecoverable, because nothing it replaced was destroyed.
+app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
+  let client;
+  try {
+    client = await pool.connect();
+
+    const planRes = await client.query('SELECT * FROM user_plans WHERE user_id = $1', [req.user.id]);
+    if (planRes.rows.length === 0) return res.json({ plan: null });
+    const planRow = planRes.rows[0];
+    const days = Array.isArray(planRow.days) ? planRow.days : [];
+
+    // Recent history for every exercise at once, rather than a query per
+    // exercise — a plan has tens of exercises and this runs on every open.
+    const logsRes = await client.query(
+      `SELECT exercise_id, weight, sets, effort, pain, logged_at
+         FROM exercise_logs WHERE user_id = $1
+        ORDER BY logged_at DESC LIMIT 400`,
+      [req.user.id]
+    );
+    const logsByExercise = new Map();
+    for (const row of logsRes.rows) {
+      const list = logsByExercise.get(row.exercise_id) || [];
+      list.push({
+        exerciseId: row.exercise_id,
+        weight: row.weight === null ? null : Number(row.weight),
+        sets: row.sets || [],
+        effort: row.effort,
+        pain: row.pain,
+        loggedAt: row.logged_at,
+      });
+      logsByExercise.set(row.exercise_id, list);
+    }
+
+    const wRes = await client.query(
+      `SELECT exercise_id, reason, retry_after FROM exercise_withdrawals
+        WHERE user_id = $1 AND resolved_at IS NULL`,
+      [req.user.id]
+    );
+    const withdrawals = new Map(wRes.rows.map(r => [r.exercise_id, r]));
+
+    const startedAt = planRow.started_at || planRow.updated_at;
+    const weeksTrained = startedAt
+      ? Math.floor((Date.now() - new Date(startedAt).getTime()) / (7 * 24 * 60 * 60 * 1000))
+      : 0;
+
+    const adaptedDays = days.map(day => ({
+      ...day,
+      exercises: (day.exercises || []).map(ex => {
+        const id = ex.libraryExerciseId;
+        if (!id) return ex;
+
+        // A withdrawal outranks the evaluator: it persists after the client has
+        // stopped logging the movement, which is the whole reason it is stored.
+        const withdrawal = withdrawals.get(id);
+        if (withdrawal) {
+          const retryDue = withdrawal.retry_after && new Date(withdrawal.retry_after) <= new Date();
+          if (withdrawal.reason === 'referred') {
+            return { ...ex, withdrawn: true, adaptation: {
+              action: 'refer', rule: 'PAIN-7',
+              reason: 'This movement has hurt more than once. It stays out, and it is worth having looked at.',
+            } };
+          }
+          if (!retryDue) {
+            return { ...ex, withdrawn: true, adaptation: {
+              action: 'withdraw', rule: 'PAIN-5',
+              reason: 'This movement hurt, so it is out of the plan while it settles.',
+            } };
+          }
+          // PAIN-6: the pain-free window has passed, so it comes back once at
+          // half load in a shortened range.
+          const lastWeight = (logsByExercise.get(id) || []).find(l => l.weight != null)?.weight ?? null;
+          return { ...ex, adaptation: {
+            action: 'retry', rule: 'PAIN-6',
+            reason: 'Back in, at half the weight you were using. Stop if it hurts again.',
+            ...(lastWeight != null ? { suggestedWeight: roundLoad(lastWeight * 0.5) } : {}),
+          } };
+        }
+
+        const logs = logsByExercise.get(id) || [];
+        const targetReps = parseInt(ex.setDetails?.[0]?.reps || ex.reps || '0', 10) || 0;
+        const decision = evaluateExercise({
+          logs,
+          targetReps,
+          isCompound: ex.exerciseCategory !== 'isolation',
+        });
+
+        const lastWeight = logs.find(l => l.weight != null)?.weight ?? null;
+        const adaptation = { action: decision.action, rule: decision.rule, reason: decision.reason };
+        if (decision.loadMultiplier != null && lastWeight != null) {
+          adaptation.suggestedWeight = roundLoad(lastWeight * decision.loadMultiplier);
+        }
+        const sets = decision.setsDelta
+          ? Math.max(1, (ex.sets || 1) + decision.setsDelta)
+          : ex.sets;
+
+        return { ...ex, sets, adaptation };
+      }),
+    }));
+
+    return res.json({
+      plan: { id: planRow.id, name: planRow.name, days: adaptedDays },
+      weeksTrained,
+      // H-1: every rule in the beginner spec is evidenced to 12 weeks. Past
+      // that the engine stops rather than extrapolating.
+      needsReview: needsProgramReview(weeksTrained),
+    });
+  } catch (err) {
+    console.error('Failed to build adapted plan:', err.message);
+    return res.status(500).json({ error: 'Database error building plan' });
+  } finally {
+    client?.release();
   }
 });
 

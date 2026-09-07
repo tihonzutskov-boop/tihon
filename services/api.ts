@@ -243,6 +243,25 @@ export const api = {
     }
   },
 
+  // The plan as it stands today — the stored plan plus whatever the training
+  // log justifies changing. Use this wherever a client is about to train;
+  // fetchMyPlan returns the unadapted plan, which is the authored intent rather
+  // than what today's session should actually be.
+  async fetchMyAdaptedPlan(): Promise<{
+    plan: { id: number; name: string; days: WorkoutDay[] } | null;
+    weeksTrained: number;
+    needsReview: boolean;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE}/plans/me/adapted`);
+      if (!response.ok) throw new Error(`Status: ${response.status}`);
+      const body = await response.json();
+      return { plan: body.plan ?? null, weeksTrained: body.weeksTrained ?? 0, needsReview: body.needsReview ?? false };
+    } catch {
+      return { plan: null, weeksTrained: 0, needsReview: false };
+    }
+  },
+
   // --- TRAINING LOG ---
   //
   // What was actually lifted, as opposed to what was prescribed. The adaptive
