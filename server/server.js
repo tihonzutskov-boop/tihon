@@ -20,7 +20,7 @@ import { mediaUrl, sendDataUri, serveMediaColumn, serveVideo, blobWrite } from '
 import { generatePlan, validatePlan, buildDefaultBlueprint } from './generated/utils/planGeneration.js';
 // The same priority chain the frontend and tests run: pain, then failure, then
 // stall, then progression.
-import { evaluateExercise, needsProgramReview, selectSubstitute } from './generated/utils/planAdaptation.js';
+import { evaluateExercise, needsProgramReview, selectSubstitute, applyWeeklyVolumeCeiling } from './generated/utils/planAdaptation.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -453,44 +453,52 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
     );
     const withdrawals = new Map(wRes.rows.map(r => [r.exercise_id, r]));
 
-    // The substitution pool. Loaded only when something is actually withdrawn,
-    // since most sessions need none of it.
-    let libraryById = new Map();
-    if (withdrawals.size > 0) {
-      const libRes = await client.query(
-        `SELECT id, name, target_muscle, movement_pattern, exercise_category,
-                min_experience, joint_stress, primary_muscles, generation_enabled
-           FROM exercises`
-      );
-      libraryById = new Map(libRes.rows.map(r => [r.id, {
-        id: r.id,
-        name: r.name,
-        targetMuscle: r.target_muscle,
-        movementPattern: r.movement_pattern,
-        exerciseCategory: r.exercise_category,
-        minExperience: r.min_experience,
-        jointStress: r.joint_stress || [],
-        primaryMuscles: r.primary_muscles || [],
-        generationEnabled: r.generation_enabled !== false,
-      }]));
-    }
+    // Needed unconditionally now, not just for substitution: the weekly
+    // volume ceiling below has to know which muscles every exercise in the
+    // plan trains, whether or not anything is withdrawn.
+    const libRes = await client.query(
+      `SELECT id, name, target_muscle, movement_pattern, exercise_category,
+              min_experience, joint_stress, primary_muscles, generation_enabled
+         FROM exercises`
+    );
+    const libraryById = new Map(libRes.rows.map(r => [r.id, {
+      id: r.id,
+      name: r.name,
+      targetMuscle: r.target_muscle,
+      movementPattern: r.movement_pattern,
+      exerciseCategory: r.exercise_category,
+      minExperience: r.min_experience,
+      jointStress: r.joint_stress || [],
+      primaryMuscles: r.primary_muscles || [],
+      generationEnabled: r.generation_enabled !== false,
+    }]));
 
     const startedAt = planRow.started_at || planRow.updated_at;
     const weeksTrained = startedAt
       ? Math.floor((Date.now() - new Date(startedAt).getTime()) / (7 * 24 * 60 * 60 * 1000))
       : 0;
 
-    const adaptedDays = days.map(day => {
+    // Pass 1: resolve what each exercise in the week WOULD become, in
+    // isolation — pain triage, substitution, or the evaluator's priority
+    // chain. Nothing here is final yet: a proposed add-set can still be held
+    // by the weekly volume check below, which needs to see every exercise in
+    // the week at once to catch two different exercises both stalling on the
+    // same muscle in the same week.
+    const resolved = [];
+    days.forEach((day, dayIdx) => {
       // A substitute must not duplicate something already in the same day.
       const usedInDay = new Set(
         (day.exercises || []).map(e => e.libraryExerciseId).filter(Boolean)
       );
 
-      return {
-      ...day,
-      exercises: (day.exercises || []).map(ex => {
+      (day.exercises || []).forEach((ex, exIdx) => {
+        const key = `${dayIdx}-${exIdx}`;
         const id = ex.libraryExerciseId;
-        if (!id) return ex;
+        if (!id) {
+          resolved.push({ dayIdx, key, muscles: [], baseSets: 0,
+            decision: { action: 'maintain', rule: '', reason: '' }, build: () => ex });
+          return;
+        }
 
         // A withdrawal outranks the evaluator: it persists after the client has
         // stopped logging the movement, which is the whole reason it is stored.
@@ -510,43 +518,49 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
                 alreadyUsedIds: usedInDay,
               })
             : null;
+          if (substitute) usedInDay.add(substitute.id);
 
-          const replaceWith = (reasonText, rule) => {
-            if (!substitute) {
-              // No safe option exists — leaving the slot empty is the honest
-              // outcome, rather than substituting something that also hurts.
-              return { ...ex, withdrawn: true, adaptation: { action: 'withdraw', rule, reason: reasonText } };
-            }
-            usedInDay.add(substitute.id);
-            return {
-              ...ex,
-              libraryExerciseId: substitute.id,
-              name: substitute.name,
-              substitutedFor: { id, name: ex.name },
-              adaptation: { action: 'substitute', rule, reason: reasonText },
-            };
-          };
+          // Neither path here ever carries a setsDelta, so the volume ceiling
+          // always passes these through untouched — a withdrawal can only
+          // hold or lower what gets trained, never raise it.
+          const buildReplace = (rule, reasonText) => (finalDecision) => substitute
+            ? { ...ex, libraryExerciseId: substitute.id, name: substitute.name,
+                substitutedFor: { id, name: ex.name }, adaptation: finalDecision }
+            : { ...ex, withdrawn: true, adaptation: finalDecision };
 
           if (withdrawal.reason === 'referred') {
-            return replaceWith(
-              'This movement has hurt more than once, so it stays out and something else takes its place. Worth having the original looked at.',
-              'PAIN-7'
-            );
+            const reasonText = 'This movement has hurt more than once, so it stays out and something else takes its place. Worth having the original looked at.';
+            resolved.push({ dayIdx, key,
+              muscles: substitute ? (substitute.primaryMuscles || []) : [],
+              baseSets: substitute ? (ex.sets || 0) : 0,
+              decision: { action: substitute ? 'substitute' : 'withdraw', rule: 'PAIN-7', reason: reasonText },
+              build: buildReplace('PAIN-7', reasonText),
+            });
+            return;
           }
           if (!retryDue) {
-            return replaceWith(
-              'This movement hurt, so it is swapped for one that trains the same muscles while it settles.',
-              'PAIN-5'
-            );
+            const reasonText = 'This movement hurt, so it is swapped for one that trains the same muscles while it settles.';
+            resolved.push({ dayIdx, key,
+              muscles: substitute ? (substitute.primaryMuscles || []) : [],
+              baseSets: substitute ? (ex.sets || 0) : 0,
+              decision: { action: substitute ? 'substitute' : 'withdraw', rule: 'PAIN-5', reason: reasonText },
+              build: buildReplace('PAIN-5', reasonText),
+            });
+            return;
           }
           // PAIN-6: the pain-free window has passed, so it comes back once at
           // half load in a shortened range.
           const lastWeight = (logsByExercise.get(id) || []).find(l => l.weight != null)?.weight ?? null;
-          return { ...ex, adaptation: {
-            action: 'retry', rule: 'PAIN-6',
-            reason: 'Back in, at half the weight you were using. Stop if it hurts again.',
-            ...(lastWeight != null ? { suggestedWeight: roundLoad(lastWeight * 0.5) } : {}),
-          } };
+          resolved.push({ dayIdx, key,
+            muscles: original ? (original.primaryMuscles || []) : [],
+            baseSets: ex.sets || 0,
+            decision: { action: 'retry', rule: 'PAIN-6', reason: 'Back in, at half the weight you were using. Stop if it hurts again.' },
+            build: (finalDecision) => ({
+              ...ex,
+              adaptation: lastWeight != null ? { ...finalDecision, suggestedWeight: roundLoad(lastWeight * 0.5) } : finalDecision,
+            }),
+          });
+          return;
         }
 
         const logs = logsByExercise.get(id) || [];
@@ -556,20 +570,50 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
           targetReps,
           isCompound: ex.exerciseCategory !== 'isolation',
         });
-
         const lastWeight = logs.find(l => l.weight != null)?.weight ?? null;
-        const adaptation = { action: decision.action, rule: decision.rule, reason: decision.reason };
-        if (decision.loadMultiplier != null && lastWeight != null) {
-          adaptation.suggestedWeight = roundLoad(lastWeight * decision.loadMultiplier);
-        }
-        const sets = decision.setsDelta
-          ? Math.max(1, (ex.sets || 1) + decision.setsDelta)
-          : ex.sets;
+        const libEntry = libraryById.get(id);
 
-        return { ...ex, sets, adaptation };
-      }),
-      };
+        resolved.push({ dayIdx, key,
+          muscles: libEntry ? (libEntry.primaryMuscles || []) : [],
+          baseSets: ex.sets || 0,
+          decision,
+          build: (finalDecision) => {
+            const adaptation = { action: finalDecision.action, rule: finalDecision.rule, reason: finalDecision.reason };
+            if (finalDecision.loadMultiplier != null && lastWeight != null) {
+              adaptation.suggestedWeight = roundLoad(lastWeight * finalDecision.loadMultiplier);
+            }
+            const sets = finalDecision.setsDelta
+              ? Math.max(1, (ex.sets || 1) + finalDecision.setsDelta)
+              : ex.sets;
+            return { ...ex, sets, adaptation };
+          },
+        });
+      });
     });
+
+    // FIX-1 / STALL-2: a set is only added when the muscle it trains has
+    // headroom under the 20-sets-per-muscle-per-week ceiling, checked once
+    // across the whole week — evaluateExercise reasons about one exercise at
+    // a time and has no way to see that a different exercise already spent
+    // that muscle's weekly budget.
+    const capped = applyWeeklyVolumeCeiling(resolved.map(r => ({
+      id: r.key, muscles: r.muscles, baseSets: r.baseSets, decision: r.decision,
+    })));
+    const finalDecisionByKey = new Map(capped.map(c => [c.id, c.decision]));
+
+    // Pass 2: render, using each exercise's final — possibly held-back —
+    // decision.
+    const exercisesByDay = new Map();
+    resolved.forEach(r => {
+      const finalDecision = finalDecisionByKey.get(r.key) || r.decision;
+      const list = exercisesByDay.get(r.dayIdx) || [];
+      list.push(r.build(finalDecision));
+      exercisesByDay.set(r.dayIdx, list);
+    });
+    const adaptedDays = days.map((day, dayIdx) => ({
+      ...day,
+      exercises: exercisesByDay.get(dayIdx) || [],
+    }));
 
     return res.json({
       plan: { id: planRow.id, name: planRow.name, days: adaptedDays },

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { evaluateExercise, needsProgramReview, selectSubstitute, AdaptationInput } from './planAdaptation';
+import { evaluateExercise, needsProgramReview, selectSubstitute, applyWeeklyVolumeCeiling, VolumeCandidate, AdaptationDecision, AdaptationInput } from './planAdaptation';
 import { ExerciseLog, LibraryExercise } from '../types';
 
 // --- fixtures ---------------------------------------------------------------
@@ -264,6 +264,79 @@ describe('selectSubstitute', () => {
     const first = selectSubstitute({ withdrawn: barbellBench, pool: [b, a] });
     const second = selectSubstitute({ withdrawn: barbellBench, pool: [a, b] });
     expect(first?.id).toBe(second?.id);
+  });
+});
+
+describe('applyWeeklyVolumeCeiling', () => {
+  const addSet = (rule = 'STALL-2'): AdaptationDecision => ({
+    action: 'add-set', rule, reason: 'stalled', setsDelta: 1,
+  });
+  const candidate = (over: Partial<VolumeCandidate> & { id: string }): VolumeCandidate => ({
+    muscles: ['Chest'],
+    baseSets: 0,
+    decision: addSet(),
+    ...over,
+  });
+
+  it('allows an add-set that lands exactly at the ceiling', () => {
+    const result = applyWeeklyVolumeCeiling([candidate({ id: 'a', baseSets: 19 })]);
+    expect(result[0].decision.action).toBe('add-set');
+  });
+
+  it('holds an add-set that would push the muscle past the ceiling', () => {
+    const result = applyWeeklyVolumeCeiling([candidate({ id: 'a', baseSets: 20 })]);
+    expect(result[0].decision.action).toBe('maintain');
+    expect(result[0].decision.rule).toBe('VOL-1');
+  });
+
+  // The case the rule exists for: two different exercises stall independently
+  // in the same week, and neither evaluateExercise call can see the other.
+  it('accounts for another exercise training the same muscle', () => {
+    const result = applyWeeklyVolumeCeiling([
+      candidate({ id: 'bench', muscles: ['Chest'], baseSets: 12 }),
+      candidate({ id: 'flye', muscles: ['Chest'], baseSets: 8 }),
+    ]);
+    // Combined base is already 20 — at the ceiling before either add-set.
+    expect(result.find(r => r.id === 'bench')!.decision.action).toBe('maintain');
+    expect(result.find(r => r.id === 'flye')!.decision.action).toBe('maintain');
+  });
+
+  // Deterministic tie-break: whichever exercise comes first in the week's
+  // natural order gets the remaining headroom.
+  it('gives the earlier exercise in the week priority for the last available set', () => {
+    const result = applyWeeklyVolumeCeiling([
+      candidate({ id: 'first', muscles: ['Chest'], baseSets: 10 }),
+      candidate({ id: 'second', muscles: ['Chest'], baseSets: 9 }),
+    ]);
+    expect(result.find(r => r.id === 'first')!.decision.action).toBe('add-set');
+    expect(result.find(r => r.id === 'second')!.decision.action).toBe('maintain');
+  });
+
+  it('holds only if any one of an exercise\'s trained muscles would breach', () => {
+    const result = applyWeeklyVolumeCeiling([
+      candidate({ id: 'a', muscles: ['Chest', 'Triceps'], baseSets: 20 }),
+    ]);
+    // Chest is at the ceiling even though Triceps has room — the whole
+    // add-set is held rather than adding a fraction of a set.
+    expect(result[0].decision.action).toBe('maintain');
+  });
+
+  it('never touches a decision with no positive setsDelta', () => {
+    const deload: AdaptationDecision = { action: 'deload', rule: 'STALL-3', reason: 'stalled', setsDelta: -1 };
+    const maintain: AdaptationDecision = { action: 'maintain', rule: 'LOAD-2', reason: 'same again' };
+    const result = applyWeeklyVolumeCeiling([
+      candidate({ id: 'a', baseSets: 20, decision: deload }),
+      candidate({ id: 'b', baseSets: 20, decision: maintain }),
+    ]);
+    expect(result.find(r => r.id === 'a')!.decision).toEqual(deload);
+    expect(result.find(r => r.id === 'b')!.decision).toEqual(maintain);
+  });
+
+  it('never reduces sets that are already prescribed, even at or over the ceiling', () => {
+    // Base volume alone is already over 20 (a generator concern, not this
+    // pass's job to fix) — the add-set is still just held, nothing is cut.
+    const result = applyWeeklyVolumeCeiling([candidate({ id: 'a', baseSets: 25 })]);
+    expect(result[0].decision.action).toBe('maintain');
   });
 });
 
