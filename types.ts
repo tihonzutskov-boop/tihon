@@ -163,6 +163,25 @@ export interface Exercise {
   setDetails?: SetDetail[]; // Optional per-set reps/weight/rest, authored in the session builder; sets/reps above stay in sync as a flat summary for consumers that don't read this
   isCardio?: boolean;   // true when this exercise is tracked by a single duration instead of sets/reps (e.g. treadmill, rowing)
   cardioMinutes?: number; // minutes to perform, used when isCardio is true
+  // Set by the adaptation engine when the plan is fetched for training. Absent
+  // on the stored plan, which is the authored intent — these describe what the
+  // training log changed about it, and carry the reason so a weight that moves
+  // is never an unexplained number.
+  adaptation?: ExerciseAdaptation;
+  withdrawn?: boolean;
+  substitutedFor?: { id: string; name: string };
+}
+
+export type AdaptationActionName =
+  | 'refer' | 'withdraw' | 'substitute' | 'retry'
+  | 'reduce-load' | 'add-set' | 'deload'
+  | 'raise-load' | 'raise-reps' | 'maintain';
+
+export interface ExerciseAdaptation {
+  action: AdaptationActionName;
+  rule: string;            // the spec rule that produced it
+  reason: string;          // plain language, written to be shown to the client
+  suggestedWeight?: number;
 }
 
 export type SessionBlockType = 'single' | 'superset' | 'circuit' | 'warmup' | 'cooldown';

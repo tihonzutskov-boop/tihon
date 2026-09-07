@@ -148,13 +148,19 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   const rows: SetRow[] = useMemo(() => {
     if (!exercise) return [];
     if (setState[exIdx]) return setState[exIdx];
+    // The engine's suggested weight pre-fills the field rather than replacing
+    // it: the client still confirms what they actually lifted, and that is what
+    // gets logged. A suggestion the plan made is not evidence it happened.
+    const suggested = exercise.adaptation?.suggestedWeight;
+    const seedWeight = (authored?: string) =>
+      authored && authored.trim() !== '' ? authored : suggested != null ? String(suggested) : '';
     if (exercise.setDetails && exercise.setDetails.length > 0) {
-      return exercise.setDetails.map(s => ({ reps: s.reps || '', duration: '', weight: s.weight || '', done: false }));
+      return exercise.setDetails.map(s => ({ reps: s.reps || '', duration: '', weight: seedWeight(s.weight), done: false }));
     }
     return Array.from({ length: Math.max(exercise.sets || 1, 1) }, () => ({
       reps: exercise.reps || '',
       duration: '',
-      weight: '',
+      weight: seedWeight(),
       done: false,
     }));
   }, [exercise, exIdx, setState]);
@@ -663,6 +669,30 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                     the rules key off how close to failure the set was, and a
                     number on its own would mean something different to
                     everyone answering it. */}
+                {/* Why this looks different from last time. A weight that moves
+                    with no explanation reads as a bug, and for a beginner the
+                    explanation is most of the coaching. */}
+                {exercise.adaptation && exercise.adaptation.action !== 'maintain' && (
+                  <div
+                    className={`mt-4 p-3 rounded-lg border ${
+                      exercise.adaptation.action === 'refer' || exercise.adaptation.action === 'withdraw'
+                        ? 'bg-amber-500/10 border-amber-500/40'
+                        : 'bg-lime-500/10 border-lime-500/30'
+                    }`}
+                  >
+                    <p
+                      className={`text-[10px] font-extrabold uppercase tracking-wide ${
+                        exercise.adaptation.action === 'refer' || exercise.adaptation.action === 'withdraw'
+                          ? 'text-amber-300'
+                          : 'text-lime-400'
+                      }`}
+                    >
+                      {exercise.substitutedFor ? `Swapped in for ${exercise.substitutedFor.name}` : 'Updated from last time'}
+                    </p>
+                    <p className="text-xs text-slate-300 leading-relaxed mt-1">{exercise.adaptation.reason}</p>
+                  </div>
+                )}
+
                 <div className="mt-5 pt-4 border-t border-slate-800">
                   <p className="text-xs font-extrabold text-slate-300 uppercase tracking-wide">How hard was that?</p>
                   <div className="grid grid-cols-5 gap-1.5 mt-2.5">

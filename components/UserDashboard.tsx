@@ -18,6 +18,9 @@ interface UserDashboardProps {
   questionnaire: QuestionnaireAnswers | null;
   onSubmitQuestionnaire: (answers: QuestionnaireAnswers) => void;
   onOpenTutorials: () => void;
+  // H-1: the beginner rules are evidenced to 12 weeks. Past that the engine
+  // stops adapting rather than extrapolating, and says so.
+  planNeedsReview?: boolean;
   lang: Language;
 }
 
@@ -44,7 +47,7 @@ const startOfThisWeek = (): Date => {
   return monday;
 };
 
-const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, workoutPlan, onLogout, onEnterGym, onStartWorkout, questionnaire, onSubmitQuestionnaire, onOpenTutorials, lang }) => {
+const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, workoutPlan, onLogout, onEnterGym, onStartWorkout, questionnaire, onSubmitQuestionnaire, onOpenTutorials, planNeedsReview, lang }) => {
   const t = translations[lang];
 
   const [stats, setStats] = useState(user.stats || { workoutsCompleted: 0, totalMinutes: 0, streakDays: 0 });
@@ -83,6 +86,18 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, 
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 animate-in fade-in duration-500">
+
+      {planNeedsReview && (
+        <div className="bg-lime-500/10 border-b border-lime-500/30">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+            <p className="text-sm font-bold text-lime-300">You've finished 12 weeks — time to rebuild your plan</p>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Your plan has stopped adjusting itself. The guidance it follows is only established for
+              the first twelve weeks, so rather than guess past that, it's waiting for a fresh start.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-30">

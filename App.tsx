@@ -77,7 +77,19 @@ const App: React.FC = () => {
     setQuestionnaire(saved);
   };
 
+  // The adapted plan, not the stored one: the client is here to train, so what
+  // they should see is the plan plus whatever their training log justifies
+  // changing. The stored plan is the authored intent and stays untouched.
   const loadMyPlan = async () => {
+    const { plan, needsReview } = await api.fetchMyAdaptedPlan();
+    if (plan && plan.days.length > 0) {
+      setWorkoutPlan(prev => ({ ...prev, name: plan.name, days: plan.days }));
+      setPlanNeedsReview(needsReview);
+      return;
+    }
+    // Falls back to the stored plan if adaptation is unavailable — a client
+    // with no history yet is the common case, and an unreachable endpoint
+    // should not leave them with no plan at all.
     const saved = await api.fetchMyPlan();
     if (saved && saved.days.length > 0) {
       setWorkoutPlan(prev => ({ ...prev, name: saved.name, days: saved.days }));
@@ -99,6 +111,9 @@ const App: React.FC = () => {
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [viewingMachine, setViewingMachine] = useState<GymMachine | null>(null);
   const [guidedSessionOpen, setGuidedSessionOpen] = useState(false);
+  // H-1: past week 12 the beginner rules are no longer evidenced, so the engine
+  // stops adapting and asks for a decision rather than extrapolating.
+  const [planNeedsReview, setPlanNeedsReview] = useState(false);
   const [tutorialsOpen, setTutorialsOpen] = useState(false);
   
   const [activeDayIndex, setActiveDayIndex] = useState(0);
@@ -318,6 +333,7 @@ const App: React.FC = () => {
            gyms={gyms}
            activeGymId={activeGymId}
            workoutPlan={workoutPlan}
+           planNeedsReview={planNeedsReview}
            onLogout={handleLogout}
            onEnterGym={handleGymSelect}
            onStartWorkout={(dayIndex, gymId) => {
