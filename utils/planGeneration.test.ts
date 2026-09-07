@@ -299,6 +299,71 @@ describe('end to end generation', () => {
   });
 });
 
+describe('weekly variety across repeated slot templates', () => {
+  // Two horizontal-push options and two horizontal-pull options — enough to
+  // vary a 3-day full-body plan without any day going unfilled.
+  const library = [
+    exercise({ id: 'bench', name: 'Bench Press', movementPattern: 'horizontal_push' }),
+    exercise({ id: 'incline', name: 'Incline Press', movementPattern: 'horizontal_push' }),
+    exercise({ id: 'row', name: 'Barbell Row', movementPattern: 'horizontal_pull' }),
+    exercise({ id: 'cablerow', name: 'Cable Row', movementPattern: 'horizontal_pull' }),
+  ];
+  const fullBodySlots = [
+    slot({ id: 'push', movementPattern: 'horizontal_push', priority: 1 }),
+    slot({ id: 'pull', movementPattern: 'horizontal_pull', priority: 2 }),
+  ];
+  const threeDayBlueprint: PlanTemplate = {
+    id: 't1', name: 'Full Body', goal: 'General fitness', daysPerWeek: '3', durationMin: 60, days: [],
+    blueprintDays: [
+      { id: 'bd1', name: 'Full Body 1', slots: fullBodySlots },
+      { id: 'bd2', name: 'Full Body 2', slots: fullBodySlots },
+      { id: 'bd3', name: 'Full Body 3', slots: fullBodySlots },
+    ],
+  };
+
+  // This was the bug: identical slot templates plus deterministic scoring
+  // meant every full-body day picked the exact same exercise, so a 3-day
+  // beginner plan trained the identical session three times over.
+  it('varies the exercise across full-body days when the library offers alternatives', () => {
+    const result = generatePlan(threeDayBlueprint, library, gym([]), profile({ daysPerWeek: 3, sessionMinutes: 60 }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const pushChoices = result.days.map(d => d.exercises.find(e => e.name.includes('Press') || e.name.includes('Bench'))?.name);
+    const pullChoices = result.days.map(d => d.exercises.find(e => e.name.includes('Row'))?.name);
+    expect(new Set(pushChoices).size).toBeGreaterThan(1);
+    expect(new Set(pullChoices).size).toBeGreaterThan(1);
+  });
+
+  // The repeat is still the right call when there is truly nothing else —
+  // this is a preference, never a hard exclusion.
+  it('still repeats an exercise when the library has only one option for the pattern', () => {
+    const thin = [
+      exercise({ id: 'bench', name: 'Bench Press', movementPattern: 'horizontal_push' }),
+      exercise({ id: 'row', name: 'Barbell Row', movementPattern: 'horizontal_pull' }),
+    ];
+    const result = generatePlan(threeDayBlueprint, thin, gym([]), profile({ daysPerWeek: 3, sessionMinutes: 60 }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    result.days.forEach(d => {
+      expect(d.exercises.map(e => e.name).sort()).toEqual(['Barbell Row', 'Bench Press']);
+    });
+  });
+
+  // A pattern that only shows up once in the week (e.g. a hinge slot on just
+  // one full-body day) has no prior weekly use to avoid, so it is untouched
+  // by the new preference and behaves exactly as before.
+  it('does not affect a pattern that appears on only one day', () => {
+    const singleDayBlueprint: PlanTemplate = {
+      id: 't2', name: 'Full Body', goal: 'General fitness', daysPerWeek: '1', durationMin: 60, days: [],
+      blueprintDays: [{ id: 'bd1', name: 'Full Body 1', slots: fullBodySlots }],
+    };
+    const result = generatePlan(singleDayBlueprint, library, gym([]), profile({ daysPerWeek: 1, sessionMinutes: 60 }));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.days[0].exercises).toHaveLength(2);
+  });
+});
+
 // --- validation catches what selection might miss ----------------------------
 
 describe('graceful skip when a required slot cannot be filled', () => {

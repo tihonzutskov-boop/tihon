@@ -266,6 +266,15 @@ export const SCORING = {
   experienceFit: 15,
   perRepeatedMuscle: -6,   // nudges toward variety when two candidates would
                            // otherwise train the same thing twice in a day
+  // Full-body (and any split where the same pattern recurs, e.g. two Upper
+  // days) previously produced identical sessions on every training day: the
+  // slot template is the same and selection is deterministic, so with no
+  // signal to prefer otherwise the same exercise won every tie. Large enough
+  // to beat any same-pattern scoring gap (experienceFit + a muscle repeat, at
+  // most 21) so an untried alternative always wins when one exists — but a
+  // repeat is still picked over no exercise at all when the library has only
+  // one candidate for the pattern.
+  usedEarlierInWeek: -40,
 };
 
 const GOAL_PREFERS_COMPOUND = new Set(['Muscle gain', 'General fitness']);
@@ -275,6 +284,7 @@ export const scoreCandidate = (
   slot: ExerciseSlot,
   profile: GenerationProfile,
   musclesAlreadyTrained: Set<MuscleGroup> = new Set(),
+  usedEarlierInWeek: Set<string> = new Set(),
 ): number => {
   let score = 0;
   if (slot.exerciseCategory && ex.exerciseCategory === slot.exerciseCategory) score += SCORING.categoryMatch;
@@ -285,6 +295,11 @@ export const scoreCandidate = (
   // missing muscle tags shouldn't disadvantage an otherwise good pick.
   const repeats = (ex.primaryMuscles || []).filter(m => musclesAlreadyTrained.has(m)).length;
   score += repeats * SCORING.perRepeatedMuscle;
+  // A soft preference, not an exclusion: the same compound can legitimately
+  // recur across the week (a Monday and a Friday squat), so a repeat is never
+  // filtered out — it just loses the tie to anything the client hasn't done
+  // yet this week.
+  if (usedEarlierInWeek.has(ex.id)) score += SCORING.usedEarlierInWeek;
   return score;
 };
 
@@ -297,6 +312,7 @@ export const selectForSlot = (
   profile: GenerationProfile,
   alreadyUsedIds: Set<string>,
   musclesAlreadyTrained: Set<MuscleGroup> = new Set(),
+  usedEarlierInWeek: Set<string> = new Set(),
 ): LibraryExercise | null => {
   // Already-used exercises are removed, not merely penalized. Penalizing
   // still let one win when it was the only candidate, producing a day with
@@ -308,7 +324,7 @@ export const selectForSlot = (
   if (candidates.length === 0) return null;
 
   return candidates
-    .map(ex => ({ ex, score: scoreCandidate(ex, slot, profile, musclesAlreadyTrained) }))
+    .map(ex => ({ ex, score: scoreCandidate(ex, slot, profile, musclesAlreadyTrained, usedEarlierInWeek) }))
     .sort((a, b) => (b.score - a.score) || a.ex.id.localeCompare(b.ex.id))[0].ex;
 };
 
@@ -422,6 +438,14 @@ export const generatePlan = (
 
   const days: WorkoutDay[] = [];
   const decisions: SlotDecision[] = [];
+  // Full-body splits (and any split where a slot template repeats — e.g. two
+  // Upper days) reuse the exact same slots on more than one day. Selection is
+  // otherwise deterministic, so without this a client on a 3-day full-body
+  // plan got the identical session three times: same squat, same press, same
+  // row, every day. Tracked across the whole week and fed back in as a soft
+  // preference — never a hard exclusion, since a repeat is still the right
+  // pick when the library has nothing else for that pattern.
+  const usedEarlierInWeek = new Set<string>();
 
   for (let d = 0; d < blueprintDays.length; d++) {
     const bpDay: BlueprintDay = blueprintDays[d];
@@ -433,7 +457,7 @@ export const generatePlan = (
     const unfilledRequired: { slotId: string; movementPattern: MovementPattern }[] = [];
 
     for (const slot of [...bpDay.slots].sort((a, b) => a.priority - b.priority)) {
-      const le = selectForSlot(slot, pool, profile, usedInDay, musclesInDay);
+      const le = selectForSlot(slot, pool, profile, usedInDay, musclesInDay, usedEarlierInWeek);
       if (!le) {
         // A slot nothing can fill is skipped rather than failing the whole
         // plan. Killing the week over one gap meant a client with a knee
@@ -536,6 +560,11 @@ export const generatePlan = (
       cooldown,
       warmupSetsPerCompound: shape.warmupSetsPerCompound,
     });
+
+    // Seeded from what actually survived the day, not from `picked` before
+    // trimming — an exercise dropped for time was never really trained, so it
+    // shouldn't cost itself a later day's variety.
+    picked.forEach(p => usedEarlierInWeek.add(p.le.id));
   }
 
   return { ok: true, days, decisions };
