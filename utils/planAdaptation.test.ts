@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { evaluateExercise, needsProgramReview, selectSubstitute, applyWeeklyVolumeCeiling, VolumeCandidate, AdaptationDecision, AdaptationInput } from './planAdaptation';
-import { ExerciseLog, LibraryExercise } from '../types';
+import { evaluateExercise, needsProgramReview, selectSubstitute, applyWeeklyVolumeCeiling, applySubstitution, VolumeCandidate, AdaptationDecision, AdaptationInput } from './planAdaptation';
+import { ExerciseLog, LibraryExercise, Exercise } from '../types';
 
 // --- fixtures ---------------------------------------------------------------
 
@@ -283,6 +283,63 @@ describe('selectSubstitute', () => {
     const first = selectSubstitute({ withdrawn: barbellBench, pool: [b, a] });
     const second = selectSubstitute({ withdrawn: barbellBench, pool: [a, b] });
     expect(first?.id).toBe(second?.id);
+  });
+});
+
+describe('applySubstitution', () => {
+  const withdrawn: Exercise = {
+    id: 'x1', name: 'Barbell Bench Press', targetMuscle: 'Chest',
+    sets: 3, reps: '8-12',
+    // The withdrawn movement's own home in the gym, and its own video.
+    equipmentId: 'zone-free-weights', machineId: 'bench-3',
+    videoUrl: 'https://youtube.com/bench', libraryExerciseId: 'bench',
+    setDetails: [{ reps: '10', weight: '', restSec: 90 }],
+  };
+  const replacement: LibraryExercise = {
+    id: 'machine-press', name: 'Chest Press Machine', targetMuscle: 'Chest',
+    equipmentRequired: '', category: 'Compound (Strength)', instructions: '',
+    movementPattern: 'horizontal_push', exerciseCategory: 'compound',
+    generationEnabled: true, requiredEquipmentIds: [],
+    equipmentId: 'zone-machines', videoUrl: 'https://youtube.com/machine-press',
+  };
+
+  // The reported bug: the swap updated the label but not the location, so the
+  // session showed one exercise's name, picture and tutorial while the map
+  // pointed at the equipment for a different one.
+  it('moves the location with the exercise', () => {
+    const result = applySubstitution(withdrawn, replacement);
+    expect(result.equipmentId).toBe('zone-machines');
+    // The old machine is a specific physical object with nothing to do with
+    // the replacement — keeping it pinned the map to the wrong equipment.
+    expect(result.machineId).toBeUndefined();
+  });
+
+  it('moves every field that identifies the exercise, not just the name', () => {
+    const result = applySubstitution(withdrawn, replacement);
+    expect(result.name).toBe('Chest Press Machine');
+    expect(result.libraryExerciseId).toBe('machine-press');
+    expect(result.targetMuscle).toBe('Chest');
+    expect(result.videoUrl).toBe('https://youtube.com/machine-press');
+  });
+
+  it('records what it replaced so the session can say so', () => {
+    const result = applySubstitution(withdrawn, replacement);
+    expect(result.substitutedFor).toEqual({ id: 'bench', name: 'Barbell Bench Press' });
+  });
+
+  // The slot's prescription belongs to the plan, not to the exercise that
+  // happened to fill it, so it survives the swap.
+  it('keeps the prescription the slot was built with', () => {
+    const result = applySubstitution(withdrawn, replacement);
+    expect(result.sets).toBe(3);
+    expect(result.setDetails).toEqual(withdrawn.setDetails);
+  });
+
+  // A library exercise with no fixed home resolves by name against the
+  // client's own gym, which is what 'manual' means to the locator.
+  it('falls back to manual placement when the replacement has no zone', () => {
+    const homeless = { ...replacement, equipmentId: undefined };
+    expect(applySubstitution(withdrawn, homeless).equipmentId).toBe('manual');
   });
 });
 

@@ -13,7 +13,7 @@
 // progression never runs. Someone stalling AND owed a set gets the stall
 // protocol, not more volume. Every rule below cites the spec rule it encodes.
 
-import { ExerciseLog, EffortRating, LibraryExercise, JointStressArea, MuscleGroup } from '../types.js';
+import { ExerciseLog, EffortRating, LibraryExercise, JointStressArea, MuscleGroup, Exercise } from '../types.js';
 
 export type AdaptationAction =
   | 'refer'        // stop, recommend a professional — the app does not self-manage this
@@ -276,6 +276,30 @@ export const selectSubstitute = (input: SubstituteInput): LibraryExercise | null
     .map(ex => ({ ex, score: scoreOne(ex) }))
     .sort((a, b) => (b.score - a.score) || a.ex.id.localeCompare(b.ex.id))[0].ex;
 };
+
+// Swapping an exercise means swapping everything that identifies it, not just
+// the label. Updating the name and library id alone left the withdrawn
+// movement's zone, machine and video behind, so the session showed one
+// exercise's name, picture and tutorial while the map pointed at the equipment
+// for a different one — and sent the client to the wrong machine.
+//
+// Mirrors what the generator does when it builds an exercise from a library
+// entry, so a substituted exercise is indistinguishable from a generated one.
+export const applySubstitution = (ex: Exercise, substitute: LibraryExercise): Exercise => ({
+  ...ex,
+  libraryExerciseId: substitute.id,
+  name: substitute.name,
+  targetMuscle: substitute.targetMuscle,
+  // 'manual' is not a fallback so much as the correct answer for an exercise
+  // with no fixed home: it tells the locator to resolve by name against the
+  // client's own gym instead of trusting a stale zone id.
+  equipmentId: substitute.equipmentId || 'manual',
+  // The withdrawn exercise's machine is a specific physical object that has
+  // nothing to do with the replacement. Cleared so the map re-resolves.
+  machineId: undefined,
+  videoUrl: substitute.videoUrl,
+  substitutedFor: { id: ex.libraryExerciseId || '', name: ex.name },
+});
 
 // FP-1 / H-1: every rule in the beginner spec is evidenced for 8–12 weeks. Past
 // that the engine stops rather than extrapolating, and asks for a decision.

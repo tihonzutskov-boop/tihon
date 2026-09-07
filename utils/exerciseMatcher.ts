@@ -319,8 +319,36 @@ export function getExerciseLocations(
   let primaryZone: GymZone | null = null;
   let primaryMachine: GymMachine | null = null;
 
+  // Machine matching is deliberately loose — asking for a "Chest Press Machine"
+  // also matches a bench press, since both contain "press". Ranking them by how
+  // closely the machine's own name answers to the exercise's keeps the near
+  // miss from winning just because its zone happened to be listed first, which
+  // is what sent people to the wrong equipment for exercises with no zone
+  // pinned to them — every template-authored exercise, in other words.
+  const bestNamedMachine = (() => {
+    if (matchedMachinesList.length === 0) return null;
+    const scoreOf = (machineName: string): number => {
+      const m = normalizeText(machineName);
+      const e = normalizeText(exName);
+      if (!m || !e) return 0;
+      if (m === e) return 3;
+      if (e.includes(m) || m.includes(e)) return 2;
+      return 0;
+    };
+    const ranked = matchedMachinesList
+      .map(entry => ({ entry, score: scoreOf(entry.machine.name) }))
+      .filter(r => r.score > 0)
+      .sort((a, b) => b.score - a.score);
+    // Only overrides the existing order when something genuinely matches by
+    // name; when every candidate is an equally loose keyword hit there is
+    // nothing to prefer, and the previous behaviour stands.
+    return ranked.length > 0 ? ranked[0].entry : null;
+  })();
+
   if (exercise.equipmentId && matchedZonesMap.has(exercise.equipmentId)) {
     primaryZone = matchedZonesMap.get(exercise.equipmentId)!;
+  } else if (bestNamedMachine) {
+    primaryZone = bestNamedMachine.zone;
   } else if (matchedZones.length > 0) {
     // Prefer a zone with a real machine-level match over one that only
     // matched via a broad shared zone keyword, so a generic word can't
@@ -333,6 +361,8 @@ export function getExerciseLocations(
   if (exerciseMachineId && matchedMachinesList.some(m => m.machine.id === exerciseMachineId)) {
     const found = matchedMachinesList.find(m => m.machine.id === exerciseMachineId);
     if (found) primaryMachine = found.machine;
+  } else if (bestNamedMachine && bestNamedMachine.zone.id === primaryZone?.id) {
+    primaryMachine = bestNamedMachine.machine;
   } else if (primaryZone && primaryZone.machines && primaryZone.machines.length > 0) {
     const foundInZone = matchedMachinesList.find(m => m.zone.id === primaryZone!.id);
     primaryMachine = foundInZone ? foundInZone.machine : primaryZone.machines[0];

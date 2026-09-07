@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { planSessionRoute, entrancePoint, optionPoint } from './sessionRoute';
+import { applySubstitution } from './planAdaptation';
+import { LibraryExercise } from '../types';
 import { Exercise, Gym, GymZone, GymMachine } from '../types';
 
 // --- fixtures ---------------------------------------------------------------
@@ -123,5 +125,61 @@ describe('planSessionRoute', () => {
 
   it('returns nothing when there is no gym', () => {
     expect(planSessionRoute([ex('e1', 'Treadmill')], null)).toEqual([]);
+  });
+});
+
+// The reported bug, end to end: a swapped exercise showed the replacement's
+// name, picture and tutorial while the map still pointed at the equipment for
+// the movement it replaced. Substitution and location resolution have to agree.
+describe('a substituted exercise routes to its own equipment', () => {
+  const gym: Gym = {
+    id: 'g', name: 'G',
+    dimensions: { width: 400, height: 100, x: 0, y: 0 },
+    zones: [
+      zone('free-weights', 0, 0, [machine('bench-3', 5, 5, 'Bench Press')]),
+      zone('machines', 300, 0, [machine('press-1', 5, 5, 'Chest Press Machine')]),
+    ],
+  };
+
+  const benchPress: Exercise = {
+    id: 'x1', name: 'Bench Press', targetMuscle: 'Chest', sets: 3, reps: '8-12',
+    equipmentId: 'free-weights', machineId: 'bench-3', libraryExerciseId: 'bench',
+  };
+  const chestPressMachine: LibraryExercise = {
+    id: 'machine-press', name: 'Chest Press Machine', targetMuscle: 'Chest',
+    equipmentRequired: '', category: 'Compound (Strength)', instructions: '',
+    movementPattern: 'horizontal_push', exerciseCategory: 'compound',
+    generationEnabled: true, requiredEquipmentIds: [], equipmentId: 'machines',
+  };
+
+  it('sends the client to the replacement, not the movement it replaced', () => {
+    const swapped = applySubstitution(benchPress, chestPressMachine);
+    const route = planSessionRoute([swapped], gym);
+    expect(route[0].zone?.id).toBe('machines');
+    expect(route[0].machine?.name).toBe('Chest Press Machine');
+  });
+
+  // Guards the specific mistake: keeping the old machineId pinned the map to a
+  // physical bench that has nothing to do with the replacement.
+  it('does not keep pointing at the withdrawn exercise\'s machine', () => {
+    const swapped = applySubstitution(benchPress, chestPressMachine);
+    const route = planSessionRoute([swapped], gym);
+    expect(route[0].machine?.id).not.toBe('bench-3');
+  });
+
+  it('still resolves by name when the replacement has no zone of its own', () => {
+    const homeless = { ...chestPressMachine, equipmentId: undefined };
+    const swapped = applySubstitution(benchPress, homeless);
+    const route = planSessionRoute([swapped], gym);
+    expect(route[0].zone?.id).toBe('machines');
+  });
+
+  // The near miss the matcher also returns must never become an option: it is
+  // a different exercise, and it was nearer, so distance alone would pick it.
+  it('never offers another exercise\'s machine as an alternative', () => {
+    const swapped = applySubstitution(benchPress, chestPressMachine);
+    const route = planSessionRoute([swapped], gym);
+    const offered = [route[0], ...route[0].alternatives].map(o => o.machine?.name);
+    expect(offered).not.toContain('Bench Press');
   });
 });

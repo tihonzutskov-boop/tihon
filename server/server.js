@@ -22,7 +22,7 @@ import { generatePlan, validatePlan, buildDefaultBlueprint, eligibleExercises, g
 import { shapeFor, bookendsFor } from './generated/utils/sessionShape.js';
 // The same priority chain the frontend and tests run: pain, then failure, then
 // stall, then progression.
-import { evaluateExercise, needsProgramReview, selectSubstitute, applyWeeklyVolumeCeiling } from './generated/utils/planAdaptation.js';
+import { evaluateExercise, needsProgramReview, selectSubstitute, applyWeeklyVolumeCeiling, applySubstitution } from './generated/utils/planAdaptation.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -493,7 +493,8 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
     // plan trains, whether or not anything is withdrawn.
     const libRes = await client.query(
       `SELECT id, name, target_muscle, movement_pattern, exercise_category,
-              min_experience, joint_stress, primary_muscles, generation_enabled
+              min_experience, joint_stress, primary_muscles, generation_enabled,
+              equipment_id, video_url
          FROM exercises`
     );
     const libraryById = new Map(libRes.rows.map(r => [r.id, {
@@ -506,6 +507,9 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
       jointStress: r.joint_stress || [],
       primaryMuscles: r.primary_muscles || [],
       generationEnabled: r.generation_enabled !== false,
+      // Carried so a substitute can take its own location and tutorial with it.
+      equipmentId: r.equipment_id,
+      videoUrl: r.video_url,
     }]));
 
     // A substitute has to clear the same bar a generated exercise does. Without
@@ -593,8 +597,7 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
           // always passes these through untouched — a withdrawal can only
           // hold or lower what gets trained, never raise it.
           const buildReplace = (rule, reasonText) => (finalDecision) => substitute
-            ? { ...ex, libraryExerciseId: substitute.id, name: substitute.name,
-                substitutedFor: { id, name: ex.name }, adaptation: finalDecision }
+            ? { ...applySubstitution(ex, substitute), adaptation: finalDecision }
             : { ...ex, withdrawn: true, adaptation: finalDecision };
 
           if (withdrawal.reason === 'referred') {

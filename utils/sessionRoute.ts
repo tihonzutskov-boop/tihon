@@ -70,15 +70,33 @@ export const entrancePoint = (
   }
 };
 
-// All the places one exercise could be done. Prefers specific machines, since
-// "the third treadmill along" is a more useful instruction than "the cardio
-// area"; falls back to whole zones when nothing matched at machine level.
+// Every place one exercise could be done — and only that exercise.
+//
+// The matcher name-matches loosely and returns near misses alongside the real
+// answer: asking it for "Chest Press Machine" also returns the bench press,
+// because both contain "press". Its own ranking resolves that, and primaryMachine
+// is the correct identification. Routing may only choose between genuine copies
+// of that answer — the same equipment standing in more than one place — never
+// between it and something else the name match happened to catch. Treating all
+// matches as interchangeable and taking the nearest sent people to a different
+// exercise's machine whenever the wrong one was closer.
 export const routeOptionsFor = (exercise: Exercise, gym: Gym): RouteOption[] => {
   const location = getExerciseLocations(exercise, gym);
-  if (location.matchedMachines.length > 0) {
-    return location.matchedMachines.map(m => ({ zone: m.zone, machine: m.machine }));
+
+  if (location.primaryMachine) {
+    const target = location.primaryMachine.name.trim().toLowerCase();
+    const duplicates = location.matchedMachines.filter(
+      m => m.machine.name.trim().toLowerCase() === target
+    );
+    return duplicates.map(m => ({ zone: m.zone, machine: m.machine }));
   }
-  return location.matchedZones.map(zone => ({ zone, machine: null }));
+
+  // Matched a zone but no specific machine. Nothing here can establish whether
+  // a second matched zone holds the same equipment or was simply a looser name
+  // match, so the matcher's own answer stands and no alternatives are offered —
+  // an unhelpfully short list beats confidently pointing somewhere wrong.
+  const zone = location.primaryZone || location.matchedZones[0];
+  return zone ? [{ zone, machine: null }] : [];
 };
 
 /**
