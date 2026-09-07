@@ -518,10 +518,21 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
               </div>
             </>
           ) : (
-            <div className="h-44 border-b border-slate-800 flex items-center justify-center overflow-hidden bg-gradient-to-br from-slate-800 to-slate-900">
+            // Identify is the step where the photo is the whole point — it is
+            // how someone picks this machine out of a room of machines — so it
+            // gets more height, and the image is contained rather than cropped
+            // to fill. object-cover was cutting the ends off the very thing the
+            // client is being asked to recognise.
+            <div
+              className={`${stage.key === 'identify' ? 'h-72' : 'h-44'} border-b border-slate-800 flex items-center justify-center overflow-hidden bg-gradient-to-br from-slate-800 to-slate-900`}
+            >
               {stage.key === 'identify' ? (
                 equipmentItem?.imageUrl ? (
-                  <img src={equipmentItem.imageUrl} alt={equipmentItem.name} className="w-full h-full object-cover" />
+                  <img
+                    src={equipmentItem.imageUrl}
+                    alt={equipmentItem.name}
+                    className="w-full h-full object-contain p-3"
+                  />
                 ) : (
                   <div className="flex flex-col items-center gap-2 text-slate-500 text-xs font-bold uppercase tracking-wide">
                     <Dumbbell className="w-8 h-8 opacity-50" />
@@ -530,7 +541,9 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                 )
               ) : stage.key === 'tutorial' ? (
                 gifUrl ? (
-                  <img src={gifUrl} alt={exercise.name} className="w-full h-full object-cover" />
+                  // Same reasoning: a cropped demonstration can hide the part of
+                  // the movement it exists to show.
+                  <img src={gifUrl} alt={exercise.name} className="w-full h-full object-contain p-2" />
                 ) : (
                   <PlayCircle className="w-10 h-10 text-sky-400" />
                 )
