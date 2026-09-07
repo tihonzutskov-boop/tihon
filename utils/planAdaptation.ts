@@ -13,7 +13,7 @@
 // progression never runs. Someone stalling AND owed a set gets the stall
 // protocol, not more volume. Every rule below cites the spec rule it encodes.
 
-import { ExerciseLog, EffortRating, LibraryExercise, JointStressArea, MuscleGroup } from '../types';
+import { ExerciseLog, EffortRating, LibraryExercise, JointStressArea, MuscleGroup } from '../types.js';
 
 export type AdaptationAction =
   | 'refer'        // stop, recommend a professional — the app does not self-manage this
@@ -283,3 +283,76 @@ export const BEGINNER_REVIEW_WEEK = 12;
 
 export const needsProgramReview = (weeksTrained: number): boolean =>
   weeksTrained >= BEGINNER_REVIEW_WEEK;
+
+// ---------------------------------------------------------------------------
+// Weekly volume ceiling (FIX-1, STALL-2)
+// ---------------------------------------------------------------------------
+//
+// evaluateExercise reasons about one exercise at a time, so it has no way to
+// see that a different exercise trains the same muscle. Two exercises that
+// both happen to stall in the same week can each independently earn an
+// add-set — and each is individually correct — while the client's actual
+// chest volume for the week quietly climbs past the point the rulebook
+// considers safe. This pass is the cross-exercise check that catches that:
+// it looks at every exercise in the week together, per muscle, before any
+// add-set is allowed to take effect.
+//
+// FIX-1 fixed the unit as sets / muscle / week, ceiling 20. STALL-2 requires
+// that adding a set "keeps total weekly volume under the ceiling" — this is
+// that requirement, enforced as a hold rather than the more elaborate
+// "ease effort on everything else" redistribution STALL-2 also describes.
+// Redistributing would mean walking back sets on unrelated exercises the
+// client has nothing wrong with, which is a bigger and riskier feature than
+// refusing one increase; holding is the conservative reading of the same rule.
+export const VOLUME_CEILING_PER_MUSCLE_PER_WEEK = 20;
+
+export interface VolumeCandidate {
+  /** Stable id for this exercise's slot in the week, e.g. `${dayIndex}-${exerciseIndex}`. */
+  id: string;
+  /** Muscles the exercise that will actually be trained works — the substitute's, not the original's, when one applies. */
+  muscles: MuscleGroup[];
+  /** Sets already prescribed before this decision's delta — the week's volume if nothing changed. */
+  baseSets: number;
+  decision: AdaptationDecision;
+}
+
+export interface VolumeCappedResult {
+  id: string;
+  decision: AdaptationDecision;
+}
+
+// Only a positive setsDelta (currently just add-set) can raise weekly volume,
+// so a deload, a hold, or a load change is never touched here — this pass
+// only ever prevents growth, never removes a set the client is already doing.
+export const applyWeeklyVolumeCeiling = (candidates: VolumeCandidate[]): VolumeCappedResult[] => {
+  const committed: Partial<Record<MuscleGroup, number>> = {};
+  for (const c of candidates) {
+    for (const m of c.muscles) committed[m] = (committed[m] || 0) + c.baseSets;
+  }
+
+  // Processed in the order given — the week's natural day-then-exercise
+  // order — so when two exercises compete for the same muscle's last bit of
+  // headroom, the earlier one in the week gets it. Simple, deterministic, and
+  // easy to explain rather than an arbitrary tie-break.
+  return candidates.map(c => {
+    const delta = c.decision.setsDelta ?? 0;
+    if (delta <= 0) return { id: c.id, decision: c.decision };
+
+    const wouldBreach = c.muscles.some(
+      m => (committed[m] || 0) + delta > VOLUME_CEILING_PER_MUSCLE_PER_WEEK
+    );
+    if (!wouldBreach) {
+      c.muscles.forEach(m => { committed[m] = (committed[m] || 0) + delta; });
+      return { id: c.id, decision: c.decision };
+    }
+
+    return {
+      id: c.id,
+      decision: {
+        action: 'maintain',
+        rule: 'VOL-1',
+        reason: 'This muscle is already at its training limit for the week, so this holds for now rather than adding another set.',
+      },
+    };
+  });
+};

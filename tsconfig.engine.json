@@ -2,8 +2,8 @@
   "//": "Compiles the plan-generation engine to plain JS so the Express server can import the exact same logic the frontend and tests use, rather than a hand-maintained duplicate of safety-critical code.",
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "outDir": "server/generated",
     "rootDir": ".",
     "skipLibCheck": true,

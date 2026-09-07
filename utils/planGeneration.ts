@@ -5,11 +5,11 @@ import type {
   LibraryExercise, Gym, ExerciseSlot, BlueprintDay, PlanTemplate,
   ExperienceLevel, JointStressArea, WorkoutDay, Exercise, SetDetail,
   MovementPattern, MuscleGroup,
-} from '../types';
+} from '../types.js';
 // A real import, not type-only: the session's length decides its whole shape,
 // so these run at generation time. Compiled alongside planGeneration into the
 // engine build the server uses.
-import { shapeFor, bookendsFor, trainingMinutesAvailable } from './sessionShape';
+import { shapeFor, bookendsFor, trainingMinutesAvailable } from './sessionShape.js';
 
 // ---------------------------------------------------------------------------
 // Inputs
