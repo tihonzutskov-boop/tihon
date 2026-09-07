@@ -628,11 +628,18 @@ export const validatePlan = (
       }
     });
 
+    // Counts this session's real warm-up and cooldown, not the old flat
+    // five-minute allowance. The generator fits training work into
+    // sessionMinutes minus both bookends; validating against a smaller,
+    // stale allowance would quietly pass a day that actually overruns the
+    // client's stated time — and the whole point of this check is to be an
+    // independent guard, not a weaker one.
+    const shape = shapeFor(profile.sessionMinutes);
     const minutes = estimateDayMinutes(day.exercises.map(ex => ({
       sets: ex.setDetails?.length || ex.sets || 0,
       reps: parseInt(ex.setDetails?.[0]?.reps || '0', 10) || 0,
       restSeconds: ex.setDetails?.[0]?.restSec ?? 60,
-    })));
+    })), shape.warmupMinutes + shape.cooldownMinutes);
     if (minutes > profile.sessionMinutes) {
       errors.push(`"${day.name}" is ${minutes} min, over the ${profile.sessionMinutes} min target`);
     }

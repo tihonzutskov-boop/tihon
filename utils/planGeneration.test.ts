@@ -447,6 +447,36 @@ describe('graceful skip when a required slot cannot be filled', () => {
 });
 
 describe('validation is independent of selection', () => {
+  // The duration check has to count this session's real warm-up and cooldown.
+  // It used to add a flat 5 minutes, which stayed behind when session shaping
+  // introduced tier-sized bookends — so a day that genuinely overran the
+  // client's stated time passed validation, in the one place whose whole job
+  // is to catch exactly that independently of the generator.
+  it('counts the session tier\'s real bookends in the duration check', () => {
+    const library = [exercise({ id: 'e', name: 'Ex', requiredEquipmentIds: [] })];
+    // 5 exercises x (5 sets, 12 reps, 180s rest) = 80 minutes of training work.
+    const heavyDay = {
+      id: 'd1', name: 'Day 1',
+      exercises: Array.from({ length: 5 }, (_, i) => ({
+        id: `x${i}`, name: 'Ex', targetMuscle: 'Chest', sets: 5, reps: '12',
+        equipmentId: 'manual', libraryExerciseId: 'e',
+        setDetails: Array.from({ length: 5 }, () => ({ reps: '12', weight: '', restSec: 180 })),
+      })),
+    };
+
+    // A 90-minute long session reserves 20 minutes of bookends, leaving 70 for
+    // training — so 80 minutes of work overruns. Under the old flat 5-minute
+    // allowance this came to 85 and passed.
+    const tooLong = validatePlan([heavyDay], library, gym([]), profile({ daysPerWeek: 1, sessionMinutes: 90 }));
+    expect(tooLong.valid).toBe(false);
+    expect(tooLong.errors.some(e => e.includes('over the 90 min target'))).toBe(true);
+
+    // The same day fits when there is genuinely time for it, so the check is
+    // reacting to the bookends rather than just calling everything too long.
+    const fits = validatePlan([heavyDay], library, gym([]), profile({ daysPerWeek: 1, sessionMinutes: 110 }));
+    expect(fits.errors.some(e => e.includes('target'))).toBe(false);
+  });
+
   it('rejects a plan containing an exercise the gym cannot support', () => {
     const library = [exercise({ id: 'bench', name: 'Bench Press', requiredEquipmentIds: ['barbell'] })];
     const days = [{
