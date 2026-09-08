@@ -277,6 +277,50 @@ const slotsForGoal = (goal: string, dayName: string, shape: SessionShape): Exerc
 export const buildDefaultBlueprint = (goal: string, daysPerWeek: number, sessionMinutes = 60): BlueprintDay[] =>
   buildCombinedBlueprint([goal], daysPerWeek, sessionMinutes);
 
+// Combining aims must not simply add their blocks end to end. Doing that
+// doubled the day: two aims meant every one of the first aim's exercises
+// followed by every one of the second's — eleven separate movements for
+// Muscle gain + Mobility, which is far more than a beginner should meet in
+// one session however well it fits the clock.
+//
+// Two rules fix that. Required work from every selected aim always survives,
+// because dropping it would defeat the point of having chosen that aim.
+// Optional accessory work is shared against one budget across all aims
+// rather than each aim bringing its own full set, so a second aim adds
+// variety rather than volume.
+//
+// Within each of those groups the aims take turns instead of running one
+// block then the next, so a combined day alternates between them — squat,
+// hip mobility, press, shoulder mobility — rather than reading as two
+// separate workouts stapled together. Required work still precedes
+// accessories overall, which is the ordering every single-aim template
+// already uses.
+const MAX_TOTAL_SLOTS_WHEN_COMBINING = 6;
+
+// Round-robin across the aims: one slot from each in turn, until every list
+// is spent. Each aim's own internal order is preserved within its turns.
+const takeTurns = (lists: ExerciseSlot[][]): ExerciseSlot[] => {
+  const out: ExerciseSlot[] = [];
+  const longest = Math.max(0, ...lists.map(l => l.length));
+  for (let i = 0; i < longest; i++) {
+    for (const list of lists) {
+      if (i < list.length) out.push(list[i]);
+    }
+  }
+  return out;
+};
+
+const combineGoalBlocks = (perGoal: ExerciseSlot[][]): ExerciseSlot[] => {
+  const required = takeTurns(perGoal.map(list => list.filter(s => !s.optional)));
+  const optional = takeTurns(perGoal.map(list => list.filter(s => s.optional)));
+  // Required work is never trimmed here — if several aims together demand
+  // more than the cap, they all still appear, and the duration fitter
+  // downstream remains the authority on whether that actually fits the
+  // session.
+  const room = Math.max(0, MAX_TOTAL_SLOTS_WHEN_COMBINING - required.length);
+  return [...required, ...optional.slice(0, room)];
+};
+
 // A client can select more than one aim, and each one contributes its own
 // block of slots to the same day — not averaged together into a prescription
 // neither aim actually asked for, but done properly once per aim, back to
@@ -301,17 +345,19 @@ export const buildCombinedBlueprint = (goals: string[], daysPerWeek: number, ses
   const shape = shapeFor(sessionMinutes);
 
   return dayNames.map((name, dayIdx) => {
-    const slots: ExerciseSlot[] = [];
-    let priorityOffset = 0;
-    activeGoals.forEach((goal, goalIdx) => {
-      const goalSlots = slotsForGoal(goal, name, shape);
-      goalSlots.forEach((spec, i) => {
-        slots.push({ ...spec, id: `defslot-${dayIdx}-${goalIdx}-${i}`, priority: priorityOffset + i + 1 });
-      });
-      priorityOffset += goalSlots.length;
-    });
+    const perGoal = activeGoals.map(goal => slotsForGoal(goal, name, shape));
 
-    return { id: `defbp-${dayIdx}`, name, slots };
+    // One aim is left exactly as its own template describes it — no
+    // interleaving or capping applies, so single-aim generation is unchanged.
+    const ordered = perGoal.length === 1
+      ? perGoal[0]
+      : combineGoalBlocks(perGoal);
+
+    return {
+      id: `defbp-${dayIdx}`,
+      name,
+      slots: ordered.map((spec, i) => ({ ...spec, id: `defslot-${dayIdx}-${i}`, priority: i + 1 })),
+    };
   });
 };
 

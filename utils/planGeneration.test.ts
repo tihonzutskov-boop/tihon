@@ -679,28 +679,62 @@ describe('buildCombinedBlueprint — aims as blocks that add together', () => {
     );
   });
 
-  // The actual feature: two aims concatenate as two intact blocks, each
-  // keeping its own prescription — not averaged into something neither
-  // aim asked for.
-  it('concatenates each aim\'s own block with its own prescription', () => {
+  // Each aim keeps its own prescription — not averaged into something
+  // neither aim asked for.
+  it('keeps each aim\'s own prescription rather than blending them', () => {
     const bp = buildCombinedBlueprint(['Muscle gain', 'Mobility'], 3, 60);
     const slots = bp[0].slots;
-    const muscleGainSlots = slots.filter(s => s.restSeconds === 120);
-    const mobilitySlots = slots.filter(s => s.restSeconds === 20);
-    expect(muscleGainSlots.map(s => s.movementPattern)).toEqual(
-      expect.arrayContaining(['squat', 'horizontal_push', 'horizontal_pull'])
+    expect(slots.filter(s => s.restSeconds === 120).map(s => s.movementPattern)).toEqual(
+      expect.arrayContaining(['squat', 'horizontal_push'])
     );
-    expect(mobilitySlots.map(s => s.movementPattern)).toEqual(
+    expect(slots.filter(s => s.restSeconds === 20).map(s => s.movementPattern)).toEqual(
       expect.arrayContaining(['hip_mobility', 'shoulder_mobility'])
     );
   });
 
-  it('keeps each block\'s required slots required and optional slots optional', () => {
+  // Aims take turns rather than running one whole block then the next, so a
+  // combined day reads as one workout instead of two stapled together.
+  it('alternates between aims instead of finishing one block first', () => {
+    const bp = buildCombinedBlueprint(['Muscle gain', 'Mobility'], 3, 60);
+    const isMobility = bp[0].slots.map(s => s.movementPattern.endsWith('_mobility'));
+    // A strictly sequential layout would put every false before every true.
+    const firstMobility = isMobility.indexOf(true);
+    const lastStrength = isMobility.lastIndexOf(false);
+    expect(firstMobility).toBeLessThan(lastStrength);
+  });
+
+  // The bug this fixes: two aims used to mean the sum of both blocks —
+  // eleven exercises for Muscle gain + Mobility.
+  it('does not let a second aim double the number of exercises', () => {
+    const alone = buildDefaultBlueprint('Muscle gain', 3, 60)[0].slots.length;
+    const combined = buildCombinedBlueprint(['Muscle gain', 'Mobility'], 3, 60)[0].slots.length;
+    expect(combined).toBeLessThanOrEqual(alone);
+  });
+
+  it('caps a heavily overlapping combination rather than stacking both blocks', () => {
+    const bp = buildCombinedBlueprint(['Muscle gain', 'Weight loss'], 3, 60);
+    expect(bp[0].slots.length).toBeLessThanOrEqual(6);
+  });
+
+  // Dropping an aim's required work would defeat the point of choosing it,
+  // so the cap only ever trims optional accessory work.
+  it('keeps every aim\'s required work even when that exceeds the cap', () => {
+    const bp = buildCombinedBlueprint(['Muscle gain', 'Endurance', 'Mobility'], 3, 60);
+    const patterns = bp[0].slots.map(s => s.movementPattern);
+    expect(patterns).toEqual(expect.arrayContaining(['hip_mobility', 'shoulder_mobility']));
+    expect(bp[0].slots.filter(s => !s.optional).length).toBeGreaterThan(6 - 1);
+  });
+
+  // Flags survive combining: what an aim marked required stays required, and
+  // whatever optional work fits the cap is still marked optional so the
+  // duration fitter downstream knows it may trim it further.
+  it('preserves each block\'s required and optional flags', () => {
     const bp = buildCombinedBlueprint(['Muscle gain', 'Mobility'], 1, 60);
     const squat = bp[0].slots.find(s => s.movementPattern === 'squat');
-    const ankle = bp[0].slots.find(s => s.movementPattern === 'ankle_mobility');
+    const hip = bp[0].slots.find(s => s.movementPattern === 'hip_mobility');
     expect(squat?.optional).toBeFalsy();
-    expect(ankle?.optional).toBe(true);
+    expect(hip?.optional).toBeFalsy();
+    bp[0].slots.filter(s => s.optional).forEach(s => expect(s.optional).toBe(true));
   });
 
   // Priorities must not collide across blocks, or the duration fitter (which
@@ -710,17 +744,6 @@ describe('buildCombinedBlueprint — aims as blocks that add together', () => {
     const bp = buildCombinedBlueprint(['Muscle gain', 'Mobility'], 1, 60);
     const priorities = bp[0].slots.map(s => s.priority);
     expect(new Set(priorities).size).toBe(priorities.length);
-  });
-
-  // Overlapping aims are not specially detected — each still contributes its
-  // own slot for the movement patterns they share. Documented behavior, not
-  // a crash: a short session genuinely cannot fit all of it, which the
-  // existing duration fitter (and, if that is not enough, cannot_fit_duration)
-  // already handles for any over-full day.
-  it('does not deduplicate overlapping movement patterns across two similar aims', () => {
-    const bp = buildCombinedBlueprint(['Muscle gain', 'Weight loss'], 1, 60);
-    const squats = bp[0].slots.filter(s => s.movementPattern === 'squat');
-    expect(squats).toHaveLength(2);
   });
 
   it('falls back to a default goal when given an empty list rather than crashing', () => {
