@@ -30,10 +30,17 @@ const VIDEO_STAGES: { key: StageKey; label: string }[] = [
 
 interface SetRow {
   reps: string;
-  duration: string;
   weight: string;
   done: boolean;
 }
+
+// Rest reads more naturally in minutes once it passes one, which is where a
+// beginner's compound rest usually sits.
+const formatRest = (seconds: number | undefined | null): string => {
+  if (seconds == null || seconds <= 0) return '—';
+  if (seconds >= 60 && seconds % 60 === 0) return `${seconds / 60} min`;
+  return `${seconds}s`;
+};
 
 const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, libraryExercises, onClose, onFinish }) => {
   const exercises = day.exercises;
@@ -164,11 +171,10 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
     const seedWeight = (authored?: string) =>
       authored && authored.trim() !== '' ? authored : suggested != null ? String(suggested) : '';
     if (exercise.setDetails && exercise.setDetails.length > 0) {
-      return exercise.setDetails.map(s => ({ reps: s.reps || '', duration: '', weight: seedWeight(s.weight), done: false }));
+      return exercise.setDetails.map(s => ({ reps: s.reps || '', weight: seedWeight(s.weight), done: false }));
     }
     return Array.from({ length: Math.max(exercise.sets || 1, 1) }, () => ({
       reps: exercise.reps || '',
-      duration: '',
       weight: seedWeight(),
       done: false,
     }));
@@ -188,11 +194,11 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
     const next = rows.map((r, idx) => (idx === i ? { ...r, done: !r.done } : r));
     setRows(next);
   };
-  const updateSet = (i: number, field: 'reps' | 'duration' | 'weight', value: string) => {
+  const updateSet = (i: number, field: 'reps' | 'weight', value: string) => {
     const next = rows.map((r, idx) => (idx === i ? { ...r, [field]: value } : r));
     setRows(next);
   };
-  const addSet = () => setRows([...rows, { reps: exercise.reps || '', duration: '', weight: '', done: false }]);
+  const addSet = () => setRows([...rows, { reps: exercise.reps || '', weight: '', done: false }]);
   const removeSet = () => { if (rows.length > 1) setRows(rows.slice(0, -1)); };
   const completeAll = () => setRows(rows.map(r => ({ ...r, done: true })));
   const setEffort = (value: EffortRating) =>
@@ -667,14 +673,17 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-1 py-2 text-center text-sm font-bold text-white focus:outline-none focus:border-lime-500"
                             />
                           </div>
+                          {/* Rest, not duration. Duration was an input nothing
+                              ever read — a strength set has no duration to
+                              record — while the number that actually matters
+                              between sets was relegated to a caption below.
+                              Shown rather than typed: it is what the plan
+                              prescribes, not something the client reports. */}
                           <div className="flex-1 text-center">
-                            <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wide mb-1">Duration</label>
-                            <input
-                              value={row.duration}
-                              onChange={e => updateSet(i, 'duration', e.target.value)}
-                              placeholder="--"
-                              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-1 py-2 text-center text-sm font-bold text-white focus:outline-none focus:border-lime-500"
-                            />
+                            <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wide mb-1">Rest</label>
+                            <div className="w-full bg-slate-800/40 border border-slate-800 rounded-lg px-1 py-2 text-center text-sm font-bold text-slate-300">
+                              {formatRest(restSec)}
+                            </div>
                           </div>
                           <div className="flex-1 text-center">
                             <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wide mb-1">Weight</label>
@@ -695,9 +704,6 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                             <Check className="w-4 h-4" />
                           </button>
                         </div>
-                        {restSec != null && restSec > 0 && (
-                          <p className="text-[9.5px] font-bold text-slate-500 ml-6 mt-1">Rest {restSec}s after this set</p>
-                        )}
                       </div>
                     );
                   })}
