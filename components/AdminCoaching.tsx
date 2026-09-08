@@ -93,9 +93,18 @@ const AdminCoaching: React.FC = () => {
   const selectedClient = clients.find(c => c.userId === selectedUserId) || null;
 
   const templateGroups = QUESTIONNAIRE_GOALS.map(goal => ({ goal, templates: templates.filter(t => t.goal === goal) }));
-  const clientGroups = QUESTIONNAIRE_GOALS
-    .map(goal => ({ goal, clients: clients.filter(c => c.answers.goals?.includes(goal)) }))
-    .filter(g => g.clients.length > 0);
+  // Clients who have not submitted the questionnaire have no goal to group by,
+  // so they get their own bucket rather than being dropped — being invisible
+  // here is exactly the state an admin most needs to see, since it means
+  // someone registered and then stopped.
+  const NOT_ONBOARDED = 'Not onboarded yet';
+  const clientGroups = [
+    ...QUESTIONNAIRE_GOALS.map(goal => ({
+      goal,
+      clients: clients.filter(c => c.answers?.goals?.includes(goal)),
+    })),
+    { goal: NOT_ONBOARDED, clients: clients.filter(c => !c.answers) },
+  ].filter(g => g.clients.length > 0);
 
   // Every (goal, days-per-week) combo a client could submit gets a plan
   // regardless — the rules engine builds one from goal + days/week alone. A
@@ -332,10 +341,15 @@ const AdminCoaching: React.FC = () => {
         }) : (
           <>
             <div className="p-3 border-b border-slate-800/40">
-              <p className="text-xs text-slate-400">{clients.length} client{clients.length !== 1 ? 's' : ''} submitted a questionnaire</p>
+              <p className="text-xs text-slate-400">
+                {clients.length} registered client{clients.length !== 1 ? 's' : ''}
+                {clients.some(c => c.sessionsLogged > 0) && (
+                  <span className="text-slate-500"> · {clients.filter(c => c.sessionsLogged > 0).length} training</span>
+                )}
+              </p>
             </div>
             {clientGroups.length === 0 ? (
-              <div className="p-6 text-center text-xs text-slate-500">No questionnaires submitted yet.</div>
+              <div className="p-6 text-center text-xs text-slate-500">No clients registered yet.</div>
             ) : (
               clientGroups.map(group => (
                 <div key={group.goal} className="p-3 border-b border-slate-800/40">
@@ -359,13 +373,24 @@ const AdminCoaching: React.FC = () => {
                             </div>
                             <span className="text-xs font-bold text-white truncate">{client.name}</span>
                           </div>
-                          <span
-                            className={`text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-full ${
-                              scheduled ? 'bg-lime-500/10 text-lime-400 border border-lime-500/25' : 'bg-amber-500/10 text-amber-400 border border-amber-500/25'
-                            }`}
-                          >
-                            {scheduled ? 'Plan assigned' : 'Needs a plan'}
-                          </span>
+                          <div className="flex flex-wrap items-center gap-1">
+                            <span
+                              className={`text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-full ${
+                                scheduled ? 'bg-lime-500/10 text-lime-400 border border-lime-500/25' : 'bg-amber-500/10 text-amber-400 border border-amber-500/25'
+                              }`}
+                            >
+                              {scheduled ? 'Plan assigned' : client.answers ? 'Needs a plan' : 'Not onboarded'}
+                            </span>
+                            {client.sessionsLogged > 0 ? (
+                              <span className="text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-300">
+                                {client.sessionsLogged} logged
+                              </span>
+                            ) : scheduled ? (
+                              <span className="text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-500">
+                                Not started
+                              </span>
+                            ) : null}
+                          </div>
                         </button>
                       );
                     })}
@@ -440,19 +465,52 @@ const AdminCoaching: React.FC = () => {
                   {resetting ? 'Resetting…' : 'Reset Questionnaire'}
                 </button>
               </div>
-              <p className="text-xs text-slate-500 mb-4">
+              <p className="text-xs text-slate-500 mb-1">{selectedClient.email}</p>
+              <p className="text-xs text-slate-500 mb-3">
                 {hasScheduledPlan(selectedClient) ? (
                   <>Assigned plan: <span className="text-lime-400 font-semibold">{selectedClient.plan?.name}</span></>
-                ) : (
+                ) : selectedClient.answers ? (
                   'No plan assigned yet — this appears in Issues if generation failed, otherwise it is still in progress.'
+                ) : (
+                  'No plan yet — the client has not submitted the questionnaire, which is what generates one.'
                 )}
               </p>
+
+              {/* Whether they are actually training, which "plan assigned" does
+                  not tell you. A plan with no logged sessions is the case worth
+                  seeing: the client was set up and never started. */}
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <span className={`text-[10px] font-extrabold uppercase tracking-wide px-2.5 py-1 rounded-full border ${
+                  selectedClient.sessionsLogged > 0
+                    ? 'bg-lime-500/10 text-lime-400 border-lime-500/25'
+                    : 'bg-slate-800 text-slate-400 border-slate-700'
+                }`}>
+                  {selectedClient.sessionsLogged > 0
+                    ? `${selectedClient.sessionsLogged} session${selectedClient.sessionsLogged !== 1 ? 's' : ''} logged`
+                    : 'Never trained'}
+                </span>
+                {selectedClient.lastLoggedAt && (
+                  <span className="text-[11px] text-slate-500">
+                    Last trained {new Date(selectedClient.lastLoggedAt).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
               {resetError && (
                 <div className="mb-4 p-3 rounded-xl bg-red-950/30 border border-red-800/40 text-xs text-red-400">
                   {resetError}
                 </div>
               )}
 
+              {!selectedClient.answers ? (
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                  <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Questionnaire answers</h3>
+                  <p className="text-xs text-slate-400">
+                    Not submitted yet. This client registered
+                    {selectedClient.joinedDate ? ` on ${new Date(selectedClient.joinedDate).toLocaleDateString()}` : ''} but
+                    has not completed the intake, so nothing has been generated for them.
+                  </p>
+                </div>
+              ) : (
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
                 <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Questionnaire answers</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-4">
@@ -496,6 +554,7 @@ const AdminCoaching: React.FC = () => {
                   </div>
                 )}
               </div>
+              )}
             </div>
           )
         ) : !editingTemplate ? (

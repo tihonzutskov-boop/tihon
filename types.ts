@@ -431,9 +431,18 @@ export interface CoachingClient {
   name: string;
   email: string;
   avatarUrl?: string;
-  answers: QuestionnaireAnswers;
-  submittedAt: string;
+  joinedDate: string;
+  // Null until the client submits the intake questionnaire. They are still a
+  // client before that — they registered — so they appear in the list either
+  // way, and this being null is what marks them as not yet onboarded.
+  answers: QuestionnaireAnswers | null;
+  submittedAt: string | null;
   plan: { name: string; days: WorkoutDay[] } | null;
+  // Whether the client is actually training, as distinct from whether a plan
+  // was assigned to them. A plan with zero logged sessions means they have
+  // not started, which no other field here would reveal.
+  sessionsLogged: number;
+  lastLoggedAt: string | null;
 }
 
 export interface User {

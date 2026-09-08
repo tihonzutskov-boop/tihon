@@ -1048,16 +1048,39 @@ app.put('/api/coaching/generation-failures/:id/resolve', requireAdmin, async (re
 // Read-only roster so an admin can see which real users matched a catalog
 // template (and which didn't) — LEFT JOIN keeps users who submitted the
 // questionnaire but have no plan yet.
+// Every registered client, not only the ones who finished onboarding. This
+// used to INNER JOIN from training_questionnaires, which meant anyone who
+// signed up and hadn't submitted the questionnaire yet — or abandoned it —
+// simply never appeared here at all. An admin had no way to know they existed.
+//
+// Also carries actual training activity (a count of logged sessions and the
+// most recent one), because "a plan is assigned" and "the client is training"
+// are different facts — the first row of this query answers the former, the
+// log count answers the latter, and the gap between them is the real signal:
+// a client with a plan and zero logged sessions has not started.
 app.get('/api/coaching/clients', requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT u.id AS user_id, u.name, u.email, u.avatar_url,
+      SELECT u.id AS user_id, u.name, u.email, u.avatar_url, u.joined_date,
              tq.answers, tq.submitted_at,
-             up.name AS plan_name, up.days AS plan_days
-      FROM training_questionnaires tq
-      JOIN users u ON u.id = tq.user_id
-      LEFT JOIN user_plans up ON up.user_id = tq.user_id
-      ORDER BY tq.submitted_at DESC
+             up.name AS plan_name, up.days AS plan_days,
+             log_stats.sessions_logged, log_stats.last_logged_at
+      FROM users u
+      LEFT JOIN training_questionnaires tq ON tq.user_id = u.id
+      LEFT JOIN user_plans up ON up.user_id = u.id
+      LEFT JOIN (
+        -- One session's worth of exercises is written inside a single
+        -- transaction (see POST /api/exercise-logs), and now() returns the
+        -- same value for every statement in one transaction — so every row
+        -- from the same session shares one logged_at, and counting distinct
+        -- values counts sessions, not individual logged exercises.
+        SELECT user_id, COUNT(DISTINCT logged_at) AS sessions_logged,
+               MAX(logged_at) AS last_logged_at
+        FROM exercise_logs
+        GROUP BY user_id
+      ) log_stats ON log_stats.user_id = u.id
+      WHERE u.role != 'admin'
+      ORDER BY tq.submitted_at DESC NULLS LAST, u.joined_date DESC
     `);
     res.json({
       clients: result.rows.map(r => ({
@@ -1065,9 +1088,12 @@ app.get('/api/coaching/clients', requireAdmin, async (req, res) => {
         name: r.name,
         email: r.email,
         avatarUrl: r.avatar_url,
-        answers: r.answers,
+        joinedDate: r.joined_date,
+        answers: r.answers || null,
         submittedAt: r.submitted_at,
         plan: r.plan_days ? { name: r.plan_name, days: r.plan_days } : null,
+        sessionsLogged: parseInt(r.sessions_logged, 10) || 0,
+        lastLoggedAt: r.last_logged_at,
       })),
     });
   } catch (err) {
