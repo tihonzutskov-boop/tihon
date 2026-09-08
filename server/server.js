@@ -17,7 +17,7 @@ import { mediaUrl, sendDataUri, serveMediaColumn, serveVideo, blobWrite } from '
 // Compiled from utils/planGeneration.ts by `npm run build:engine` — the same
 // engine the frontend and the test suite use, so there is exactly one
 // implementation of the eligibility and safety rules.
-import { generatePlan, validatePlan, buildDefaultBlueprint, eligibleExercises, gymEquipmentIds,
+import { generatePlan, validatePlan, buildCombinedBlueprint, eligibleExercises, gymEquipmentIds,
          selectBookendExercise, buildBookendExercise } from './generated/utils/planGeneration.js';
 import { shapeFor, bookendsFor } from './generated/utils/sessionShape.js';
 // The same priority chain the frontend and tests run: pain, then failure, then
@@ -898,41 +898,52 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
     let assignedPlan = false;
     const goals = answers.goals || [];
     if (goals.length > 0) {
-      // Without an ORDER BY, Postgres doesn't guarantee row order — if more
-      // than one template shares a goal, .find() below would pick whichever
-      // one the scan happened to return first, not necessarily the one the
-      // admin actually intends (e.g. the one they just edited). Newest
-      // first is at least deterministic and favors the actively-maintained
-      // template over an old leftover.
-      const candidates = await pool.query(
-        'SELECT * FROM plan_templates WHERE goal = ANY($1::text[]) ORDER BY created_at DESC',
-        [goals]
-      );
+      // Admin templates are authored for one aim at a time, so matching one
+      // only applies when the client picked exactly one. Picking several
+      // means each aim contributes its own block of slots to the same
+      // session (see buildCombinedBlueprint) — there is no single template
+      // that could represent that combination, so it always goes straight
+      // to the rules engine instead of trying to match one.
       let match = null;
-      for (const goal of goals) {
-        const forGoal = candidates.rows.filter(t => t.goal === goal);
-        if (forGoal.length === 0) continue;
-        // No template covers the exact days/week the client asked for —
-        // pick whichever comes closest instead of an arbitrary one, so a
-        // client wanting 4 days/week doesn't get silently matched to some
-        // unrelated 1-day template just because it happened to be newest.
-        // Ties keep candidates' current (newest-first) order.
-        const requested = parseInt(answers.daysPerWeek, 10);
-        match = forGoal.find(t => t.days_per_week === answers.daysPerWeek)
-          || forGoal.reduce((best, t) => {
-            const diff = Math.abs(parseInt(t.days_per_week, 10) - requested);
-            const bestDiff = Math.abs(parseInt(best.days_per_week, 10) - requested);
-            return diff < bestDiff ? t : best;
-          }, forGoal[0]);
-        if (match) break;
+      if (goals.length === 1) {
+        // Without an ORDER BY, Postgres doesn't guarantee row order — if more
+        // than one template shares a goal, .find() below would pick whichever
+        // one the scan happened to return first, not necessarily the one the
+        // admin actually intends (e.g. the one they just edited). Newest
+        // first is at least deterministic and favors the actively-maintained
+        // template over an old leftover.
+        const candidates = await pool.query(
+          'SELECT * FROM plan_templates WHERE goal = ANY($1::text[]) ORDER BY created_at DESC',
+          [goals]
+        );
+        for (const goal of goals) {
+          const forGoal = candidates.rows.filter(t => t.goal === goal);
+          if (forGoal.length === 0) continue;
+          // No template covers the exact days/week the client asked for —
+          // pick whichever comes closest instead of an arbitrary one, so a
+          // client wanting 4 days/week doesn't get silently matched to some
+          // unrelated 1-day template just because it happened to be newest.
+          // Ties keep candidates' current (newest-first) order.
+          const requested = parseInt(answers.daysPerWeek, 10);
+          match = forGoal.find(t => t.days_per_week === answers.daysPerWeek)
+            || forGoal.reduce((best, t) => {
+              const diff = Math.abs(parseInt(t.days_per_week, 10) - requested);
+              const bestDiff = Math.abs(parseInt(best.days_per_week, 10) - requested);
+              return diff < bestDiff ? t : best;
+            }, forGoal[0]);
+          if (match) break;
+        }
       }
       const gymId = answers.gymId || null;
+      // The first selected aim stands in for "the goal" wherever the engine
+      // only has room for one (e.g. the compound-preference scoring bonus) —
+      // a secondary effect, not the thing that decides session structure.
       const goalForPlan = match ? match.goal : (goals[0] || 'General fitness');
       const profile = buildGenerationProfile(answers, goalForPlan);
 
       let planDays = null;
       let generationMeta = null;
-      const planName = match ? match.name : `${goalForPlan} — ${profile.daysPerWeek} Day Plan`;
+      const planName = match ? match.name : `${goals.join(' + ')} — ${profile.daysPerWeek} Day Plan`;
 
       const gym = gymId ? await loadGymForGeneration(gymId) : null;
 
@@ -942,8 +953,16 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
       } else {
         // Session length shapes the blueprint itself — a 30-minute session is
         // composed of the priority work, not a 90-minute session with the end
-        // trimmed off.
-        const blueprintDays = buildDefaultBlueprint(goalForPlan, profile.daysPerWeek, profile.sessionMinutes);
+        // trimmed off. A single selected aim behaves exactly as before —
+        // buildDefaultBlueprint is buildCombinedBlueprint with one goal — and
+        // more than one aim concatenates each aim's own block into one day.
+        // buildDefaultBlueprint(goal, ...) is buildCombinedBlueprint([goal], ...)
+        // by definition, so a matched single-goal template and an unmatched
+        // multi-aim submission both go through the same call — only the
+        // array differs.
+        const blueprintDays = buildCombinedBlueprint(
+          match ? [match.goal] : goals, profile.daysPerWeek, profile.sessionMinutes
+        );
 
         const library = await loadLibraryForGeneration();
         const result = generatePlan(
@@ -974,6 +993,10 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
               generatedAt: new Date().toISOString(),
               source: 'rules_engine',
               templateId: match?.id || null,
+              // The full set of aims that went into this plan, not just
+              // goalForPlan — an admin looking at why a session is long or
+              // repetitive needs to see it was more than one aim combined.
+              goals: match ? [match.goal] : goals,
               gymId,
               decisions: result.decisions,
             };
@@ -1148,7 +1171,7 @@ app.get('/api/plan-templates', requireAdmin, async (req, res) => {
 
 // A template is category metadata only — goal, days/week, duration, name.
 // The rules engine builds every plan's actual exercises from goal + days/week
-// alone (see buildDefaultBlueprint), the same way for every client, so there
+// alone (see buildCombinedBlueprint), the same way for every client, so there
 // is no content here for an admin to author or for editing one template to
 // push out to clients already assigned from it.
 app.post('/api/plan-templates', requireAdmin, async (req, res) => {

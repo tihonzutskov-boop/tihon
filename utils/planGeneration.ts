@@ -10,6 +10,7 @@ import type {
 // so these run at generation time. Compiled alongside planGeneration into the
 // engine build the server uses.
 import { shapeFor, bookendsFor, trainingMinutesAvailable } from './sessionShape.js';
+import type { SessionShape } from './sessionShape.js';
 
 // ---------------------------------------------------------------------------
 // Inputs
@@ -241,45 +242,76 @@ const GOALS_WITH_CONDITIONING = new Set(['Weight loss', 'Endurance']);
 // Builds a complete blueprint from goal + days/week alone — no admin
 // authoring required. An admin-authored blueprint always wins when one
 // exists; this is what every other client falls back to.
-export const buildDefaultBlueprint = (goal: string, daysPerWeek: number, sessionMinutes = 60): BlueprintDay[] => {
-  const { dayNames } = selectSplit(daysPerWeek);
+//
+// One aim's slots for one day, with that aim's own prescription already
+// applied and priorities numbered locally from 1 — a combining caller
+// renumbers them to sit after whichever blocks came before. Split out so
+// buildCombinedBlueprint can call it once per selected aim without
+// duplicating the goal → template → prescription logic.
+const slotsForGoal = (goal: string, dayName: string, shape: SessionShape): ExerciseSlot[] => {
   const rx = GOAL_PRESCRIPTION[goal] || GOAL_PRESCRIPTION[DEFAULT_GOAL];
+  // A mobility session has no upper/lower or push/pull split to speak of —
+  // it works whichever regions the client has, every time — so it ignores
+  // the day-name-driven template lookup that every other goal uses.
+  const base = goal === 'Mobility' ? MOBILITY : (DAY_TEMPLATES.find(t => t.match(dayName))?.slots || FULL_BODY);
+  const focused = shape.includeAccessories ? base : base.filter(sp => !sp.optional);
+  const withFinisher: SlotSpec[] = GOALS_WITH_CONDITIONING.has(goal) && shape.includeAccessories
+    ? [...focused, { pattern: 'conditioning', kind: 'isolation', optional: true }]
+    : focused;
+
+  return withFinisher.map((spec, i) => ({
+    ...rx[spec.kind],
+    id: `slot-${i}`, // placeholder — the caller (single- or combined-blueprint) assigns the real, namespaced id
+    movementPattern: spec.pattern,
+    priority: i + 1,
+    optional: spec.optional,
+    // Conditioning and mobility work sit outside the compound/isolation
+    // split, so leaving the category unset lets any exercise tagged for
+    // that pattern fill the slot rather than none.
+    exerciseCategory: MOBILITY_PATTERNS.has(spec.pattern) || spec.pattern === 'conditioning'
+      ? undefined
+      : rx[spec.kind].exerciseCategory,
+  }));
+};
+
+export const buildDefaultBlueprint = (goal: string, daysPerWeek: number, sessionMinutes = 60): BlueprintDay[] =>
+  buildCombinedBlueprint([goal], daysPerWeek, sessionMinutes);
+
+// A client can select more than one aim, and each one contributes its own
+// block of slots to the same day — not averaged together into a prescription
+// neither aim actually asked for, but done properly once per aim, back to
+// back. Picking Muscle gain + Mobility gets Muscle gain's compound lifts at
+// its own reps/rest, followed by Mobility's joint work at its own reps/rest.
+//
+// Selecting goals that overlap heavily (e.g. Muscle gain + Weight loss, which
+// already share almost every movement pattern) is not specially detected or
+// blocked — each still contributes its own slot for, say, squat, and the
+// generator fills both with two different squat-pattern exercises rather than
+// one. That produces a long, repetitive session, and for a short session it
+// legitimately fails to fit (the same cannot_fit_duration outcome any
+// over-full day produces) rather than silently truncating into something
+// neither aim asked for. The safety valve is the existing duration fitter,
+// not goal-pair-specific logic.
+export const buildCombinedBlueprint = (goals: string[], daysPerWeek: number, sessionMinutes = 60): BlueprintDay[] => {
+  const activeGoals = goals.length > 0 ? goals : [DEFAULT_GOAL];
+  const { dayNames } = selectSplit(daysPerWeek);
   // Session length shapes what gets built, rather than trimming what was built.
   // A short session is composed of the priority work only; it is not a long
   // session with the end cut off.
   const shape = shapeFor(sessionMinutes);
 
   return dayNames.map((name, dayIdx) => {
-    // A mobility session has no upper/lower or push/pull split to speak of —
-    // it works whichever regions the client has, every time — so it ignores
-    // the day-name-driven template lookup that every other goal uses.
-    const base = goal === 'Mobility' ? MOBILITY : (DAY_TEMPLATES.find(t => t.match(name))?.slots || FULL_BODY);
-    const focused = shape.includeAccessories ? base : base.filter(sp => !sp.optional);
-    const withFinisher: SlotSpec[] = GOALS_WITH_CONDITIONING.has(goal) && shape.includeAccessories
-      ? [...focused, { pattern: 'conditioning', kind: 'isolation', optional: true }]
-      : focused;
-    // The warm-up is no longer a mobility slot competing for library coverage —
-    // it is emitted as a structured block by the generator, so a library with
-    // no mobility exercises still produces a warmed-up session.
-    const specs: SlotSpec[] = withFinisher;
+    const slots: ExerciseSlot[] = [];
+    let priorityOffset = 0;
+    activeGoals.forEach((goal, goalIdx) => {
+      const goalSlots = slotsForGoal(goal, name, shape);
+      goalSlots.forEach((spec, i) => {
+        slots.push({ ...spec, id: `defslot-${dayIdx}-${goalIdx}-${i}`, priority: priorityOffset + i + 1 });
+      });
+      priorityOffset += goalSlots.length;
+    });
 
-    return {
-      id: `defbp-${dayIdx}`,
-      name,
-      slots: specs.map((spec, i) => ({
-        ...rx[spec.kind],
-        id: `defslot-${dayIdx}-${i}`,
-        movementPattern: spec.pattern,
-        priority: i + 1,
-        optional: spec.optional,
-        // Conditioning and mobility work sit outside the compound/isolation
-        // split, so leaving the category unset lets any exercise tagged for
-        // that pattern fill the slot rather than none.
-        exerciseCategory: MOBILITY_PATTERNS.has(spec.pattern) || spec.pattern === 'conditioning'
-          ? undefined
-          : rx[spec.kind].exerciseCategory,
-      })),
-    };
+    return { id: `defbp-${dayIdx}`, name, slots };
   });
 };
 

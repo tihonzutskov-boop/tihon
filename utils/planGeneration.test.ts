@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   checkEligibility, eligibleExercises, gymEquipmentIds, selectSplit,
   selectForSlot, estimateDayMinutes, generatePlan, validatePlan, buildDefaultBlueprint,
-  GenerationProfile, EligibilityContext,
+  buildCombinedBlueprint, GenerationProfile, EligibilityContext,
 } from './planGeneration';
 import type { GenerationFailure } from './planGeneration';
 import { LibraryExercise, Gym, ExerciseSlot, PlanTemplate, Exercise, ALL_JOINT_STRESS_AREAS } from '../types';
@@ -667,6 +667,65 @@ describe('goal selection', () => {
   it('offers Mobility, not General fitness, as a new-client choice', () => {
     expect(QUESTIONNAIRE_GOALS).toContain('Mobility');
     expect(QUESTIONNAIRE_GOALS).not.toContain('General fitness');
+  });
+});
+
+describe('buildCombinedBlueprint — aims as blocks that add together', () => {
+  it('behaves exactly like buildDefaultBlueprint when only one aim is given', () => {
+    const combined = buildCombinedBlueprint(['Mobility'], 3, 60);
+    const single = buildDefaultBlueprint('Mobility', 3, 60);
+    expect(combined.map(d => d.slots.map(s => s.movementPattern))).toEqual(
+      single.map(d => d.slots.map(s => s.movementPattern))
+    );
+  });
+
+  // The actual feature: two aims concatenate as two intact blocks, each
+  // keeping its own prescription — not averaged into something neither
+  // aim asked for.
+  it('concatenates each aim\'s own block with its own prescription', () => {
+    const bp = buildCombinedBlueprint(['Muscle gain', 'Mobility'], 3, 60);
+    const slots = bp[0].slots;
+    const muscleGainSlots = slots.filter(s => s.restSeconds === 120);
+    const mobilitySlots = slots.filter(s => s.restSeconds === 20);
+    expect(muscleGainSlots.map(s => s.movementPattern)).toEqual(
+      expect.arrayContaining(['squat', 'horizontal_push', 'horizontal_pull'])
+    );
+    expect(mobilitySlots.map(s => s.movementPattern)).toEqual(
+      expect.arrayContaining(['hip_mobility', 'shoulder_mobility'])
+    );
+  });
+
+  it('keeps each block\'s required slots required and optional slots optional', () => {
+    const bp = buildCombinedBlueprint(['Muscle gain', 'Mobility'], 1, 60);
+    const squat = bp[0].slots.find(s => s.movementPattern === 'squat');
+    const ankle = bp[0].slots.find(s => s.movementPattern === 'ankle_mobility');
+    expect(squat?.optional).toBeFalsy();
+    expect(ankle?.optional).toBe(true);
+  });
+
+  // Priorities must not collide across blocks, or the duration fitter (which
+  // drops the highest-priority-number optional slot first) would trim the
+  // wrong aim's work first.
+  it('gives every slot a unique priority across blocks', () => {
+    const bp = buildCombinedBlueprint(['Muscle gain', 'Mobility'], 1, 60);
+    const priorities = bp[0].slots.map(s => s.priority);
+    expect(new Set(priorities).size).toBe(priorities.length);
+  });
+
+  // Overlapping aims are not specially detected — each still contributes its
+  // own slot for the movement patterns they share. Documented behavior, not
+  // a crash: a short session genuinely cannot fit all of it, which the
+  // existing duration fitter (and, if that is not enough, cannot_fit_duration)
+  // already handles for any over-full day.
+  it('does not deduplicate overlapping movement patterns across two similar aims', () => {
+    const bp = buildCombinedBlueprint(['Muscle gain', 'Weight loss'], 1, 60);
+    const squats = bp[0].slots.filter(s => s.movementPattern === 'squat');
+    expect(squats).toHaveLength(2);
+  });
+
+  it('falls back to a default goal when given an empty list rather than crashing', () => {
+    const bp = buildCombinedBlueprint([], 1, 60);
+    expect(bp[0].slots.length).toBeGreaterThan(0);
   });
 });
 
