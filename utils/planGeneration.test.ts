@@ -6,6 +6,7 @@ import {
 } from './planGeneration';
 import type { GenerationFailure } from './planGeneration';
 import { LibraryExercise, Gym, ExerciseSlot, PlanTemplate, Exercise, ALL_JOINT_STRESS_AREAS } from '../types';
+import { QUESTIONNAIRE_GOALS } from '../constants';
 
 // --- fixtures ---------------------------------------------------------------
 
@@ -618,6 +619,54 @@ describe('split coverage at higher day counts', () => {
   it('switches to push/pull/legs at 5+ days', () => {
     expect(selectSplit(5).split).toBe('push_pull_legs');
     expect(selectSplit(6).dayNames).toEqual(['Push', 'Pull', 'Legs', 'Push', 'Pull', 'Legs']);
+  });
+});
+
+describe('goal selection', () => {
+  it('offers Mobility as a genuinely different structure, not a rep-range variant', () => {
+    const bp = buildDefaultBlueprint('Mobility', 3, 60);
+    const patterns = bp[0].slots.map(s => s.movementPattern);
+    expect(patterns).toEqual(
+      expect.arrayContaining(['hip_mobility', 'shoulder_mobility', 'spine_mobility', 'ankle_mobility'])
+    );
+    // Not fatigue work: short rest, unlike every strength goal.
+    expect(bp[0].slots.every(s => s.restSeconds <= 20)).toBe(true);
+  });
+
+  it('requires hip and shoulder mobility but treats spine/ankle as optional', () => {
+    const bp = buildDefaultBlueprint('Mobility', 1, 60);
+    const required = bp[0].slots.filter(s => !s.optional).map(s => s.movementPattern);
+    expect(required).toEqual(expect.arrayContaining(['hip_mobility', 'shoulder_mobility']));
+    expect(required).not.toContain('spine_mobility');
+    expect(required).not.toContain('ankle_mobility');
+  });
+
+  // A mobility day has no upper/lower split — it should look the same
+  // regardless of how many days a week were requested.
+  it('gives every Mobility day the same structure, unlike a strength split', () => {
+    const bp = buildDefaultBlueprint('Mobility', 4, 60);
+    const patterns = bp.map(d => d.slots.map(s => s.movementPattern).join(','));
+    expect(new Set(patterns).size).toBe(1);
+  });
+
+  // The actual bug being fixed: two goals that produced the same plan.
+  it('no longer produces an identical plan for Muscle gain and General fitness', () => {
+    const muscle = buildDefaultBlueprint('Muscle gain', 3, 60);
+    const general = buildDefaultBlueprint('General fitness', 3, 60);
+    // General fitness still resolves (old data), but is no longer offered —
+    // the two remain numerically distinct so nothing regressed for it.
+    expect(muscle[0].slots[0].repsMin).not.toBe(general[0].slots[0].repsMin);
+  });
+
+  it('still resolves a legacy General fitness goal rather than erroring', () => {
+    const bp = buildDefaultBlueprint('General fitness', 2, 60);
+    expect(bp.length).toBe(2);
+    expect(bp[0].slots.length).toBeGreaterThan(0);
+  });
+
+  it('offers Mobility, not General fitness, as a new-client choice', () => {
+    expect(QUESTIONNAIRE_GOALS).toContain('Mobility');
+    expect(QUESTIONNAIRE_GOALS).not.toContain('General fitness');
   });
 });
 

@@ -241,7 +241,12 @@ export type MovementPattern =
   | 'hip_adduction'         // adductor machine, cable hip adduction
   | 'hip_abduction'         // abductor machine, banded lateral walk
   | 'calf_raise'
-  | 'core' | 'conditioning' | 'mobility';
+  | 'core' | 'conditioning' | 'mobility'
+  // A mobility *day* needs regional balance the same way a strength day does
+  // — one generic 'mobility' tag would let the generator fill a full-body
+  // session with five ankle drills and nothing for the shoulders. These give
+  // it real slots to spread across joint regions instead.
+  | 'hip_mobility' | 'shoulder_mobility' | 'spine_mobility' | 'ankle_mobility';
 
 export type ExerciseCategory = 'compound' | 'isolation' | 'cardio' | 'mobility' | 'warmup' | 'cooldown';
 

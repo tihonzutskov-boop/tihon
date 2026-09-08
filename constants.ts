@@ -3,7 +3,12 @@ import { EquipmentType, GymZone, Gym } from './types';
 
 // Shared with the admin Coaching roster so the questionnaire's goal
 // options and the admin's grouping-by-goal can never drift apart.
-export const QUESTIONNAIRE_GOALS = ['Weight loss', 'Muscle gain', 'General fitness', 'Endurance'];
+// 'General fitness' dropped from new selection: for a beginner it produced a
+// program indistinguishable from 'Muscle gain' (same exercises, reps 10-12 vs
+// 8-12, rest 90s vs 120s) — a choice in name only. Merged into 'Muscle gain'.
+// The engine still resolves 'General fitness' for any answers or templates
+// that predate this change (see GOAL_PRESCRIPTION and DEFAULT_GOAL).
+export const QUESTIONNAIRE_GOALS = ['Muscle gain', 'Weight loss', 'Endurance', 'Mobility'];
 
 // Mock Data
 // Coordinates are RELATIVE to the gym floor top-left (0,0)

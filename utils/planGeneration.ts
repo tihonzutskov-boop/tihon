@@ -130,6 +130,15 @@ const GOAL_PRESCRIPTION: Record<string, { compound: Omit<ExerciseSlot, 'id' | 'm
     compound: { setsMin: 2, setsMax: 3, repsMin: 15, repsMax: 20, restSeconds: 45, exerciseCategory: 'compound' },
     isolation: { setsMin: 2, setsMax: 2, repsMin: 15, repsMax: 20, restSeconds: 30, exerciseCategory: 'isolation' },
   },
+  // Not fatigue work, so the usual set/rep logic barely applies: fewer
+  // controlled reps, short rest, no load. exerciseCategory left off both
+  // halves (mirrors the treatment 'mobility' and 'conditioning' patterns
+  // already get below) so any exercise tagged for the region fills the slot
+  // rather than needing a category match on top of the pattern match.
+  'Mobility': {
+    compound: { setsMin: 1, setsMax: 2, repsMin: 8, repsMax: 10, restSeconds: 20 },
+    isolation: { setsMin: 1, setsMax: 2, repsMin: 8, repsMax: 10, restSeconds: 20 },
+  },
 };
 const DEFAULT_GOAL = 'General fitness';
 
@@ -137,6 +146,24 @@ const DEFAULT_GOAL = 'General fitness';
 // first (it's required), accessories and conditioning last (optional, so the
 // duration fitter trims them before touching the main lifts).
 type SlotSpec = { pattern: MovementPattern; kind: 'compound' | 'isolation'; optional?: boolean };
+
+// One session structure regardless of day count: unlike a strength split,
+// there's no basis for an "upper mobility day" vs a "lower mobility day" — a
+// mobility session works whichever regions the client has, every time. Hip
+// and shoulder are required since they're the two regions beginners lose the
+// most range in from sitting; spine and ankle are real but lower-priority,
+// so a short session keeps the first three and drops last.
+const MOBILITY_PATTERNS = new Set<MovementPattern>([
+  'mobility', 'hip_mobility', 'shoulder_mobility', 'spine_mobility', 'ankle_mobility',
+]);
+
+const MOBILITY: SlotSpec[] = [
+  { pattern: 'hip_mobility', kind: 'isolation' },
+  { pattern: 'shoulder_mobility', kind: 'isolation' },
+  { pattern: 'spine_mobility', kind: 'isolation', optional: true },
+  { pattern: 'ankle_mobility', kind: 'isolation', optional: true },
+  { pattern: 'core', kind: 'isolation', optional: true },
+];
 
 const FULL_BODY: SlotSpec[] = [
   { pattern: 'squat', kind: 'compound' },
@@ -223,7 +250,10 @@ export const buildDefaultBlueprint = (goal: string, daysPerWeek: number, session
   const shape = shapeFor(sessionMinutes);
 
   return dayNames.map((name, dayIdx) => {
-    const base = DAY_TEMPLATES.find(t => t.match(name))?.slots || FULL_BODY;
+    // A mobility session has no upper/lower or push/pull split to speak of —
+    // it works whichever regions the client has, every time — so it ignores
+    // the day-name-driven template lookup that every other goal uses.
+    const base = goal === 'Mobility' ? MOBILITY : (DAY_TEMPLATES.find(t => t.match(name))?.slots || FULL_BODY);
     const focused = shape.includeAccessories ? base : base.filter(sp => !sp.optional);
     const withFinisher: SlotSpec[] = GOALS_WITH_CONDITIONING.has(goal) && shape.includeAccessories
       ? [...focused, { pattern: 'conditioning', kind: 'isolation', optional: true }]
@@ -242,13 +272,10 @@ export const buildDefaultBlueprint = (goal: string, daysPerWeek: number, session
         movementPattern: spec.pattern,
         priority: i + 1,
         optional: spec.optional,
-        // Conditioning is neither compound nor isolation in the library's
-        // taxonomy — leaving the category unset lets any cardio-tagged
-        // exercise fill it rather than none.
         // Conditioning and mobility work sit outside the compound/isolation
         // split, so leaving the category unset lets any exercise tagged for
         // that pattern fill the slot rather than none.
-        exerciseCategory: (spec.pattern === 'conditioning' || spec.pattern === 'mobility')
+        exerciseCategory: MOBILITY_PATTERNS.has(spec.pattern) || spec.pattern === 'conditioning'
           ? undefined
           : rx[spec.kind].exerciseCategory,
       })),
