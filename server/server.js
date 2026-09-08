@@ -29,8 +29,26 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Database Connection
+//
+// With no timeouts set, a Pool has none of its own: if Postgres is
+// unreachable — suspended, mid-restart, a network partition — pool.connect()
+// hangs forever, and a query on a client that connected fine but then stalls
+// hangs just as long. Every route waits on the same pool, so the failure mode
+// is not a slow response but no response at all: the request neither succeeds
+// nor errors, so nothing gets logged and nothing times a client out — from
+// outside the gym looks permanently "loading". These turn that silent hang
+// into a fast, loggable error instead.
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:password@localhost:5432/gym_cartographer'
+  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:password@localhost:5432/gym_cartographer',
+  // Fails a checkout that can't reach Postgres at all, rather than hanging.
+  connectionTimeoutMillis: 8_000,
+  // Fails a query that connected fine but then stalls — a lock, a runaway
+  // scan, a database that stopped responding mid-session.
+  statement_timeout: 15_000,
+  // A checked-out-but-idle connection is a leak (a missing client.release())
+  // or a client the pool briefly over-provisioned; recycled rather than held
+  // forever, so a leak degrades the pool over minutes instead of permanently.
+  idleTimeoutMillis: 30_000,
 });
 const requireAdmin = createRequireAdmin(pool);
 
