@@ -372,6 +372,11 @@ const AdminCoaching: React.FC = () => {
                               {client.avatarUrl ? <img src={client.avatarUrl} alt={client.name} className="w-full h-full object-cover" /> : client.name.charAt(0)}
                             </div>
                             <span className="text-xs font-bold text-white truncate">{client.name}</span>
+                            {client.isAdmin && (
+                              <span className="flex-shrink-0 text-[8.5px] font-extrabold uppercase tracking-wide px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400">
+                                Admin
+                              </span>
+                            )}
                           </div>
                           <div className="flex flex-wrap items-center gap-1">
                             <span

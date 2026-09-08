@@ -1061,7 +1061,7 @@ app.put('/api/coaching/generation-failures/:id/resolve', requireAdmin, async (re
 app.get('/api/coaching/clients', requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT u.id AS user_id, u.name, u.email, u.avatar_url, u.joined_date,
+      SELECT u.id AS user_id, u.name, u.email, u.avatar_url, u.joined_date, u.role,
              tq.answers, tq.submitted_at,
              up.name AS plan_name, up.days AS plan_days,
              log_stats.sessions_logged, log_stats.last_logged_at
@@ -1079,7 +1079,11 @@ app.get('/api/coaching/clients', requireAdmin, async (req, res) => {
         FROM exercise_logs
         GROUP BY user_id
       ) log_stats ON log_stats.user_id = u.id
-      WHERE u.role != 'admin'
+      -- Admins are included, not filtered out: an admin can also be a real
+      -- client with their own plan, and excluding them meant the person most
+      -- likely to be testing the product on themselves was the one account
+      -- nobody could inspect. Flagged instead, so they are identifiable
+      -- without being hidden.
       ORDER BY tq.submitted_at DESC NULLS LAST, u.joined_date DESC
     `);
     res.json({
@@ -1089,6 +1093,7 @@ app.get('/api/coaching/clients', requireAdmin, async (req, res) => {
         email: r.email,
         avatarUrl: r.avatar_url,
         joinedDate: r.joined_date,
+        isAdmin: r.role === 'admin',
         answers: r.answers || null,
         submittedAt: r.submitted_at,
         plan: r.plan_days ? { name: r.plan_name, days: r.plan_days } : null,

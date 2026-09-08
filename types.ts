@@ -432,6 +432,10 @@ export interface CoachingClient {
   email: string;
   avatarUrl?: string;
   joinedDate: string;
+  // An admin can also be a client — often the first real one, testing the
+  // product on themselves — so they appear here and are marked rather than
+  // hidden.
+  isAdmin?: boolean;
   // Null until the client submits the intake questionnaire. They are still a
   // client before that — they registered — so they appear in the list either
   // way, and this being null is what marks them as not yet onboarded.
