@@ -712,7 +712,11 @@ export const buildBookendExercise = (
   idSuffix: string,
 ): Exercise => ({
   id: `gbk-${idSuffix}`,
-  name: le ? le.name : block.name,
+  // Named for what it is, not for the machine that happens to back it. A
+  // warm-up titled "Exercise Bike" reads as a prescribed piece of equipment;
+  // the library entry is here to give the block a place on the map, not to
+  // become the block. Where to go is carried by equipmentId below.
+  name: block.name,
   targetMuscle: le?.targetMuscle || 'Full body',
   // Tracked by duration rather than sets, which is what these actually are.
   sets: 0,

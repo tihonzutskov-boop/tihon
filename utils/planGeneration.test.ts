@@ -3,6 +3,7 @@ import {
   checkEligibility, eligibleExercises, gymEquipmentIds, selectSplit,
   selectForSlot, estimateDayMinutes, generatePlan, validatePlan, buildDefaultBlueprint,
   buildCombinedBlueprint, assignAimsToDays, aimProfile, GenerationProfile, EligibilityContext,
+  buildBookendExercise,
   roundRestSeconds,
 } from './planGeneration';
 import type { GenerationFailure } from './planGeneration';
@@ -973,6 +974,23 @@ describe('warm-up and cooldown', () => {
 
   // The safety property from before still holds: a library with nothing
   // suitable costs a locatable warm-up, never the warm-up itself.
+  it('names a bookend for itself, not for the machine backing it', () => {
+    const bike = exercise({
+      id: 'bike', name: 'Exercise Bike', exerciseCategory: 'cardio', movementPattern: 'mobility',
+      equipmentId: 'zone-cardio',
+    });
+    const built = buildBookendExercise(
+      'warmup',
+      { name: 'Warm-up', minutes: 5, steps: ['2 minutes easy cardio'] },
+      bike,
+      'd0-warmup',
+    );
+    expect(built.name).toBe('Warm-up');
+    // The machine is still what gives the block a place on the map.
+    expect(built.equipmentId).toBe('zone-cardio');
+    expect(built.libraryExerciseId).toBe('bike');
+  });
+
   it('still emits bookends when nothing in the library can back them', () => {
     const pool = [exercise({ id: 'p1', name: 'Push' })];
     const blueprint: PlanTemplate = {

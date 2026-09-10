@@ -15,7 +15,7 @@ interface GuidedSessionProps {
   onFinish: () => void;
 }
 
-type StageKey = 'locate' | 'identify' | 'tutorial' | 'video';
+type StageKey = 'locate' | 'identify' | 'tutorial' | 'video' | 'bookend';
 const STANDARD_STAGES: { key: StageKey; label: string }[] = [
   { key: 'locate', label: 'Locate' },
   { key: 'identify', label: 'Identify' },
@@ -27,6 +27,14 @@ const STANDARD_STAGES: { key: StageKey; label: string }[] = [
 const VIDEO_STAGES: { key: StageKey; label: string }[] = [
   { key: 'video', label: 'Follow Along' },
 ];
+// A warm-up or cooldown is a description, not a machine. It used to walk the
+// client through Locate and Identify first — a map screen and an equipment
+// photo — which put the only thing that matters, the steps, on screen three,
+// and showed "Equipment not linked yet" for the many bookends that are just
+// bodyweight movement. Where to go is kept, as a line of text, since a
+// beginner still needs to know where the bike is.
+const WARMUP_STAGES: { key: StageKey; label: string }[] = [{ key: 'bookend', label: 'Warm-up' }];
+const COOLDOWN_STAGES: { key: StageKey; label: string }[] = [{ key: 'bookend', label: 'Cooldown' }];
 
 interface SetRow {
   reps: string;
@@ -59,6 +67,10 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   const stagesByExIdx = useMemo(
     () =>
       exercises.map(ex => {
+        // The bookend check comes first: a warm-up backed by a real library
+        // exercise is still a warm-up, and should not inherit that exercise's
+        // equipment stages.
+        if (ex.bookend) return ex.bookend === 'warmup' ? WARMUP_STAGES : COOLDOWN_STAGES;
         const le = ex.libraryExerciseId ? libraryExercises.find(l => l.id === ex.libraryExerciseId) : undefined;
         return le?.exerciseType === 'video' ? VIDEO_STAGES : STANDARD_STAGES;
       }),
@@ -442,9 +454,19 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-5">
           <div className="p-5 pb-4">
             <p className="text-[11px] font-extrabold text-lime-400 uppercase tracking-wide mb-1.5">
-              {exercise.targetMuscle} · {stage.label}
+              {exercise.bookend
+                ? `${exercise.cardioMinutes || 0} min`
+                : `${exercise.targetMuscle} · ${stage.label}`}
             </p>
-            <h2 className="text-xl font-extrabold text-white">{exercise.name}</h2>
+            {/* Plans generated before bookends were named for themselves still
+                carry the backing machine's name, so the title is corrected
+                here too rather than only at the source. */}
+            <h2 className="text-xl font-extrabold text-white">
+              {exercise.bookend
+                ? (exercise.bookend === 'warmup' ? day.warmup?.name : day.cooldown?.name)
+                  || (exercise.bookend === 'warmup' ? 'Warm-up' : 'Cooldown')
+                : exercise.name}
+            </h2>
           </div>
           {stage.key === 'video' ? (
             <div className="relative aspect-video border-b border-slate-800 bg-black overflow-hidden">
@@ -456,7 +478,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                 allowFullScreen
               />
             </div>
-          ) : stage.key === 'tutorial' && hasTutorialVideo ? (
+          ) : stage.key === 'bookend' ? null : stage.key === 'tutorial' && hasTutorialVideo ? (
             <>
               {/* Caption + Next Step used to sit as an absolute overlay on
                   top of the video — on a phone that overlay was tall
@@ -571,7 +593,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
               </div>
             )}
 
-            {!(stage.key === 'tutorial' && hasTutorialVideo) && (stage.key !== 'tutorial' || instructions) && (stage.key !== 'video' || instructions) && (
+            {stage.key !== 'bookend' && !(stage.key === 'tutorial' && hasTutorialVideo) && (stage.key !== 'tutorial' || instructions) && (stage.key !== 'video' || instructions) && (
               <p className={`text-sm text-slate-400 leading-relaxed ${stage.key === 'video' ? 'mt-3' : ''}`}>
                 {stage.key === 'locate' && zone && `Head to the ${zone.name}. Follow the map above — it marks exactly where this machine sits on the gym floor.`}
                 {stage.key === 'locate' && !zone && 'This exercise has no zone set — ask an admin to link it in the plan editor.'}
@@ -581,7 +603,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
               </p>
             )}
 
-            {stage.key === 'tutorial' && (harder || easier || harderMedia || easierMedia) && (
+            {stage.key === 'tutorial' && !exercise.bookend && (harder || easier || harderMedia || easierMedia) && (
               <div className="grid grid-cols-2 gap-2.5 mt-4">
                 {(harder || harderMedia) && (
                   <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-3">
@@ -616,26 +638,34 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
 
             {/* A warm-up gets its steps instead of an effort rating — nothing
                 about it is logged or progressed, so asking how hard it was
-                would be asking for a number nothing reads. Rendered outside
-                the cardio/sets split because a bookend is duration-tracked and
-                would otherwise fall through both branches. */}
-            {stage.key === 'tutorial' && exercise.bookend && (
-              <div className="mt-5 pt-4 border-t border-slate-800">
-                <p className="text-xs font-extrabold text-lime-400 uppercase tracking-wide">
-                  {exercise.bookend === 'warmup' ? 'Warm-up' : 'Cooldown'}
-                </p>
-                <ul className="mt-2.5 space-y-1.5">
+                would be asking for a number nothing reads. */}
+            {stage.key === 'bookend' && (
+              <>
+                {/* All that survives of the old Locate stage. A beginner still
+                    needs to know where the bike is; they do not need a map
+                    screen and an equipment photo to be told. */}
+                {zone && (
+                  <p className="text-xs text-slate-500 mb-3">
+                    Head to the <span className="font-bold text-slate-300">{zone.name}</span>.
+                  </p>
+                )}
+                <ul className="space-y-1.5">
                   {(exercise.bookend === 'warmup' ? day.warmup : day.cooldown)?.steps.map((step, i) => (
-                    <li key={i} className="text-xs text-slate-400 leading-relaxed flex gap-2">
+                    <li key={i} className="text-sm text-slate-400 leading-relaxed flex gap-2.5">
                       <span className="text-slate-600 font-bold shrink-0">{i + 1}</span>
                       <span>{step}</span>
                     </li>
                   ))}
                 </ul>
-              </div>
+                {/* Falls back to the entry's own notes when the day carries no
+                    structured steps — an older plan, or one built by hand. */}
+                {!(exercise.bookend === 'warmup' ? day.warmup : day.cooldown)?.steps?.length && exercise.notes && (
+                  <p className="text-sm text-slate-400 leading-relaxed">{exercise.notes}</p>
+                )}
+              </>
             )}
 
-            {stage.key === 'tutorial' && exercise.isCardio && (
+            {(stage.key === 'tutorial' || stage.key === 'bookend') && exercise.isCardio && (
               <div className="mt-5 pt-4 border-t border-slate-800">
                 <div className="flex items-center justify-between gap-3 bg-slate-800/60 border border-slate-700 rounded-xl p-4">
                   <div>
@@ -876,7 +906,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                   : 'Finish session'
                 : stage.key === 'video'
                 ? 'Mark Complete →'
-                : stage.key === 'tutorial'
+                : stage.key === 'tutorial' || stage.key === 'bookend'
                 ? 'Next exercise →'
                 : 'Next →'}
             </button>
