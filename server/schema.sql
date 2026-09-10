@@ -308,3 +308,43 @@ ALTER TABLE exercise_withdrawals ADD COLUMN IF NOT EXISTS pain_area VARCHAR(40);
 -- wrote it. Idempotent by the IS NULL guard: once a row has a real start date
 -- this never touches it again, and rows created from here on get one at insert.
 UPDATE user_plans SET started_at = updated_at WHERE started_at IS NULL;
+
+-- Check-ins taken either side of a session. Every other adaptation in the
+-- engine derives from the training log passively; these are the two things it
+-- cannot see. Recovery state (ILLNESS-1) is invisible to a log — no amount of
+-- history says whether someone is ill today. And the reason a session was
+-- short is invisible too: the log shows three exercises instead of five but
+-- not whether that was fatigue, a busy rack, or a meeting, which is exactly
+-- the distinction DELOAD-6 turns on.
+--
+-- One table with a phase discriminator rather than two: both are a check-in
+-- about one session, and a coach reads them as a pair.
+CREATE TABLE IF NOT EXISTS session_checkins (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  plan_day_id VARCHAR(100),
+  phase VARCHAR(4) NOT NULL CHECK (phase IN ('pre', 'post')),
+
+  -- Pre-session. readiness is 1 (drained) to 5 (fresh).
+  readiness SMALLINT CHECK (readiness BETWEEN 1 AND 5),
+  sleep VARCHAR(10) CHECK (sleep IN ('poor', 'ok', 'good')),
+  soreness VARCHAR(10) CHECK (soreness IN ('none', 'some', 'a_lot')),
+  illness VARCHAR(12) CHECK (illness IN ('none', 'recovered', 'mild', 'unwell')),
+  -- What the illness rules decided, stored rather than re-derived: the client
+  -- was shown this verdict and trained (or did not) on the strength of it, so
+  -- it is a record of what happened, not a value to recompute later.
+  verdict VARCHAR(10) CHECK (verdict IN ('train', 'reduced', 'rest')),
+
+  -- Post-session.
+  effort VARCHAR(12) CHECK (effort IN ('easy', 'moderate', 'hard', 'very_hard', 'maximal')),
+  completed_fully BOOLEAN,
+  cut_short_reason VARCHAR(20) CHECK (cut_short_reason IN ('time', 'fatigue', 'pain', 'equipment_busy', 'other')),
+
+  note TEXT,
+  recorded_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- The read patterns: a client's recent check-ins (ILLNESS-1's 7-day window,
+-- DELOAD-5's persistence check), newest first.
+CREATE INDEX IF NOT EXISTS idx_session_checkins_lookup
+  ON session_checkins (user_id, recorded_at DESC);

@@ -402,6 +402,116 @@ app.post('/api/exercise-logs', requireAuth, async (req, res) => {
   }
 });
 
+// --- Session check-ins -----------------------------------------------------
+
+const CHECKIN_ENUMS = {
+  phase: ['pre', 'post'],
+  sleep: ['poor', 'ok', 'good'],
+  soreness: ['none', 'some', 'a_lot'],
+  illness: ['none', 'recovered', 'mild', 'unwell'],
+  verdict: ['train', 'reduced', 'rest'],
+  effort: ['easy', 'moderate', 'hard', 'very_hard', 'maximal'],
+  cutShortReason: ['time', 'fatigue', 'pain', 'equipment_busy', 'other'],
+};
+
+const inEnum = (value, allowed) => value == null || allowed.includes(value);
+
+app.post('/api/session-checkins', requireAuth, async (req, res) => {
+  const c = req.body || {};
+  if (!CHECKIN_ENUMS.phase.includes(c.phase)) {
+    return res.status(400).json({ error: 'A check-in needs a phase of pre or post' });
+  }
+  if (c.readiness != null && !(Number.isInteger(c.readiness) && c.readiness >= 1 && c.readiness <= 5)) {
+    return res.status(400).json({ error: 'Readiness must be 1-5' });
+  }
+  // Validated rather than trusted to the column constraints: a rejected insert
+  // comes back as a generic database error, which tells the client nothing
+  // about which answer was the problem.
+  for (const [field, key] of [['sleep', 'sleep'], ['soreness', 'soreness'], ['illness', 'illness'],
+                              ['verdict', 'verdict'], ['effort', 'effort'],
+                              ['cutShortReason', 'cutShortReason']]) {
+    if (!inEnum(c[field], CHECKIN_ENUMS[key])) {
+      return res.status(400).json({ error: `Unrecognised value for ${field}` });
+    }
+  }
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO session_checkins
+         (user_id, plan_day_id, phase, readiness, sleep, soreness, illness, verdict,
+          effort, completed_fully, cut_short_reason, note)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       RETURNING id, recorded_at`,
+      [
+        req.user.id,
+        c.planDayId || null,
+        c.phase,
+        c.readiness ?? null,
+        c.sleep || null,
+        c.soreness || null,
+        c.illness || null,
+        c.verdict || null,
+        c.effort || null,
+        typeof c.completedFully === 'boolean' ? c.completedFully : null,
+        // DELOAD-6 depends on this being absent when the session was finished
+        // in full — a stale reason on a complete session would read as fatigue.
+        c.completedFully === false ? c.cutShortReason || null : null,
+        c.note || null,
+      ]
+    );
+    return res.json({ success: true, id: result.rows[0].id, recordedAt: result.rows[0].recorded_at });
+  } catch (err) {
+    console.error('Failed to save session check-in:', err.message);
+    return res.status(500).json({ error: 'Database error saving check-in' });
+  }
+});
+
+const mapCheckin = row => ({
+  id: row.id,
+  planDayId: row.plan_day_id,
+  phase: row.phase,
+  readiness: row.readiness,
+  sleep: row.sleep,
+  soreness: row.soreness,
+  illness: row.illness,
+  verdict: row.verdict,
+  effort: row.effort,
+  completedFully: row.completed_fully,
+  cutShortReason: row.cut_short_reason,
+  note: row.note,
+  recordedAt: row.recorded_at,
+});
+
+// Recent check-ins, plus the one fact the pre-session prompt needs before it
+// can be shown: when illness was last reported. ILLNESS-1 asks for recovery
+// status only inside a rolling window from that report, so without this the
+// prompt would either ask everybody every day or never ask at all.
+app.get('/api/session-checkins/me', requireAuth, async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit, 10) || 30, 200);
+  let client;
+  try {
+    client = await pool.connect();
+    const recent = await client.query(
+      `SELECT * FROM session_checkins WHERE user_id = $1 ORDER BY recorded_at DESC LIMIT $2`,
+      [req.user.id, limit]
+    );
+    const lastIllness = await client.query(
+      `SELECT MAX(recorded_at) AS at FROM session_checkins
+        WHERE user_id = $1 AND illness IS NOT NULL AND illness <> 'none'`,
+      [req.user.id]
+    );
+    return res.json({
+      checkIns: recent.rows.map(mapCheckin),
+      lastIllnessReportedAt: lastIllness.rows[0]?.at || null,
+    });
+  } catch (err) {
+    console.error('Failed to fetch check-ins:', err.message);
+    return res.status(500).json({ error: 'Database error fetching check-ins' });
+  } finally {
+    client?.release();
+  }
+});
+
 // History for the engine. Defaults to the whole log so the caller can compute
 // weekly volume; narrows to one exercise when the progression rule only needs
 // that movement's recent sessions.
@@ -1191,6 +1301,13 @@ app.get('/api/coaching/clients/:userId/history', requireAdmin, async (req, res) 
       [userId]
     );
 
+    // The two things the log cannot show, alongside it: how the client reported
+    // feeling before each session, and why a short session was short.
+    const checkInsRes = await client.query(
+      `SELECT * FROM session_checkins WHERE user_id = $1 ORDER BY recorded_at DESC LIMIT 200`,
+      [userId]
+    );
+
     // Day names come from the client's own plan rather than from workout_logs,
     // which is written by a separate call that can be missing. A day since
     // renamed or removed simply resolves to nothing, and the session still
@@ -1218,6 +1335,7 @@ app.get('/api/coaching/clients/:userId/history', requireAdmin, async (req, res) 
         painNote: row.pain_note,
         loggedAt: row.logged_at,
       })),
+      checkIns: checkInsRes.rows.map(mapCheckin),
       withdrawals: withdrawalsRes.rows.map(row => ({
         exerciseId: row.exercise_id,
         exerciseName: row.exercise_name,

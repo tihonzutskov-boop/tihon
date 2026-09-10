@@ -9,7 +9,9 @@ import {
   formatKg,
   formatTonnage,
   startOfWeek,
+  attachCheckIns,
   type LoggedExercise,
+  type CheckInRecord,
 } from './workoutHistory';
 
 const log = (over: Partial<LoggedExercise> & { loggedAt: string }): LoggedExercise => ({
@@ -207,5 +209,50 @@ describe('number formatting', () => {
     expect(formatTonnage(7010)).toBe('7,010 kg');
     expect(formatTonnage(24500)).toBe('24.5 t');
     expect(formatTonnage(0)).toBe('—');
+  });
+});
+
+describe('attachCheckIns', () => {
+  const sessionAt = '2026-01-20T18:00:00.000Z';
+  const sessions = groupIntoSessions([log({ loggedAt: sessionAt })]);
+  const checkIn = (over: Partial<CheckInRecord> & { phase: 'pre' | 'post'; recordedAt: string }): CheckInRecord =>
+    ({ id: 1, ...over });
+
+  it('matches the check-ins bracketing a session', () => {
+    const attached = attachCheckIns(sessions, [
+      checkIn({ id: 1, phase: 'pre', recordedAt: '2026-01-20T17:40:00.000Z' }),
+      checkIn({ id: 2, phase: 'post', recordedAt: '2026-01-20T18:50:00.000Z' }),
+    ]);
+    const found = attached.get(sessions[0].sessionId)!;
+    expect(found.pre?.id).toBe(1);
+    expect(found.post?.id).toBe(2);
+  });
+
+  it('never attaches a pre-session check-in recorded after the session', () => {
+    const attached = attachCheckIns(sessions, [
+      checkIn({ id: 1, phase: 'pre', recordedAt: '2026-01-20T19:00:00.000Z' }),
+    ]);
+    expect(attached.has(sessions[0].sessionId)).toBe(false);
+  });
+
+  it('drops a check-in from a session that was abandoned before anything was logged', () => {
+    // Two days earlier: someone checked in, saw the rest verdict, and left.
+    const attached = attachCheckIns(sessions, [
+      checkIn({ id: 9, phase: 'pre', recordedAt: '2026-01-18T17:00:00.000Z', illness: 'unwell' }),
+    ]);
+    expect(attached.has(sessions[0].sessionId)).toBe(false);
+  });
+
+  it('picks the nearest check-in when a client has trained repeatedly', () => {
+    const attached = attachCheckIns(sessions, [
+      checkIn({ id: 1, phase: 'pre', recordedAt: '2026-01-20T15:30:00.000Z' }),
+      checkIn({ id: 2, phase: 'pre', recordedAt: '2026-01-20T17:50:00.000Z' }),
+    ]);
+    expect(attached.get(sessions[0].sessionId)!.pre?.id).toBe(2);
+  });
+
+  it('returns nothing for a session with no check-ins at all', () => {
+    // Every session logged before this feature existed.
+    expect(attachCheckIns(sessions, []).size).toBe(0);
   });
 });

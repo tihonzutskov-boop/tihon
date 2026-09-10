@@ -35,12 +35,69 @@ export interface WithdrawalRecord {
   resolvedAt: string | null;
 }
 
+/** A check-in as it comes back from the server, either phase. */
+export interface CheckInRecord {
+  id: number;
+  planDayId?: string | null;
+  phase: 'pre' | 'post';
+  readiness?: number | null;
+  sleep?: string | null;
+  soreness?: string | null;
+  illness?: string | null;
+  verdict?: string | null;
+  effort?: string | null;
+  completedFully?: boolean | null;
+  cutShortReason?: string | null;
+  note?: string | null;
+  recordedAt: string;
+}
+
 export interface ClientHistory {
   client: { userId: number; name: string; email: string };
   dayNames: Record<string, string>;
   logs: LoggedExercise[];
+  checkIns: CheckInRecord[];
   withdrawals: WithdrawalRecord[];
 }
+
+/**
+ * Attaches each check-in to the session it belongs to.
+ *
+ * A check-in carries no session id — the session it brackets does not exist
+ * yet when the pre-session one is written. They are matched by proximity in
+ * time instead, which is exactly what they are: the pre-session check-in is
+ * the nearest one before the session's log, the post-session one the nearest
+ * after. A check-in from a session that was abandoned before anything was
+ * logged matches nothing, and is dropped rather than attached to whichever
+ * session happened to be nearest.
+ */
+export const MAX_CHECKIN_GAP_MS = 4 * 60 * 60 * 1000;
+
+export const attachCheckIns = (
+  sessions: HistorySession[],
+  checkIns: CheckInRecord[]
+): Map<string, { pre?: CheckInRecord; post?: CheckInRecord }> => {
+  const attached = new Map<string, { pre?: CheckInRecord; post?: CheckInRecord }>();
+  for (const session of sessions) {
+    const at = new Date(session.loggedAt).getTime();
+    const near = (phase: 'pre' | 'post') => {
+      let best: CheckInRecord | undefined;
+      let bestGap = MAX_CHECKIN_GAP_MS;
+      for (const c of checkIns) {
+        if (c.phase !== phase) continue;
+        const t = new Date(c.recordedAt).getTime();
+        // A pre-session check-in precedes its session; a post-session one follows.
+        const gap = phase === 'pre' ? at - t : t - at;
+        if (gap >= 0 && gap <= bestGap) { best = c; bestGap = gap; }
+      }
+      return best;
+    };
+    const pre = near('pre');
+    const post = near('post');
+    if (pre || post) attached.set(session.sessionId, { pre, post });
+  }
+  return attached;
+};
 
 export interface HistorySession {
   // The shared timestamp doubles as the session's identity — see groupIntoSessions.

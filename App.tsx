@@ -10,6 +10,7 @@ import MachineDetailModal from './components/MachineDetailModal';
 import EquipmentLibrary from './components/EquipmentLibrary';
 import ExerciseLibrary from './components/ExerciseLibrary';
 import GuidedSession from './components/GuidedSession';
+import SessionCheckIn from './components/SessionCheckIn';
 import ExerciseTutorials from './components/ExerciseTutorials';
 import { GymZone, WorkoutPlan, Exercise, Gym, GymMachine, User, Language, WorkoutDay, EquipmentItem, LibraryExercise, QuestionnaireAnswers } from './types';
 import { DEFAULT_GYM } from './constants';
@@ -110,7 +111,12 @@ const App: React.FC = () => {
   const [isPlanOpen, setIsPlanOpen] = useState(false);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [viewingMachine, setViewingMachine] = useState<GymMachine | null>(null);
-  const [guidedSessionOpen, setGuidedSessionOpen] = useState(false);
+  // A session is a sequence, not a single screen: the check-in before, the
+  // guided workout, then the check-in after. A boolean could only express the
+  // middle one, and the pre-session check-in has to be able to end the session
+  // before it starts (ILLNESS-4).
+  const [sessionPhase, setSessionPhase] = useState<'idle' | 'pre' | 'training' | 'post'>('idle');
+  const [savingCheckIn, setSavingCheckIn] = useState(false);
   // H-1: past week 12 the beginner rules are no longer evidenced, so the engine
   // stops adapting and asks for a decision rather than extrapolating.
   const [planNeedsReview, setPlanNeedsReview] = useState(false);
@@ -339,7 +345,10 @@ const App: React.FC = () => {
            onStartWorkout={(dayIndex, gymId) => {
              setActiveGymId(gymId);
              setActiveDayIndex(dayIndex);
-             setGuidedSessionOpen(true);
+             // ILLNESS-1 asks for recovery status *before* the workout is
+             // generated, so the check-in stands in front of the session
+             // rather than alongside it.
+             setSessionPhase('pre');
            }}
            questionnaire={questionnaire}
            onSubmitQuestionnaire={async (answers) => {
@@ -350,17 +359,50 @@ const App: React.FC = () => {
            onOpenTutorials={() => setTutorialsOpen(true)}
            lang={lang}
          />
-         {guidedSessionOpen && activeGym && workoutPlan.days[activeDayIndex] && (
+         {sessionPhase === 'pre' && workoutPlan.days[activeDayIndex] && (
+           <SessionCheckIn
+             phase="pre"
+             dayName={workoutPlan.days[activeDayIndex].name}
+             planDayId={workoutPlan.days[activeDayIndex].id}
+             saving={savingCheckIn}
+             onCancel={() => setSessionPhase('idle')}
+             onProceed={async (checkIn, verdict) => {
+               setSavingCheckIn(true);
+               // Recorded before training rather than after, so a session
+               // abandoned midway still leaves the reported state behind —
+               // that is exactly the case a coach needs to see.
+               await api.saveCheckIn({ ...checkIn, verdict: verdict.verdict });
+               setSavingCheckIn(false);
+               setSessionPhase('training');
+             }}
+           />
+         )}
+         {sessionPhase === 'training' && activeGym && workoutPlan.days[activeDayIndex] && (
            <GuidedSession
              day={workoutPlan.days[activeDayIndex]}
              gym={activeGym}
              equipmentList={equipmentList}
              libraryExercises={libraryExercises}
-             onClose={() => setGuidedSessionOpen(false)}
+             onClose={() => setSessionPhase('idle')}
              onFinish={() => {
                const d = workoutPlan.days[activeDayIndex];
                api.completeWorkout(d.name, d.exercises.length, d.id);
-               setGuidedSessionOpen(false);
+               setSessionPhase('post');
+             }}
+           />
+         )}
+         {sessionPhase === 'post' && workoutPlan.days[activeDayIndex] && (
+           <SessionCheckIn
+             phase="post"
+             dayName={workoutPlan.days[activeDayIndex].name}
+             planDayId={workoutPlan.days[activeDayIndex].id}
+             saving={savingCheckIn}
+             onCancel={() => setSessionPhase('idle')}
+             onSubmitPost={async (checkIn) => {
+               setSavingCheckIn(true);
+               await api.saveCheckIn(checkIn);
+               setSavingCheckIn(false);
+               setSessionPhase('idle');
              }}
            />
          )}

@@ -5,8 +5,8 @@ import {
 import { api } from '../services/api';
 import {
   groupIntoSessions, summarize, exercisesInHistory, historyForExercise, bestSetKg,
-  effortLabel, formatSets, formatWeight, formatKg, formatTonnage,
-  type HistorySession, type LoggedExercise, type WithdrawalRecord,
+  effortLabel, formatSets, formatWeight, formatKg, formatTonnage, attachCheckIns,
+  type HistorySession, type LoggedExercise, type WithdrawalRecord, type CheckInRecord,
 } from '../utils/workoutHistory';
 
 interface WorkoutHistoryProps {
@@ -88,7 +88,61 @@ const ExerciseRow: React.FC<{ exercise: LoggedExercise }> = ({ exercise }) => {
   );
 };
 
-const SessionCard: React.FC<{ session: HistorySession }> = ({ session }) => {
+const READINESS_WORDS = ['', 'Drained', 'Low', 'OK', 'Good', 'Fresh'];
+const SLEEP_WORDS: Record<string, string> = { poor: 'Slept poorly', ok: 'Slept OK', good: 'Slept well' };
+const SORENESS_WORDS: Record<string, string> = { none: 'Not sore', some: 'A bit sore', a_lot: 'Very sore' };
+const EFFORT_WORDS: Record<string, string> = {
+  easy: 'Easy', moderate: 'Moderate', hard: 'Hard', very_hard: 'Very hard', maximal: 'Maximal',
+};
+const CUT_SHORT_WORDS: Record<string, string> = {
+  time: 'ran out of time', fatigue: 'too tired to finish', pain: 'something hurt',
+  equipment_busy: 'equipment was busy', other: 'another reason',
+};
+const ILLNESS_WORDS: Record<string, string> = {
+  recovered: 'Recently ill — fully recovered',
+  mild: 'Recently ill — mild symptoms',
+  unwell: 'Reported still unwell',
+};
+
+const Chip: React.FC<{ tone?: 'plain' | 'warn'; children: React.ReactNode }> = ({ tone = 'plain', children }) => (
+  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+    tone === 'warn'
+      ? 'bg-orange-500/10 text-orange-300 border-orange-500/30'
+      : 'bg-slate-800 text-slate-300 border-slate-700'
+  }`}>{children}</span>
+);
+
+// How the client said they felt, either side of the session. The value here is
+// the pairing: "drained beforehand, cut short from fatigue" is a story neither
+// the log nor either check-in tells on its own.
+const CheckInStrip: React.FC<{ pre?: CheckInRecord; post?: CheckInRecord }> = ({ pre, post }) => {
+  if (!pre && !post) return null;
+  const cutShort = post && post.completedFully === false;
+  return (
+    <div className="pt-3 mt-1 border-t border-slate-800">
+      <p className="text-[9.5px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Check-in</p>
+      <div className="flex flex-wrap gap-1.5">
+        {pre?.readiness != null && <Chip tone={pre.readiness <= 2 ? 'warn' : 'plain'}>{READINESS_WORDS[pre.readiness]}</Chip>}
+        {pre?.sleep && <Chip tone={pre.sleep === 'poor' ? 'warn' : 'plain'}>{SLEEP_WORDS[pre.sleep]}</Chip>}
+        {pre?.soreness && pre.soreness !== 'none' && <Chip tone={pre.soreness === 'a_lot' ? 'warn' : 'plain'}>{SORENESS_WORDS[pre.soreness]}</Chip>}
+        {pre?.illness && pre.illness !== 'none' && <Chip tone="warn">{ILLNESS_WORDS[pre.illness] || pre.illness}</Chip>}
+        {/* Worth seeing on its own: the client was told to rest and trained anyway. */}
+        {pre?.verdict === 'rest' && <Chip tone="warn">Trained against a rest verdict</Chip>}
+        {post?.effort && <Chip>Felt {EFFORT_WORDS[post.effort]?.toLowerCase() || post.effort}</Chip>}
+        {cutShort && (
+          <Chip tone={post!.cutShortReason === 'fatigue' || post!.cutShortReason === 'pain' ? 'warn' : 'plain'}>
+            Cut short — {CUT_SHORT_WORDS[post!.cutShortReason || 'other']}
+          </Chip>
+        )}
+      </div>
+      {(pre?.note || post?.note) && (
+        <p className="text-[11px] text-slate-400 mt-1.5 italic">"{post?.note || pre?.note}"</p>
+      )}
+    </div>
+  );
+};
+
+const SessionCard: React.FC<{ session: HistorySession; checkIns?: { pre?: CheckInRecord; post?: CheckInRecord } }> = ({ session, checkIns }) => {
   const [open, setOpen] = useState(false);
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
@@ -131,6 +185,7 @@ const SessionCard: React.FC<{ session: HistorySession }> = ({ session }) => {
             {session.setsAtTarget} of {session.totalSets} sets hit the prescribed reps
           </p>
           {session.exercises.map((ex, i) => <ExerciseRow key={ex.id ?? i} exercise={ex} />)}
+          <CheckInStrip pre={checkIns?.pre} post={checkIns?.post} />
         </div>
       )}
     </div>
@@ -176,6 +231,7 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({
   // means the client genuinely has not trained. They must not read the same.
   const [logs, setLogs] = useState<LoggedExercise[] | null>(null);
   const [withdrawals, setWithdrawals] = useState<WithdrawalRecord[]>([]);
+  const [checkIns, setCheckIns] = useState<CheckInRecord[]>([]);
   const [serverDayNames, setServerDayNames] = useState<Record<string, string>>({});
   const [tab, setTab] = useState<Tab>('sessions');
   const [focusedExerciseId, setFocusedExerciseId] = useState<string | null>(null);
@@ -185,18 +241,22 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({
     setLoading(true);
     const load = async () => {
       if (mode === 'client') {
-        if (clientUserId == null) return { logs: null as LoggedExercise[] | null, withdrawals: [], dayNames: {} };
+        if (clientUserId == null) return { logs: null as LoggedExercise[] | null, withdrawals: [], dayNames: {}, checkIns: [] };
         const history = await api.fetchClientHistory(clientUserId);
-        if (!history) return { logs: null as LoggedExercise[] | null, withdrawals: [], dayNames: {} };
-        return { logs: history.logs, withdrawals: history.withdrawals, dayNames: history.dayNames };
+        if (!history) return { logs: null as LoggedExercise[] | null, withdrawals: [], dayNames: {}, checkIns: [] };
+        return { logs: history.logs, withdrawals: history.withdrawals, dayNames: history.dayNames, checkIns: history.checkIns || [] };
       }
-      const own = await api.fetchMyExerciseLogs(undefined, 400);
-      return { logs: own, withdrawals: [], dayNames: {} };
+      const [own, mine] = await Promise.all([
+        api.fetchMyExerciseLogs(undefined, 400),
+        api.fetchMyCheckIns(200),
+      ]);
+      return { logs: own, withdrawals: [], dayNames: {}, checkIns: mine.checkIns as CheckInRecord[] };
     };
     load().then(result => {
       if (cancelled) return;
       setLogs(result.logs);
       setWithdrawals(result.withdrawals);
+      setCheckIns(result.checkIns);
       setServerDayNames(result.dayNames);
       setLoading(false);
     });
@@ -208,6 +268,7 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({
     [logs, serverDayNames, dayNames]
   );
   const summary = useMemo(() => summarize(sessions), [sessions]);
+  const checkInsBySession = useMemo(() => attachCheckIns(sessions, checkIns), [sessions, checkIns]);
   const exercises = useMemo(() => exercisesInHistory(sessions), [sessions]);
   const focused = useMemo(
     () => (focusedExerciseId ? historyForExercise(sessions, focusedExerciseId) : []),
@@ -301,7 +362,9 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({
 
             {tab === 'sessions' && (
               <div className="space-y-2.5">
-                {sessions.map(s => <SessionCard key={s.sessionId} session={s} />)}
+                {sessions.map(s => (
+                  <SessionCard key={s.sessionId} session={s} checkIns={checkInsBySession.get(s.sessionId)} />
+                ))}
                 {summary.sessions >= 400 && (
                   <p className="text-[11px] text-slate-500 pt-1">
                     Showing the most recent 400 logged exercises.

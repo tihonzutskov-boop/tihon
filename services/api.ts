@@ -2,6 +2,7 @@
 import { Gym, User, LibraryExercise, EquipmentItem, GymZone, GymMachine, EquipmentType, WorkoutDay, QuestionnaireAnswers, PlanTemplate, CoachingClient, GenerationFailureRecord, ExerciseLog } from '../types';
 import { DEFAULT_GYM } from '../constants';
 import type { ClientHistory, LoggedExercise } from '../utils/workoutHistory';
+import type { SessionCheckIn } from '../utils/sessionCheckIn';
 
 // Relative path: works same-origin in production (Express serves the built
 // frontend) and via the Vite dev server proxy in local development.
@@ -284,6 +285,41 @@ export const api = {
       return { ok: true };
     } catch (err: any) {
       return { ok: false, error: err?.message || 'Could not save training log' };
+    }
+  },
+
+  // --- SESSION CHECK-INS ---
+  //
+  // The two things the training log cannot show: whether the client is ill
+  // today, and why a session was cut short. Everything else the engine needs
+  // it derives from the log passively.
+
+  async saveCheckIn(checkIn: SessionCheckIn & { verdict?: string }): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const response = await fetch(`${API_BASE}/session-checkins`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(checkIn),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        return { ok: false, error: body.error || `Server responded with ${response.status}` };
+      }
+      return { ok: true };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Could not save your check-in' };
+    }
+  },
+
+  // lastIllnessReportedAt drives ILLNESS-1's rolling window: without it the
+  // pre-session prompt would either ask everyone every day or never ask.
+  async fetchMyCheckIns(limit?: number): Promise<{ checkIns: any[]; lastIllnessReportedAt: string | null }> {
+    try {
+      const response = await fetch(`${API_BASE}/session-checkins/me${limit ? `?limit=${limit}` : ''}`);
+      if (!response.ok) throw new Error(`Status: ${response.status}`);
+      return await response.json();
+    } catch {
+      return { checkIns: [], lastIllnessReportedAt: null };
     }
   },
 
