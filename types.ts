@@ -409,6 +409,10 @@ export interface BlueprintDay {
   id: string;
   name: string;      // e.g. "Upper", "Full Body"
   slots: ExerciseSlot[];
+  // MIXAIM-1: aims are distributed across days rather than mixed inside one,
+  // so every day belongs to exactly one aim. Held as data rather than encoded
+  // in the name, so the engine and the admin queue can both read it.
+  primaryAim?: string;
 }
 
 // A template is category metadata only — which goal it targets, the

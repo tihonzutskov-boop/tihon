@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   checkEligibility, eligibleExercises, gymEquipmentIds, selectSplit,
   selectForSlot, estimateDayMinutes, generatePlan, validatePlan, buildDefaultBlueprint,
-  buildCombinedBlueprint, GenerationProfile, EligibilityContext,
+  buildCombinedBlueprint, assignAimsToDays, GenerationProfile, EligibilityContext,
 } from './planGeneration';
 import type { GenerationFailure } from './planGeneration';
 import { LibraryExercise, Gym, ExerciseSlot, PlanTemplate, Exercise, ALL_JOINT_STRESS_AREAS } from '../types';
@@ -670,85 +670,86 @@ describe('goal selection', () => {
   });
 });
 
-describe('buildCombinedBlueprint — aims as blocks that add together', () => {
-  it('behaves exactly like buildDefaultBlueprint when only one aim is given', () => {
-    const combined = buildCombinedBlueprint(['Mobility'], 3, 60);
-    const single = buildDefaultBlueprint('Mobility', 3, 60);
-    expect(combined.map(d => d.slots.map(s => s.movementPattern))).toEqual(
-      single.map(d => d.slots.map(s => s.movementPattern))
+describe('MIXAIM — aims are distributed across days, not mixed in a session', () => {
+  it('gives a single aim every day', () => {
+    expect(assignAimsToDays(['Muscle gain'], 3)).toEqual(
+      ['Muscle gain', 'Muscle gain', 'Muscle gain']
     );
   });
 
-  // Each aim keeps its own prescription — not averaged into something
-  // neither aim asked for.
-  it('keeps each aim\'s own prescription rather than blending them', () => {
-    const bp = buildCombinedBlueprint(['Muscle gain', 'Mobility'], 3, 60);
-    const slots = bp[0].slots;
-    expect(slots.filter(s => s.restSeconds === 120).map(s => s.movementPattern)).toEqual(
-      expect.arrayContaining(['squat', 'horizontal_push'])
-    );
-    expect(slots.filter(s => s.restSeconds === 20).map(s => s.movementPattern)).toEqual(
-      expect.arrayContaining(['hip_mobility', 'shoulder_mobility'])
+  // MIXAIM-6: days handed out in aim-priority order, which is selection order.
+  it('alternates days between two aims', () => {
+    expect(assignAimsToDays(['Muscle gain', 'Mobility'], 4)).toEqual(
+      ['Muscle gain', 'Mobility', 'Muscle gain', 'Mobility']
     );
   });
 
-  // Aims take turns rather than running one whole block then the next, so a
-  // combined day reads as one workout instead of two stapled together.
-  it('alternates between aims instead of finishing one block first', () => {
-    const bp = buildCombinedBlueprint(['Muscle gain', 'Mobility'], 3, 60);
-    const isMobility = bp[0].slots.map(s => s.movementPattern.endsWith('_mobility'));
-    // A strictly sequential layout would put every false before every true.
-    const firstMobility = isMobility.indexOf(true);
-    const lastStrength = isMobility.lastIndexOf(false);
-    expect(firstMobility).toBeLessThan(lastStrength);
+  it('gives the odd day to the higher-priority aim', () => {
+    expect(assignAimsToDays(['Muscle gain', 'Mobility'], 3)).toEqual(
+      ['Muscle gain', 'Mobility', 'Muscle gain']
+    );
   });
 
-  // The bug this fixes: two aims used to mean the sum of both blocks —
-  // eleven exercises for Muscle gain + Mobility.
-  it('does not let a second aim double the number of exercises', () => {
-    const alone = buildDefaultBlueprint('Muscle gain', 3, 60)[0].slots.length;
-    const combined = buildCombinedBlueprint(['Muscle gain', 'Mobility'], 3, 60)[0].slots.length;
-    expect(combined).toBeLessThanOrEqual(alone);
+  it('falls back to a default aim when none were selected', () => {
+    expect(assignAimsToDays([], 2)).toHaveLength(2);
   });
 
-  it('caps a heavily overlapping combination rather than stacking both blocks', () => {
-    const bp = buildCombinedBlueprint(['Muscle gain', 'Weight loss'], 3, 60);
-    expect(bp[0].slots.length).toBeLessThanOrEqual(6);
+  // MIXAIM-2 / MIXAIM-3: the day belongs to one aim, and takes its whole
+  // prescription from that aim — this is what replaced the old interleaving.
+  it('builds each day from one aim only', () => {
+    const bp = buildCombinedBlueprint(['Muscle gain', 'Mobility'], 2, 60);
+
+    expect(bp[0].primaryAim).toBe('Muscle gain');
+    expect(bp[0].slots.every(sl => sl.restSeconds === 120 || sl.restSeconds === 60)).toBe(true);
+    expect(bp[0].slots.some(sl => sl.movementPattern.endsWith('_mobility'))).toBe(false);
+
+    expect(bp[1].primaryAim).toBe('Mobility');
+    expect(bp[1].slots.every(sl => sl.movementPattern.endsWith('_mobility') || sl.movementPattern === 'core')).toBe(true);
   });
 
-  // Dropping an aim's required work would defeat the point of choosing it,
-  // so the cap only ever trims optional accessory work.
-  it('keeps every aim\'s required work even when that exceeds the cap', () => {
-    const bp = buildCombinedBlueprint(['Muscle gain', 'Endurance', 'Mobility'], 3, 60);
-    const patterns = bp[0].slots.map(s => s.movementPattern);
-    expect(patterns).toEqual(expect.arrayContaining(['hip_mobility', 'shoulder_mobility']));
-    expect(bp[0].slots.filter(s => !s.optional).length).toBeGreaterThan(6 - 1);
+  // The specific regression this replaced: two aims used to produce one
+  // oversized day containing both.
+  it('never puts two aims in the same day', () => {
+    const bp = buildCombinedBlueprint(['Muscle gain', 'Mobility'], 3, 90);
+    bp.forEach(day => {
+      const isMobilityDay = day.primaryAim === 'Mobility';
+      const hasMobilitySlots = day.slots.some(sl => sl.movementPattern.endsWith('_mobility'));
+      expect(hasMobilitySlots).toBe(isMobilityDay);
+    });
   });
 
-  // Flags survive combining: what an aim marked required stays required, and
-  // whatever optional work fits the cap is still marked optional so the
-  // duration fitter downstream knows it may trim it further.
-  it('preserves each block\'s required and optional flags', () => {
-    const bp = buildCombinedBlueprint(['Muscle gain', 'Mobility'], 1, 60);
-    const squat = bp[0].slots.find(s => s.movementPattern === 'squat');
-    const hip = bp[0].slots.find(s => s.movementPattern === 'hip_mobility');
-    expect(squat?.optional).toBeFalsy();
-    expect(hip?.optional).toBeFalsy();
-    bp[0].slots.filter(s => s.optional).forEach(s => expect(s.optional).toBe(true));
+  // A mobility day ignores the split entirely, so carrying "Upper" onto it
+  // would name the day as something it isn't.
+  it('names a mobility day for its aim, not the split it ignores', () => {
+    const bp = buildCombinedBlueprint(['Muscle gain', 'Mobility'], 4, 60);
+    const mobilityDays = bp.filter(d => d.primaryAim === 'Mobility');
+    expect(mobilityDays.length).toBeGreaterThan(0);
+    mobilityDays.forEach(d => expect(d.name).toMatch(/^Mobility/));
+    // The strength aim holds two of the four days, so it gets a two-day
+    // full-body split rather than a slice of the week's Upper/Lower.
+    bp.filter(d => d.primaryAim !== 'Mobility').forEach(d => {
+      expect(d.name).toMatch(/^Full Body/);
+    });
   });
 
-  // Priorities must not collide across blocks, or the duration fitter (which
-  // drops the highest-priority-number optional slot first) would trim the
-  // wrong aim's work first.
-  it('gives every slot a unique priority across blocks', () => {
-    const bp = buildCombinedBlueprint(['Muscle gain', 'Mobility'], 1, 60);
-    const priorities = bp[0].slots.map(s => s.priority);
-    expect(new Set(priorities).size).toBe(priorities.length);
+  // Regression: slicing one week-level split between aims gave the strength
+  // aim every other day of an Upper/Lower split — two Upper days, no Lower,
+  // so legs went untrained all week (FREQ-1). Each aim's split is sized to the
+  // days that aim actually has instead.
+  it('does not strand an aim on half of an alternating split', () => {
+    const bp = buildCombinedBlueprint(['Muscle gain', 'Mobility'], 4, 60);
+    const strengthDays = bp.filter(d => d.primaryAim === 'Muscle gain');
+    expect(strengthDays).toHaveLength(2);
+    expect(strengthDays.map(d => d.name)).not.toEqual(['Upper', 'Upper']);
+    // Two strength days is a two-day full-body split, so both train legs.
+    strengthDays.forEach(d => {
+      expect(d.slots.map(sl => sl.movementPattern)).toContain('squat');
+    });
   });
 
-  it('falls back to a default goal when given an empty list rather than crashing', () => {
-    const bp = buildCombinedBlueprint([], 1, 60);
-    expect(bp[0].slots.length).toBeGreaterThan(0);
+  it('leaves a single-aim plan on the ordinary split names', () => {
+    const bp = buildCombinedBlueprint(['Muscle gain'], 3, 60);
+    expect(bp.map(d => d.name)).toEqual(['Full Body 1', 'Full Body 2', 'Full Body 3']);
   });
 });
 

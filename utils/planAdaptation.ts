@@ -328,7 +328,23 @@ export const needsProgramReview = (weeksTrained: number): boolean =>
 // Redistributing would mean walking back sets on unrelated exercises the
 // client has nothing wrong with, which is a bigger and riskier feature than
 // refusing one increase; holding is the conservative reading of the same rule.
-export const VOLUME_CEILING_PER_MUSCLE_PER_WEEK = 20;
+// VOL-1: 6–14 hard sets per muscle per week, with 16 permitted only where
+// recovery and progression support it. This is a real reduction from the
+// previous 20 — that number was set generously to keep selection from being
+// starved, which is a different concern from what a beginner recovers from,
+// and 14 sits closer to what the cited evidence supports for untrained
+// lifters.
+//
+// The 16 exception is not implemented: it needs a recovery-and-progression
+// signal the engine does not yet compute, and inventing one would make the
+// ceiling look considered while actually being arbitrary. 14 stands until
+// that signal exists.
+export const VOLUME_CEILING_PER_MUSCLE_PER_WEEK = 14;
+
+// VOL-1's lower bound. Nothing reads this yet — acting on a shortfall is
+// VOL-2's job (correct it inside the same week only if it fits, otherwise
+// accept it and carry no debt), which needs the week-level generation in §2.5.
+export const VOLUME_FLOOR_PER_MUSCLE_PER_WEEK = 6;
 
 export interface VolumeCandidate {
   /** Stable id for this exercise's slot in the week, e.g. `${dayIndex}-${exerciseIndex}`. */

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { evaluateExercise, needsProgramReview, selectSubstitute, applyWeeklyVolumeCeiling, applySubstitution, VolumeCandidate, AdaptationDecision, AdaptationInput } from './planAdaptation';
+import { evaluateExercise, needsProgramReview, selectSubstitute, applyWeeklyVolumeCeiling, applySubstitution, VOLUME_CEILING_PER_MUSCLE_PER_WEEK as CEILING, VolumeCandidate, AdaptationDecision, AdaptationInput } from './planAdaptation';
 import { ExerciseLog, LibraryExercise, Exercise } from '../types';
 
 // --- fixtures ---------------------------------------------------------------
@@ -355,12 +355,12 @@ describe('applyWeeklyVolumeCeiling', () => {
   });
 
   it('allows an add-set that lands exactly at the ceiling', () => {
-    const result = applyWeeklyVolumeCeiling([candidate({ id: 'a', baseSets: 19 })]);
+    const result = applyWeeklyVolumeCeiling([candidate({ id: 'a', baseSets: CEILING - 1 })]);
     expect(result[0].decision.action).toBe('add-set');
   });
 
   it('holds an add-set that would push the muscle past the ceiling', () => {
-    const result = applyWeeklyVolumeCeiling([candidate({ id: 'a', baseSets: 20 })]);
+    const result = applyWeeklyVolumeCeiling([candidate({ id: 'a', baseSets: CEILING })]);
     expect(result[0].decision.action).toBe('maintain');
     expect(result[0].decision.rule).toBe('VOL-1');
   });
@@ -369,8 +369,8 @@ describe('applyWeeklyVolumeCeiling', () => {
   // in the same week, and neither evaluateExercise call can see the other.
   it('accounts for another exercise training the same muscle', () => {
     const result = applyWeeklyVolumeCeiling([
-      candidate({ id: 'bench', muscles: ['Chest'], baseSets: 12 }),
-      candidate({ id: 'flye', muscles: ['Chest'], baseSets: 8 }),
+      candidate({ id: 'bench', muscles: ['Chest'], baseSets: CEILING - 6 }),
+      candidate({ id: 'flye', muscles: ['Chest'], baseSets: 6 }),
     ]);
     // Combined base is already 20 — at the ceiling before either add-set.
     expect(result.find(r => r.id === 'bench')!.decision.action).toBe('maintain');
@@ -380,9 +380,10 @@ describe('applyWeeklyVolumeCeiling', () => {
   // Deterministic tie-break: whichever exercise comes first in the week's
   // natural order gets the remaining headroom.
   it('gives the earlier exercise in the week priority for the last available set', () => {
+    // Together they sit one set below the ceiling, so exactly one add-set fits.
     const result = applyWeeklyVolumeCeiling([
-      candidate({ id: 'first', muscles: ['Chest'], baseSets: 10 }),
-      candidate({ id: 'second', muscles: ['Chest'], baseSets: 9 }),
+      candidate({ id: 'first', muscles: ['Chest'], baseSets: CEILING - 8 }),
+      candidate({ id: 'second', muscles: ['Chest'], baseSets: 7 }),
     ]);
     expect(result.find(r => r.id === 'first')!.decision.action).toBe('add-set');
     expect(result.find(r => r.id === 'second')!.decision.action).toBe('maintain');
@@ -390,7 +391,7 @@ describe('applyWeeklyVolumeCeiling', () => {
 
   it('holds only if any one of an exercise\'s trained muscles would breach', () => {
     const result = applyWeeklyVolumeCeiling([
-      candidate({ id: 'a', muscles: ['Chest', 'Triceps'], baseSets: 20 }),
+      candidate({ id: 'a', muscles: ['Chest', 'Triceps'], baseSets: CEILING }),
     ]);
     // Chest is at the ceiling even though Triceps has room — the whole
     // add-set is held rather than adding a fraction of a set.
@@ -401,8 +402,8 @@ describe('applyWeeklyVolumeCeiling', () => {
     const deload: AdaptationDecision = { action: 'deload', rule: 'STALL-3', reason: 'stalled', setsDelta: -1 };
     const maintain: AdaptationDecision = { action: 'maintain', rule: 'LOAD-2', reason: 'same again' };
     const result = applyWeeklyVolumeCeiling([
-      candidate({ id: 'a', baseSets: 20, decision: deload }),
-      candidate({ id: 'b', baseSets: 20, decision: maintain }),
+      candidate({ id: 'a', baseSets: CEILING, decision: deload }),
+      candidate({ id: 'b', baseSets: CEILING, decision: maintain }),
     ]);
     expect(result.find(r => r.id === 'a')!.decision).toEqual(deload);
     expect(result.find(r => r.id === 'b')!.decision).toEqual(maintain);
@@ -411,7 +412,7 @@ describe('applyWeeklyVolumeCeiling', () => {
   it('never reduces sets that are already prescribed, even at or over the ceiling', () => {
     // Base volume alone is already over 20 (a generator concern, not this
     // pass's job to fix) — the add-set is still just held, nothing is cut.
-    const result = applyWeeklyVolumeCeiling([candidate({ id: 'a', baseSets: 25 })]);
+    const result = applyWeeklyVolumeCeiling([candidate({ id: 'a', baseSets: CEILING + 5 })]);
     expect(result[0].decision.action).toBe('maintain');
   });
 });

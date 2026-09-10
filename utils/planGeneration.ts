@@ -277,86 +277,71 @@ const slotsForGoal = (goal: string, dayName: string, shape: SessionShape): Exerc
 export const buildDefaultBlueprint = (goal: string, daysPerWeek: number, sessionMinutes = 60): BlueprintDay[] =>
   buildCombinedBlueprint([goal], daysPerWeek, sessionMinutes);
 
-// Combining aims must not simply add their blocks end to end. Doing that
-// doubled the day: two aims meant every one of the first aim's exercises
-// followed by every one of the second's — eleven separate movements for
-// Muscle gain + Mobility, which is far more than a beginner should meet in
-// one session however well it fits the clock.
+// MIXAIM-1: aims are distributed across days, not mixed inside a session.
+// This replaces the earlier interleave-and-cap approach entirely — a day no
+// longer draws slots from more than one aim, so there is nothing to interleave
+// and no shared accessory budget to police.
 //
-// Two rules fix that. Required work from every selected aim always survives,
-// because dropping it would defeat the point of having chosen that aim.
-// Optional accessory work is shared against one budget across all aims
-// rather than each aim bringing its own full set, so a second aim adds
-// variety rather than volume.
+// MIXAIM-6: days are handed out in aim-priority order, which is the order the
+// client selected them. Two aims over three days gives the higher-priority aim
+// the odd day.
 //
-// Within each of those groups the aims take turns instead of running one
-// block then the next, so a combined day alternates between them — squat,
-// hip mobility, press, shoulder mobility — rather than reading as two
-// separate workouts stapled together. Required work still precedes
-// accessories overall, which is the ordering every single-aim template
-// already uses.
-const MAX_TOTAL_SLOTS_WHEN_COMBINING = 6;
-
-// Round-robin across the aims: one slot from each in turn, until every list
-// is spent. Each aim's own internal order is preserved within its turns.
-const takeTurns = (lists: ExerciseSlot[][]): ExerciseSlot[] => {
-  const out: ExerciseSlot[] = [];
-  const longest = Math.max(0, ...lists.map(l => l.length));
-  for (let i = 0; i < longest; i++) {
-    for (const list of lists) {
-      if (i < list.length) out.push(list[i]);
-    }
-  }
-  return out;
+// Not yet implemented from MIXAIM-6: alternating that odd day between the two
+// aims from one week to the next. The generator builds a single week with no
+// notion of which week it is, so there is nothing to alternate against — it
+// needs a week index carried in from the plan's start date.
+export const assignAimsToDays = (goals: string[], dayCount: number): string[] => {
+  const aims = goals.length > 0 ? goals : [DEFAULT_GOAL];
+  return Array.from({ length: dayCount }, (_, i) => aims[i % aims.length]);
 };
 
-const combineGoalBlocks = (perGoal: ExerciseSlot[][]): ExerciseSlot[] => {
-  const required = takeTurns(perGoal.map(list => list.filter(s => !s.optional)));
-  const optional = takeTurns(perGoal.map(list => list.filter(s => s.optional)));
-  // Required work is never trimmed here — if several aims together demand
-  // more than the cap, they all still appear, and the duration fitter
-  // downstream remains the authority on whether that actually fits the
-  // session.
-  const room = Math.max(0, MAX_TOTAL_SLOTS_WHEN_COMBINING - required.length);
-  return [...required, ...optional.slice(0, room)];
-};
+// A mobility day is not an "Upper" or a "Full Body" day — its slots ignore the
+// split entirely (see slotsForGoal), so carrying the split's name onto it would
+// describe the day as something it isn't.
+const dayLabel = (aim: string, splitName: string, aimDayIndex: number, aimHasManyDays: boolean): string =>
+  aim === 'Mobility'
+    ? (aimHasManyDays ? `Mobility ${aimDayIndex + 1}` : 'Mobility')
+    : splitName;
 
-// A client can select more than one aim, and each one contributes its own
-// block of slots to the same day — not averaged together into a prescription
-// neither aim actually asked for, but done properly once per aim, back to
-// back. Picking Muscle gain + Mobility gets Muscle gain's compound lifts at
-// its own reps/rest, followed by Mobility's joint work at its own reps/rest.
-//
-// Selecting goals that overlap heavily (e.g. Muscle gain + Weight loss, which
-// already share almost every movement pattern) is not specially detected or
-// blocked — each still contributes its own slot for, say, squat, and the
-// generator fills both with two different squat-pattern exercises rather than
-// one. That produces a long, repetitive session, and for a short session it
-// legitimately fails to fit (the same cannot_fit_duration outcome any
-// over-full day produces) rather than silently truncating into something
-// neither aim asked for. The safety valve is the existing duration fitter,
-// not goal-pair-specific logic.
 export const buildCombinedBlueprint = (goals: string[], daysPerWeek: number, sessionMinutes = 60): BlueprintDay[] => {
-  const activeGoals = goals.length > 0 ? goals : [DEFAULT_GOAL];
-  const { dayNames } = selectSplit(daysPerWeek);
   // Session length shapes what gets built, rather than trimming what was built.
   // A short session is composed of the priority work only; it is not a long
   // session with the end cut off.
   const shape = shapeFor(sessionMinutes);
+  const aimByDay = assignAimsToDays(goals, Math.max(daysPerWeek, 1));
 
-  return dayNames.map((name, dayIdx) => {
-    const perGoal = activeGoals.map(goal => slotsForGoal(goal, name, shape));
+  const dayCountPerAim = aimByDay.reduce<Record<string, number>>((acc, aim) => {
+    acc[aim] = (acc[aim] || 0) + 1;
+    return acc;
+  }, {});
 
-    // One aim is left exactly as its own template describes it — no
-    // interleaving or capping applies, so single-aim generation is unchanged.
-    const ordered = perGoal.length === 1
-      ? perGoal[0]
-      : combineGoalBlocks(perGoal);
+  // Each aim gets a split sized to the days it actually has, rather than a
+  // slice of one week-level split. Slicing is what an earlier version did, and
+  // it fails badly on an alternating split: over four days, aims take every
+  // other day, so the strength aim drew Upper, Upper and the client never
+  // trained their legs at all — a straight FREQ-1 violation. Two days of
+  // strength work is a two-day full-body split, which is what this produces.
+  const namesPerAim: Record<string, string[]> = {};
+  Object.entries(dayCountPerAim).forEach(([aim, count]) => {
+    namesPerAim[aim] = selectSplit(count).dayNames;
+  });
+  const seenPerAim: Record<string, number> = {};
+
+  return aimByDay.map((aim, dayIdx) => {
+    const aimDayIndex = seenPerAim[aim] ?? 0;
+    seenPerAim[aim] = aimDayIndex + 1;
+    const splitName = namesPerAim[aim][aimDayIndex];
+
+    // MIXAIM-2 / MIXAIM-3: every slot on this day belongs to this one aim, and
+    // takes its reps, rest and intensity from that aim alone — never blended
+    // with another aim's, even where the movement pattern is shared.
+    const slots = slotsForGoal(aim, splitName, shape);
 
     return {
       id: `defbp-${dayIdx}`,
-      name,
-      slots: ordered.map((spec, i) => ({ ...spec, id: `defslot-${dayIdx}-${i}`, priority: i + 1 })),
+      name: dayLabel(aim, splitName, aimDayIndex, (dayCountPerAim[aim] || 0) > 1),
+      primaryAim: aim,
+      slots: slots.map((spec, i) => ({ ...spec, id: `defslot-${dayIdx}-${i}`, priority: i + 1 })),
     };
   });
 };
