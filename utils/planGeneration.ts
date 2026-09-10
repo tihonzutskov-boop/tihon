@@ -647,6 +647,10 @@ const buildExercise = (
     id: `gex-${idSuffix}`,
     name: le.name,
     targetMuscle: le.targetMuscle,
+    // DATA-1: the slot's own id is what persists through a substitution; the
+    // instance key pairs it with whichever exercise is currently filling it.
+    slotIntentId: slot.id,
+    exerciseInstanceId: `${slot.id}:${le.id}`,
     sets,
     reps: `${slot.repsMin}-${slot.repsMax}`,
     equipmentId: le.equipmentId || 'manual',

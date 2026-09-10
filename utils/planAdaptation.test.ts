@@ -224,6 +224,29 @@ describe('selectSubstitute', () => {
     expect(pick?.id).toBe('cable');
   });
 
+  // DATA-1: the failure this exists to stop — withdraw bench press, get the
+  // chest press machine, report pain on that too, and the next read must not
+  // hand the chest press machine straight back.
+  it('never offers an exercise the client already withdrew', () => {
+    const alsoWithdrawn = ex({ id: 'machine-press', primaryMuscles: ['Chest'], jointStress: [] });
+    const clean = ex({ id: 'dumbbell-press', primaryMuscles: ['Chest'], jointStress: [] });
+    const pick = selectSubstitute({
+      withdrawn: barbellBench,
+      pool: [alsoWithdrawn, clean],
+      withdrawnIds: new Set(['bench', 'machine-press']),
+    });
+    expect(pick?.id).toBe('dumbbell-press');
+  });
+
+  it('returns null rather than reoffering a withdrawal when nothing else is left', () => {
+    const pick = selectSubstitute({
+      withdrawn: barbellBench,
+      pool: [ex({ id: 'machine-press', jointStress: [] })],
+      withdrawnIds: new Set(['machine-press']),
+    });
+    expect(pick).toBeNull();
+  });
+
   it('returns null when every candidate loads the painful area', () => {
     const pick = selectSubstitute({
       withdrawn: barbellBench,
@@ -320,6 +343,28 @@ describe('applySubstitution', () => {
     expect(result.libraryExerciseId).toBe('machine-press');
     expect(result.targetMuscle).toBe('Chest');
     expect(result.videoUrl).toBe('https://youtube.com/machine-press');
+  });
+
+  // §2.3: the slot's intent outlives the exercise filling it.
+  it('keeps the slot intent and changes the exercise instance', () => {
+    const withSlot = { ...withdrawn, slotIntentId: 'slot-7', exerciseInstanceId: 'slot-7:bench' };
+    const result = applySubstitution(withSlot, replacement);
+    expect(result.slotIntentId).toBe('slot-7');
+    expect(result.exerciseInstanceId).toBe('slot-7:machine-press');
+  });
+
+  // Deterministic, not random: the adapted plan is recomputed on every
+  // request, so an instance key that changed per read would break identity.
+  it('produces the same instance key on every substitution of the same pair', () => {
+    const withSlot = { ...withdrawn, slotIntentId: 'slot-7' };
+    expect(applySubstitution(withSlot, replacement).exerciseInstanceId)
+      .toBe(applySubstitution(withSlot, replacement).exerciseInstanceId);
+  });
+
+  it('falls back to the exercise id as slot intent on plans predating the split', () => {
+    const result = applySubstitution(withdrawn, replacement);
+    expect(result.slotIntentId).toBe('x1');
+    expect(result.exerciseInstanceId).toBe('x1:machine-press');
   });
 
   it('records what it replaced so the session can say so', () => {

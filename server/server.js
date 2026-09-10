@@ -607,6 +607,10 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
                 pool: substitutionPool,
                 painArea: withdrawal.pain_area || null,
                 alreadyUsedIds: usedInDay,
+                // DATA-1: never hand back a movement this client has already
+                // withdrawn, including one they were substituted into earlier
+                // and then pulled themselves.
+                withdrawnIds: new Set(withdrawals.keys()),
               })
             : null;
           if (substitute) usedInDay.add(substitute.id);

@@ -170,6 +170,20 @@ export interface Exercise {
   adaptation?: ExerciseAdaptation;
   withdrawn?: boolean;
   substitutedFor?: { id: string; name: string };
+  // §2.3 / DATA-1 — two keys, because a slot and the exercise filling it are
+  // different things with different lifespans.
+  //
+  // slotIntentId survives a substitution: it carries what the slot is *for*
+  // — its objective, role, target effort and prescription — so a replacement
+  // inherits all of that (SUB-2).
+  //
+  // exerciseInstanceId changes when the exercise does, so a substitute starts
+  // fresh rather than inheriting load history from the movement it replaced.
+  // Composed from the slot and the library exercise, which keeps it stable
+  // across reads — the adapted plan is recomputed on every request, so a
+  // freshly random id here would change identity on every page load.
+  slotIntentId?: string;
+  exerciseInstanceId?: string;
   // Marks the warm-up and cooldown, which are real entries in the day so they
   // can be found on the map like anything else — but are not training work.
   // Every consumer that progresses load, counts weekly volume, or logs a set

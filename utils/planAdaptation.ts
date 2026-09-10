@@ -231,6 +231,14 @@ export interface SubstituteInput {
   painArea?: JointStressArea | null;
   /** Exercises already in this day, so a substitute never duplicates one. */
   alreadyUsedIds?: Set<string>;
+  /**
+   * DATA-1: every exercise this client currently has withdrawn. Without it a
+   * withdrawal reappears under a substitute's identity — withdraw bench press,
+   * get the chest press machine, report pain on that too, and the next read
+   * hands the chest press machine straight back, because the only exclusion
+   * was the originally withdrawn movement.
+   */
+  withdrawnIds?: Set<string>;
 }
 
 const shared = <T,>(a: T[] | undefined, b: T[] | undefined): number => {
@@ -243,11 +251,15 @@ const shared = <T,>(a: T[] | undefined, b: T[] | undefined): number => {
 // or a widely-loaded painful area can leave no safe option — and the caller
 // leaves the slot empty rather than substituting something that also hurts.
 export const selectSubstitute = (input: SubstituteInput): LibraryExercise | null => {
-  const { withdrawn, pool, painArea, alreadyUsedIds } = input;
+  const { withdrawn, pool, painArea, alreadyUsedIds, withdrawnIds } = input;
 
   const candidates = pool.filter(ex => {
     if (ex.id === withdrawn.id) return false;
     if (alreadyUsedIds?.has(ex.id)) return false;
+    // Anything the client already has withdrawn is out, whatever else
+    // recommends it — offering back a movement they pulled for pain is the
+    // failure DATA-1 names.
+    if (withdrawnIds?.has(ex.id)) return false;
     if (ex.generationEnabled === false) return false;
     // A known painful area is a hard exclusion, not a penalty. Anything loading
     // it is disqualified however well it scores otherwise.
@@ -287,6 +299,13 @@ export const selectSubstitute = (input: SubstituteInput): LibraryExercise | null
 // entry, so a substituted exercise is indistinguishable from a generated one.
 export const applySubstitution = (ex: Exercise, substitute: LibraryExercise): Exercise => ({
   ...ex,
+  // SUB-2: the slot's intent carries over untouched — objective, role, target
+  // effort and set prescription all belong to the slot, not to whichever
+  // exercise happens to be filling it. The instance key changes, so the
+  // replacement starts fresh at calibration instead of inheriting the load
+  // history of the movement it replaced.
+  slotIntentId: ex.slotIntentId ?? ex.id,
+  exerciseInstanceId: `${ex.slotIntentId ?? ex.id}:${substitute.id}`,
   libraryExerciseId: substitute.id,
   name: substitute.name,
   targetMuscle: substitute.targetMuscle,
