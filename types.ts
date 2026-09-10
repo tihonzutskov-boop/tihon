@@ -409,6 +409,11 @@ export interface ExerciseSlot {
   // Absent on admin-authored blueprints written before SLOT-1; consumers fall
   // back to reading `optional` for those (see roleOf in planGeneration).
   role?: SlotRole;
+  // MIXAIM-7: which of the day's two aims this slot serves. Orthogonal to
+  // role — a secondary-aim slot has a role within its own aim's block — and
+  // it outranks role when deciding what gets cut: all secondary-aim work goes
+  // before any primary-aim work, whatever their roles. Absent means primary.
+  aimTier?: 'primary' | 'secondary';
   setsMin: number;
   setsMax: number;
   repsMin: number;
@@ -424,6 +429,9 @@ export interface BlueprintDay {
   // so every day belongs to exactly one aim. Held as data rather than encoded
   // in the name, so the engine and the admin queue can both read it.
   primaryAim?: string;
+  // MIXAIM-1: the day's optional secondary aim, whose essential work is
+  // appended below all primary-aim work and cut first (MIXAIM-7 / DROP-1).
+  secondaryAim?: string | null;
 }
 
 // A template is category metadata only — which goal it targets, the

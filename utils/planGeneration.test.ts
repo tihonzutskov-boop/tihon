@@ -674,6 +674,55 @@ describe('goal selection', () => {
   });
 });
 
+describe('MIXAIM-7 — secondary-aim work', () => {
+  it('adds real slots for the day\'s secondary aim', () => {
+    const bp = buildCombinedBlueprint(['Muscle gain', 'Mobility'], 2, 90);
+    const strengthDay = bp.find(d => d.primaryAim === 'Muscle gain')!;
+    const secondary = strengthDay.slots.filter(sl => sl.aimTier === 'secondary');
+
+    expect(strengthDay.secondaryAim).toBe('Mobility');
+    expect(secondary.length).toBeGreaterThan(0);
+    expect(secondary.every(sl => sl.movementPattern.endsWith('_mobility'))).toBe(true);
+  });
+
+  // The narrowed MIXAIM-2: a slot appears because the day has a secondary
+  // aim, never because an exercise happens to carry a secondary adaptation.
+  it('adds none when the client selected a single aim', () => {
+    const bp = buildCombinedBlueprint(['Muscle gain'], 3, 90);
+    bp.forEach(d => {
+      expect(d.secondaryAim).toBeNull();
+      expect(d.slots.some(sl => sl.aimTier === 'secondary')).toBe(false);
+    });
+  });
+
+  it('places all secondary work after every primary-aim slot', () => {
+    const bp = buildCombinedBlueprint(['Muscle gain', 'Mobility'], 2, 90);
+    bp.forEach(d => {
+      const tiers = d.slots.map(sl => (sl.aimTier === 'secondary' ? 1 : 0));
+      expect(tiers).toEqual([...tiers].sort((a, b) => a - b));
+    });
+  });
+
+  // Only the secondary aim's essential work — pulling in its whole block
+  // would put the day back to carrying two full sessions.
+  it('takes only the secondary aim\'s essential work', () => {
+    const bp = buildCombinedBlueprint(['Muscle gain', 'Mobility'], 2, 90);
+    const strengthDay = bp.find(d => d.primaryAim === 'Muscle gain')!;
+    const secondary = strengthDay.slots.filter(sl => sl.aimTier === 'secondary');
+    const mobilityAlone = buildCombinedBlueprint(['Mobility'], 1, 90)[0].slots;
+    expect(secondary.length).toBeLessThan(mobilityAlone.length);
+  });
+
+  // Secondary work keeps its own aim's numbers. Prescribing hip mobility at a
+  // muscle-gain day's 120s rest would describe it as something it isn't.
+  it('keeps the secondary aim\'s own prescription', () => {
+    const bp = buildCombinedBlueprint(['Muscle gain', 'Mobility'], 2, 90);
+    const strengthDay = bp.find(d => d.primaryAim === 'Muscle gain')!;
+    strengthDay.slots.filter(sl => sl.aimTier === 'secondary')
+      .forEach(sl => expect(sl.restSeconds).toBe(20));
+  });
+});
+
 describe('aim profiles and main-block order', () => {
   it('declares the same four fields for every aim', () => {
     ['Muscle gain', 'Weight loss', 'Endurance', 'Mobility'].forEach(aim => {
@@ -780,50 +829,48 @@ describe('DROP-2 — one bad day does not take the week down', () => {
 
 describe('MIXAIM — aims are distributed across days, not mixed in a session', () => {
   it('gives a single aim every day', () => {
-    expect(assignAimsToDays(['Muscle gain'], 3)).toEqual(
+    expect(assignAimsToDays(['Muscle gain'], 3).map(d => d.primary)).toEqual(
       ['Muscle gain', 'Muscle gain', 'Muscle gain']
     );
+    // One aim means there is no other one to be secondary.
+    expect(assignAimsToDays(['Muscle gain'], 3).every(d => d.secondary === null)).toBe(true);
   });
 
   // MIXAIM-6: days handed out in aim-priority order, which is selection order.
   it('alternates days between two aims', () => {
-    expect(assignAimsToDays(['Muscle gain', 'Mobility'], 4)).toEqual(
+    expect(assignAimsToDays(['Muscle gain', 'Mobility'], 4).map(d => d.primary)).toEqual(
       ['Muscle gain', 'Mobility', 'Muscle gain', 'Mobility']
+    );
+    // With two aims, each day's secondary is simply the other one.
+    expect(assignAimsToDays(['Muscle gain', 'Mobility'], 4).map(d => d.secondary)).toEqual(
+      ['Mobility', 'Muscle gain', 'Mobility', 'Muscle gain']
     );
   });
 
   it('gives the odd day to the higher-priority aim', () => {
-    expect(assignAimsToDays(['Muscle gain', 'Mobility'], 3)).toEqual(
+    expect(assignAimsToDays(['Muscle gain', 'Mobility'], 3).map(d => d.primary)).toEqual(
       ['Muscle gain', 'Mobility', 'Muscle gain']
     );
   });
 
   it('falls back to a default aim when none were selected', () => {
     expect(assignAimsToDays([], 2)).toHaveLength(2);
+    expect(assignAimsToDays([], 2)[0].secondary).toBeNull();
   });
 
-  // MIXAIM-2 / MIXAIM-3: the day belongs to one aim, and takes its whole
-  // prescription from that aim — this is what replaced the old interleaving.
-  it('builds each day from one aim only', () => {
+  // MIXAIM-3: the primary block takes its whole prescription from the primary
+  // aim — never blended with the other aim's, even on a shared pattern.
+  it('builds the primary block from the primary aim alone', () => {
     const bp = buildCombinedBlueprint(['Muscle gain', 'Mobility'], 2, 60);
+    const primaryWork = (d: (typeof bp)[number]) => d.slots.filter(sl => sl.aimTier !== 'secondary');
 
     expect(bp[0].primaryAim).toBe('Muscle gain');
-    expect(bp[0].slots.every(sl => sl.restSeconds === 120 || sl.restSeconds === 60)).toBe(true);
-    expect(bp[0].slots.some(sl => sl.movementPattern.endsWith('_mobility'))).toBe(false);
+    expect(primaryWork(bp[0]).every(sl => sl.restSeconds === 120 || sl.restSeconds === 60)).toBe(true);
+    expect(primaryWork(bp[0]).some(sl => sl.movementPattern.endsWith('_mobility'))).toBe(false);
 
     expect(bp[1].primaryAim).toBe('Mobility');
-    expect(bp[1].slots.every(sl => sl.movementPattern.endsWith('_mobility') || sl.movementPattern === 'core')).toBe(true);
-  });
-
-  // The specific regression this replaced: two aims used to produce one
-  // oversized day containing both.
-  it('never puts two aims in the same day', () => {
-    const bp = buildCombinedBlueprint(['Muscle gain', 'Mobility'], 3, 90);
-    bp.forEach(day => {
-      const isMobilityDay = day.primaryAim === 'Mobility';
-      const hasMobilitySlots = day.slots.some(sl => sl.movementPattern.endsWith('_mobility'));
-      expect(hasMobilitySlots).toBe(isMobilityDay);
-    });
+    expect(primaryWork(bp[1]).every(sl =>
+      sl.movementPattern.endsWith('_mobility') || sl.movementPattern === 'core')).toBe(true);
   });
 
   // A mobility day ignores the split entirely, so carrying "Upper" onto it

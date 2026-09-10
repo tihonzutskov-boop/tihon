@@ -378,9 +378,21 @@ export const buildDefaultBlueprint = (goal: string, daysPerWeek: number, session
 // aims from one week to the next. The generator builds a single week with no
 // notion of which week it is, so there is nothing to alternate against — it
 // needs a week index carried in from the plan's start date.
-export const assignAimsToDays = (goals: string[], dayCount: number): string[] => {
+export interface DayAims {
+  primary: string;
+  /** MIXAIM-1: optional. Null whenever the client selected a single aim. */
+  secondary: string | null;
+}
+
+export const assignAimsToDays = (goals: string[], dayCount: number): DayAims[] => {
   const aims = goals.length > 0 ? goals : [DEFAULT_GOAL];
-  return Array.from({ length: dayCount }, (_, i) => aims[i % aims.length]);
+  return Array.from({ length: dayCount }, (_, i) => ({
+    primary: aims[i % aims.length],
+    // With one aim there is no secondary. With more, the day's secondary is
+    // the next aim in the rotation — for the two-aim case this is simply the
+    // other one, which is what MIXAIM-6 describes.
+    secondary: aims.length > 1 ? aims[(i + 1) % aims.length] : null,
+  }));
 };
 
 // A mobility day is not an "Upper" or a "Full Body" day — its slots ignore the
@@ -398,8 +410,8 @@ export const buildCombinedBlueprint = (goals: string[], daysPerWeek: number, ses
   const shape = shapeFor(sessionMinutes);
   const aimByDay = assignAimsToDays(goals, Math.max(daysPerWeek, 1));
 
-  const dayCountPerAim = aimByDay.reduce<Record<string, number>>((acc, aim) => {
-    acc[aim] = (acc[aim] || 0) + 1;
+  const dayCountPerAim = aimByDay.reduce<Record<string, number>>((acc, day) => {
+    acc[day.primary] = (acc[day.primary] || 0) + 1;
     return acc;
   }, {});
 
@@ -415,20 +427,44 @@ export const buildCombinedBlueprint = (goals: string[], daysPerWeek: number, ses
   });
   const seenPerAim: Record<string, number> = {};
 
-  return aimByDay.map((aim, dayIdx) => {
-    const aimDayIndex = seenPerAim[aim] ?? 0;
-    seenPerAim[aim] = aimDayIndex + 1;
-    const splitName = namesPerAim[aim][aimDayIndex];
+  return aimByDay.map((day, dayIdx) => {
+    const aimDayIndex = seenPerAim[day.primary] ?? 0;
+    seenPerAim[day.primary] = aimDayIndex + 1;
+    const splitName = namesPerAim[day.primary][aimDayIndex];
 
-    // MIXAIM-2 / MIXAIM-3: every slot on this day belongs to this one aim, and
-    // takes its reps, rest and intensity from that aim alone — never blended
-    // with another aim's, even where the movement pattern is shared.
-    const slots = slotsForGoal(aim, splitName, shape);
+    // MIXAIM-3: this block takes its reps, rest and intensity from the day's
+    // primary aim alone — never blended or averaged with the other aim's,
+    // even where the two share a movement pattern.
+    const primarySlots = slotsForGoal(day.primary, splitName, shape);
+
+    // MIXAIM-7: the secondary aim adds real work, but only its essential
+    // (primary-role) slots. Its own supporting and accessory work is by
+    // definition less important than that, and pulling in a whole second block
+    // would put the day back to carrying two full sessions — the thing
+    // aim-per-day distribution exists to avoid.
+    //
+    // MIXAIM-2 as narrowed: a secondary-aim slot is created because the day
+    // explicitly has a secondary aim, never because some exercise happens to
+    // carry a secondary adaptation.
+    //
+    // These slots keep their own aim's prescription rather than borrowing the
+    // primary aim's. MIXAIM-3 forbids blending two aims into a hybrid
+    // prescription; it is not a reason to prescribe hip mobility at a muscle-
+    // gain day's 8-12 reps and 120s rest, which would describe the work as
+    // something it isn't.
+    const secondarySlots = day.secondary
+      ? slotsForGoal(day.secondary, splitName, shape)
+          .filter(sl => roleOf(sl) === 'primary')
+          .map(sl => ({ ...sl, aimTier: 'secondary' as const }))
+      : [];
+
+    const slots = [...primarySlots, ...secondarySlots];
 
     return {
       id: `defbp-${dayIdx}`,
-      name: dayLabel(aim, splitName, aimDayIndex, (dayCountPerAim[aim] || 0) > 1),
-      primaryAim: aim,
+      name: dayLabel(day.primary, splitName, aimDayIndex, (dayCountPerAim[day.primary] || 0) > 1),
+      primaryAim: day.primary,
+      secondaryAim: day.secondary,
       slots: slots.map((spec, i) => ({ ...spec, id: `defslot-${dayIdx}-${i}`, priority: i + 1 })),
     };
   });
@@ -740,20 +776,28 @@ export const generatePlan = (
       return { sets, reps, restSeconds };
     }), 0);
 
-    // DROP-1: whole exercises come out, never partial sets, and they come out
-    // in role order — all accessory work before any supporting work, so a
-    // session sheds finishing work before it gives up a movement pattern.
-    // Within one role, the lowest-priority exercise goes first. Primary work
-    // is never dropped; a day that still doesn't fit is DROP-2's case.
-    const DROP_ORDER: SlotRole[] = ['accessory', 'supporting'];
+    // DROP-1: whole exercises come out, never partial sets, in this order —
+    // every secondary-aim exercise first (MIXAIM-7: all of it ranks below any
+    // primary-aim work, whatever its own role), then primary-aim accessory,
+    // then primary-aim supporting. So a session sheds the second aim before
+    // it sheds finishing work, and finishing work before it gives up a
+    // movement pattern. Within a tier the lowest-priority exercise goes
+    // first. Primary-aim primary work is never dropped; a day that still
+    // doesn't fit is DROP-2's case.
+    const isSecondary = (sl: ExerciseSlot) => sl.aimTier === 'secondary';
+    const DROP_TIERS: ((sl: ExerciseSlot) => boolean)[] = [
+      isSecondary,
+      sl => !isSecondary(sl) && roleOf(sl) === 'accessory',
+      sl => !isSecondary(sl) && roleOf(sl) === 'supporting',
+    ];
 
     const droppedIds: string[] = [];
     while (measure() > trainingBudget) {
       let dropIdx = -1;
-      for (const tier of DROP_ORDER) {
+      for (const inTier of DROP_TIERS) {
         let worstPriority = -Infinity;
         picked.forEach((p, i) => {
-          if (roleOf(p.slot) === tier && p.slot.priority > worstPriority) {
+          if (inTier(p.slot) && p.slot.priority > worstPriority) {
             worstPriority = p.slot.priority;
             dropIdx = i;
           }
