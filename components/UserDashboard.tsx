@@ -2,9 +2,10 @@
 import React, { useEffect, useState } from 'react';
 import { User, Gym, Language, WorkoutPlan, Weekday, QuestionnaireAnswers } from '../types';
 import { translations, getGymTranslation, translateDayName } from '../translations';
-import { Trophy, Flame, Clock, LogOut, ArrowRight, MapPin, Check, Play, Minus } from 'lucide-react';
+import { Trophy, Flame, Clock, LogOut, ArrowRight, MapPin, Check, Play, Minus, History } from 'lucide-react';
 import GymMap from './GymMap';
 import TrainingQuestionnaire from './TrainingQuestionnaire';
+import WorkoutHistory from './WorkoutHistory';
 import { api } from '../services/api';
 
 interface UserDashboardProps {
@@ -59,6 +60,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, 
   // shared across locations), so starting a session at the wrong gym is
   // exactly why "equipment can't be found on the map" happens.
   const [sessionGymId, setSessionGymId] = useState(activeGymId);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
     api.fetchMyWorkouts().then(({ logs, stats }) => {
@@ -208,6 +210,22 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, 
           />
         </div>
 
+        {/* The tiles above are the roll-up; this is the record behind them —
+            what was actually lifted, set by set, session by session. */}
+        <button
+          onClick={() => setHistoryOpen(true)}
+          className="w-full mb-10 -mt-6 flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-slate-900 border border-slate-800 hover:border-lime-500/50 transition-colors group"
+        >
+          <span className="flex items-center gap-2.5 text-left">
+            <History className="w-4 h-4 text-slate-500 group-hover:text-lime-400 transition-colors" />
+            <span>
+              <span className="block text-sm font-bold text-white">Training history</span>
+              <span className="block text-[11px] text-slate-500">Every session you have logged — weights, reps and effort</span>
+            </span>
+          </span>
+          <ArrowRight className="w-4 h-4 text-slate-600 group-hover:text-lime-400 transition-colors flex-shrink-0" />
+        </button>
+
         {/* My Training Plan */}
         <div className="mb-3 flex items-center justify-between flex-wrap gap-2">
            <h2 className="text-xl font-bold text-white flex items-center">
@@ -330,6 +348,18 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, 
         </div>
 
       </main>
+
+      {historyOpen && (
+        <WorkoutHistory
+          mode="self"
+          heading="Training history"
+          subheading={user.name}
+          // Day names come from the plan the dashboard already holds, so a
+          // session reads as "Upper Body" rather than a plan-day id.
+          dayNames={Object.fromEntries(workoutPlan.days.map(d => [d.id, d.name]))}
+          onClose={() => setHistoryOpen(false)}
+        />
+      )}
     </div>
   );
 };

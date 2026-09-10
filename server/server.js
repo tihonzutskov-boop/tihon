@@ -412,10 +412,14 @@ app.get('/api/exercise-logs/me', requireAuth, async (req, res) => {
   try {
     client = await pool.connect();
     const result = await client.query(
-      `SELECT id, exercise_id, plan_day_id, weight, weight_unit, sets, effort, pain, pain_note, logged_at
-         FROM exercise_logs
-        WHERE user_id = $1 AND ($2::varchar IS NULL OR exercise_id = $2)
-        ORDER BY logged_at DESC
+      `SELECT l.id, l.exercise_id, e.name AS exercise_name, l.plan_day_id,
+              l.weight, l.weight_unit, l.sets, l.effort, l.pain, l.pain_area, l.pain_note, l.logged_at
+         FROM exercise_logs l
+         -- LEFT so a log outlives the exercise it was performed on: deleting a
+         -- library entry must not silently erase the sessions that used it.
+         LEFT JOIN exercises e ON e.id = l.exercise_id
+        WHERE l.user_id = $1 AND ($2::varchar IS NULL OR l.exercise_id = $2)
+        ORDER BY l.logged_at DESC
         LIMIT $3`,
       [req.user.id, exerciseId, limit]
     );
@@ -423,6 +427,7 @@ app.get('/api/exercise-logs/me', requireAuth, async (req, res) => {
       logs: result.rows.map(row => ({
         id: row.id,
         exerciseId: row.exercise_id,
+        exerciseName: row.exercise_name,
         planDayId: row.plan_day_id,
         // NUMERIC arrives as a string from pg; the engine does arithmetic on it.
         weight: row.weight === null ? null : Number(row.weight),
@@ -430,6 +435,10 @@ app.get('/api/exercise-logs/me', requireAuth, async (req, res) => {
         sets: row.sets || [],
         effort: row.effort,
         pain: row.pain,
+        // Stored since the pain-area column was added, but dropped on the way
+        // out until now — so the one field that says *where* it hurt never
+        // reached anyone reading the history.
+        painArea: row.pain_area,
         painNote: row.pain_note,
         loggedAt: row.logged_at,
       })),
@@ -1139,6 +1148,91 @@ app.get('/api/coaching/clients', requireAdmin, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error fetching clients' });
+  }
+});
+
+// One client's training log, for the coach. The client-facing route above is
+// hard-scoped to req.user.id — correctly, since a trainee must never read
+// another trainee's log — which left an admin with no way to see the sessions
+// at all, only the count of them on the clients list.
+app.get('/api/coaching/clients/:userId/history', requireAdmin, async (req, res) => {
+  const userId = parseInt(req.params.userId, 10);
+  if (!Number.isInteger(userId)) return res.status(400).json({ error: 'Invalid client id' });
+  const limit = Math.min(parseInt(req.query.limit, 10) || 400, 1000);
+
+  let client;
+  try {
+    client = await pool.connect();
+
+    const userRes = await client.query('SELECT id, name, email FROM users WHERE id = $1', [userId]);
+    if (userRes.rows.length === 0) return res.status(404).json({ error: 'No such client' });
+
+    const logsRes = await client.query(
+      `SELECT l.id, l.exercise_id, e.name AS exercise_name, l.plan_day_id,
+              l.weight, l.weight_unit, l.sets, l.effort, l.pain, l.pain_area, l.pain_note, l.logged_at
+         FROM exercise_logs l
+         LEFT JOIN exercises e ON e.id = l.exercise_id
+        WHERE l.user_id = $1
+        ORDER BY l.logged_at DESC
+        LIMIT $2`,
+      [userId, limit]
+    );
+
+    // Withdrawals are the half of the history the log cannot show: once a
+    // movement is pulled the client stops logging it, so from the log alone a
+    // withdrawn exercise is indistinguishable from one they simply skipped.
+    const withdrawalsRes = await client.query(
+      `SELECT w.exercise_id, e.name AS exercise_name, w.reason, w.pain_area,
+              w.withdrawn_at, w.retry_after, w.resolved_at
+         FROM exercise_withdrawals w
+         LEFT JOIN exercises e ON e.id = w.exercise_id
+        WHERE w.user_id = $1
+        ORDER BY w.withdrawn_at DESC`,
+      [userId]
+    );
+
+    // Day names come from the client's own plan rather than from workout_logs,
+    // which is written by a separate call that can be missing. A day since
+    // renamed or removed simply resolves to nothing, and the session still
+    // shows — the log is the record, the plan is only its labelling.
+    const planRes = await client.query('SELECT days FROM user_plans WHERE user_id = $1', [userId]);
+    const dayNames = {};
+    for (const day of planRes.rows[0]?.days || []) {
+      if (day && day.id) dayNames[day.id] = day.name;
+    }
+
+    return res.json({
+      client: { userId, name: userRes.rows[0].name, email: userRes.rows[0].email },
+      dayNames,
+      logs: logsRes.rows.map(row => ({
+        id: row.id,
+        exerciseId: row.exercise_id,
+        exerciseName: row.exercise_name,
+        planDayId: row.plan_day_id,
+        weight: row.weight === null ? null : Number(row.weight),
+        weightUnit: row.weight_unit,
+        sets: row.sets || [],
+        effort: row.effort,
+        pain: row.pain,
+        painArea: row.pain_area,
+        painNote: row.pain_note,
+        loggedAt: row.logged_at,
+      })),
+      withdrawals: withdrawalsRes.rows.map(row => ({
+        exerciseId: row.exercise_id,
+        exerciseName: row.exercise_name,
+        reason: row.reason,
+        painArea: row.pain_area,
+        withdrawnAt: row.withdrawn_at,
+        retryAfter: row.retry_after,
+        resolvedAt: row.resolved_at,
+      })),
+    });
+  } catch (err) {
+    console.error('Failed to fetch client history:', err.message);
+    return res.status(500).json({ error: 'Database error fetching client history' });
+  } finally {
+    client?.release();
   }
 });
 

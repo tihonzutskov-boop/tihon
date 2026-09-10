@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { PlanTemplate, CoachingClient, GenerationFailureRecord } from '../types';
 import { QUESTIONNAIRE_GOALS } from '../constants';
 import { api } from '../services/api';
-import { ClipboardList, Loader2, ChevronRight, Plus, AlertTriangle } from 'lucide-react';
+import { ClipboardList, Loader2, ChevronRight, Plus, AlertTriangle, History } from 'lucide-react';
+import WorkoutHistory from './WorkoutHistory';
 
 // Engine failure reasons, phrased as what an admin can actually act on.
 const FAILURE_LABELS: Record<string, string> = {
@@ -73,6 +74,7 @@ const AdminCoaching: React.FC = () => {
   const [clients, setClients] = useState<CoachingClient[]>([]);
   const [openGoals, setOpenGoals] = useState<Set<string>>(new Set());
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [historyClient, setHistoryClient] = useState<CoachingClient | null>(null);
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
   const [failures, setFailures] = useState<GenerationFailureRecord[]>([]);
@@ -462,6 +464,14 @@ const AdminCoaching: React.FC = () => {
             <div className="max-w-2xl">
               <div className="flex items-start justify-between gap-3 mb-1">
                 <h2 className="text-lg font-bold text-white">{selectedClient.name}</h2>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  onClick={() => setHistoryClient(selectedClient)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 hover:border-lime-500 hover:text-lime-400 text-[11px] font-bold transition-colors"
+                >
+                  <History className="w-3.5 h-3.5" />
+                  Training History
+                </button>
                 <button
                   onClick={() => resetClientQuestionnaire(selectedClient)}
                   disabled={resetting}
@@ -469,6 +479,7 @@ const AdminCoaching: React.FC = () => {
                 >
                   {resetting ? 'Resetting…' : 'Reset Questionnaire'}
                 </button>
+                </div>
               </div>
               <p className="text-xs text-slate-500 mb-1">{selectedClient.email}</p>
               <p className="text-xs text-slate-500 mb-3">
@@ -641,6 +652,16 @@ const AdminCoaching: React.FC = () => {
           </div>
         )}
       </div>
+
+      {historyClient && (
+        <WorkoutHistory
+          mode="client"
+          clientUserId={historyClient.userId}
+          heading={`${historyClient.name} · Training History`}
+          subheading={historyClient.email}
+          onClose={() => setHistoryClient(null)}
+        />
+      )}
     </div>
   );
 };

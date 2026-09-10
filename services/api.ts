@@ -1,6 +1,7 @@
 
 import { Gym, User, LibraryExercise, EquipmentItem, GymZone, GymMachine, EquipmentType, WorkoutDay, QuestionnaireAnswers, PlanTemplate, CoachingClient, GenerationFailureRecord, ExerciseLog } from '../types';
 import { DEFAULT_GYM } from '../constants';
+import type { ClientHistory, LoggedExercise } from '../utils/workoutHistory';
 
 // Relative path: works same-origin in production (Express serves the built
 // frontend) and via the Vite dev server proxy in local development.
@@ -288,7 +289,11 @@ export const api = {
 
   // Omit exerciseId for the full log (weekly volume); pass one when only that
   // movement's recent sessions matter (progression, stall detection).
-  async fetchMyExerciseLogs(exerciseId?: string, limit?: number): Promise<ExerciseLog[]> {
+  //
+  // Typed as LoggedExercise rather than ExerciseLog because the route also
+  // returns the resolved exercise name for display — ExerciseLog is the
+  // engine's input contract and deliberately carries no display fields.
+  async fetchMyExerciseLogs(exerciseId?: string, limit?: number): Promise<LoggedExercise[]> {
     try {
       const params = new URLSearchParams();
       if (exerciseId) params.set('exerciseId', exerciseId);
@@ -360,6 +365,20 @@ export const api = {
       return data.clients;
     } catch {
       return [];
+    }
+  },
+
+  // One client's sessions, for the coach. Returns null rather than an empty
+  // history on failure: "this client has never trained" and "the request did
+  // not come back" must not look the same to whoever is reading it.
+  async fetchClientHistory(userId: number, limit?: number): Promise<ClientHistory | null> {
+    try {
+      const query = limit ? `?limit=${limit}` : '';
+      const response = await fetch(`${API_BASE}/coaching/clients/${userId}/history${query}`);
+      if (!response.ok) return null;
+      return await response.json();
+    } catch {
+      return null;
     }
   },
 
