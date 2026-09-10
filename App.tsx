@@ -33,7 +33,6 @@ const App: React.FC = () => {
 
   const [user, setUser] = useState<User | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [activeGymId, setActiveGymId] = useState<string>('default-gym');
   const [questionnaire, setQuestionnaire] = useState<QuestionnaireAnswers | null>(null);
 
@@ -121,9 +120,9 @@ const App: React.FC = () => {
   // stops adapting and asks for a decision rather than extrapolating.
   const [planNeedsReview, setPlanNeedsReview] = useState(false);
   const [tutorialsOpen, setTutorialsOpen] = useState(false);
-  // A plan save that fails has to say so. Silence here reads as success and
-  // the edit is gone by the next reload.
-  const [planSaveError, setPlanSaveError] = useState<string | null>(null);
+  // A write that fails has to say so. Silence reads as success, and by the
+  // time the client notices, the thing they did is gone.
+  const [saveNotice, setSaveNotice] = useState<{ title: string; detail: string } | null>(null);
   
   const [activeDayIndex, setActiveDayIndex] = useState(0);
   const [workoutPlan, setWorkoutPlan] = useState<WorkoutPlan>({
@@ -269,26 +268,45 @@ const App: React.FC = () => {
   // auth modal) so a caller can bail out of opening the plan-builder UI.
   const requireLogin = (): boolean => {
     if (!user) {
-      setAuthMode('login');
       setShowAuthModal(true);
       return false;
     }
     return true;
   };
 
+  // Server messages arrive unpunctuated ("Server responded with 500"), and run
+  // straight into the sentence that follows them.
+  const asSentence = (msg: string | undefined) => {
+    const text = (msg || 'Could not reach the server').trim();
+    return /[.!?]$/.test(text) ? text : `${text}.`;
+  };
+
   const persistPlan = async (plan: WorkoutPlan) => {
     const result = await api.savePlan(plan.name, plan.days);
-    setPlanSaveError(result.ok ? null : result.error || 'Could not save your plan');
+    setSaveNotice(result.ok ? null : {
+      title: 'Your plan didn’t save',
+      detail: `${asSentence(result.error)} The change is still on screen but is not stored yet — press Save in the plan panel to try again.`,
+    });
+    return result;
+  };
+
+  const recordCompletedWorkout = async (dayName: string, exerciseCount: number, planDayId?: string) => {
+    const result = await api.completeWorkout(dayName, exerciseCount, planDayId);
+    // Deliberately specific about what was and wasn't lost: the sets are
+    // already stored by this point (logExercises writes them, and reports its
+    // own failures), so only the dashboard's tally missed this session.
+    if (!result.ok) setSaveNotice({
+      title: 'This session wasn’t counted',
+      detail: `${asSentence(result.error)} Everything you lifted was saved — only the workout count, streak and hours on your dashboard missed it.`,
+    });
     return result;
   };
 
   const handleLoginClick = () => {
-    setAuthMode('login');
     setShowAuthModal(true);
   };
 
   const handleSignupClick = () => {
-    setAuthMode('signup');
     setShowAuthModal(true);
   };
   
@@ -303,10 +321,18 @@ const App: React.FC = () => {
     loadMyQuestionnaire();
   };
 
-  const handleLogout = () => {
-    api.logout();
+  const handleLogout = async () => {
+    // Local state is cleared either way — the client asked to sign out and
+    // should not be left sitting in the app. But only the server can actually
+    // end the session, so a failure here means they look signed out while the
+    // cookie is still live, which on a shared machine is worth saying plainly.
+    const result = await api.logout();
     setUser(null);
     setCurrentView('landing');
+    if (!result.ok) setSaveNotice({
+      title: 'Signed out here, but not confirmed',
+      detail: `${asSentence(result.error)} Your session may still be open on this device — close the browser if you are not on your own computer.`,
+    });
   };
 
   if (isLoading) {
@@ -326,14 +352,11 @@ const App: React.FC = () => {
           onSelectGym= {handleGymSelect}
           onLoginClick={handleLoginClick}
           onSignupClick={handleSignupClick}
-          lang={lang}
         />
         {showAuthModal && (
           <AuthModal 
-            initialMode={authMode} 
             onClose={() => setShowAuthModal(false)}
             onSuccess={handleAuthSuccess}
-            lang={lang}
           />
         )}
       </>
@@ -395,7 +418,7 @@ const App: React.FC = () => {
              onClose={() => setSessionPhase('idle')}
              onFinish={() => {
                const d = workoutPlan.days[activeDayIndex];
-               api.completeWorkout(d.name, d.exercises.length, d.id);
+               recordCompletedWorkout(d.name, d.exercises.length, d.id);
                setSessionPhase('post');
              }}
            />
@@ -568,7 +591,7 @@ const App: React.FC = () => {
             onWatchVideo={handleWatchVideo}
             onClose={() => setIsPlanOpen(false)}
             isLoggedIn={!!user}
-            onCompleteWorkout={(dayName, exerciseCount, planDayId) => api.completeWorkout(dayName, exerciseCount, planDayId)}
+            onCompleteWorkout={(dayName, exerciseCount, planDayId) => recordCompletedWorkout(dayName, exerciseCount, planDayId)}
             onSavePlan={() => persistPlan(workoutPlan)}
             onSetDayWeekday={(dayId, weekday) => {
               // The next plan is computed here rather than inside the updater:
@@ -658,10 +681,8 @@ const App: React.FC = () => {
 
         {showAuthModal && (
           <AuthModal
-            initialMode={authMode}
             onClose={() => setShowAuthModal(false)}
             onSuccess={handleAuthSuccess}
-            lang={lang}
           />
         )}
       </main>
@@ -669,18 +690,15 @@ const App: React.FC = () => {
       {/* A failed plan save is otherwise invisible: the edit stays on screen
           and disappears at the next reload. Dismissible, and retryable from
           the plan panel's own Save button. */}
-      {planSaveError && (
+      {saveNotice && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[200] max-w-md w-[calc(100%-2rem)] bg-red-950/90 border border-red-800/60 rounded-xl px-4 py-3 shadow-lg backdrop-blur-sm flex items-start gap-3">
           <div className="min-w-0">
-            <p className="text-xs font-bold text-red-300">Your plan didn’t save</p>
-            <p className="text-[11px] text-red-200/70 mt-0.5 break-words">{planSaveError}</p>
-            <p className="text-[11px] text-red-200/70 mt-1">
-              The change is still on screen but is not stored yet — press Save in the plan panel to try again.
-            </p>
+            <p className="text-xs font-bold text-red-300">{saveNotice.title}</p>
+            <p className="text-[11px] text-red-200/70 mt-0.5 break-words">{saveNotice.detail}</p>
           </div>
           <button
             type="button"
-            onClick={() => setPlanSaveError(null)}
+            onClick={() => setSaveNotice(null)}
             className="ml-auto flex-shrink-0 text-red-300/70 hover:text-red-200 text-xs font-bold px-1"
             aria-label="Dismiss"
           >

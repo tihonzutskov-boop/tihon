@@ -1,13 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { api } from '../services/api';
-import { User as UserType, Language } from '../types';
+import { User as UserType } from '../types';
 
+// Sign-in is Google-only ("no passwords stored"), so there is no login/signup
+// mode to preselect — initialMode was a leftover from the password era and was
+// never read. lang went the same way: every string here is English.
 interface AuthModalProps {
   onClose: () => void;
   onSuccess: (user: UserType) => void;
-  initialMode?: 'login' | 'signup';
-  lang: Language;
 }
 
 declare global {

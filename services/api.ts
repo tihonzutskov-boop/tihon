@@ -210,8 +210,17 @@ export const api = {
     return data.user;
   },
 
-  async logout(): Promise<void> {
-    await fetch(`${API_BASE}/auth/logout`, { method: 'POST' });
+  // The client can always drop its own state, but only the server can end the
+  // session. If this fails the cookie is still live, so the caller has to be
+  // able to tell the difference rather than assume it worked.
+  async logout(): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const response = await fetch(`${API_BASE}/auth/logout`, { method: 'POST' });
+      if (!response.ok) return { ok: false, error: `Server responded with ${response.status}` };
+      return { ok: true };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Could not reach the server' };
+    }
   },
 
   async fetchMe(): Promise<User | null> {
@@ -227,12 +236,29 @@ export const api = {
 
   // --- WORKOUT TRACKING ---
 
-  async completeWorkout(dayName: string, exerciseCount: number, planDayId?: string): Promise<void> {
-    await fetch(`${API_BASE}/workouts`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dayName, exerciseCount, planDayId }),
-    });
+  // Reports its outcome, like savePlan and logExercises. What this writes is
+  // only the dashboard's own tally — the sets themselves are already stored by
+  // logExercises before this runs — but a failure still silently costs the
+  // client a workout, a day of streak, and the hours they trained.
+  async completeWorkout(
+    dayName: string,
+    exerciseCount: number,
+    planDayId?: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const response = await fetch(`${API_BASE}/workouts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dayName, exerciseCount, planDayId }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        return { ok: false, error: body.error || `Server responded with ${response.status}` };
+      }
+      return { ok: true };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Could not reach the server' };
+    }
   },
 
   async fetchMyWorkouts(): Promise<{ logs: any[]; stats: { workoutsCompleted: number; totalMinutes: number; streakDays: number } }> {

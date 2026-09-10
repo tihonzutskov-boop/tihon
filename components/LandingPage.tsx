@@ -1,13 +1,14 @@
 
 import React from 'react';
-import { Gym, Language } from '../types';
+import { Gym } from '../types';
 
+// Every string on this page is English; the lang prop was accepted and never
+// read, which hid that rather than recording it.
 interface LandingPageProps {
   gyms: Gym[];
   onSelectGym: (gymId: string) => void;
   onLoginClick: () => void;
   onSignupClick: () => void;
-  lang: Language;
 }
 
 const LandingPage: React.FC<LandingPageProps> = ({ gyms, onSelectGym, onLoginClick, onSignupClick }) => {
