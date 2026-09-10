@@ -12,6 +12,8 @@ interface ExerciseTutorialsProps {
   isAdmin: boolean;
   onClose: () => void;
   onLocateExercise: (exercise: LibraryExercise) => void;
+  // Locating opens the gym map, which is admin-only for now.
+  canOpenGymMap?: boolean;
   onExercisesUpdated: (updated: LibraryExercise[]) => void;
 }
 
@@ -23,6 +25,7 @@ const ExerciseTutorials: React.FC<ExerciseTutorialsProps> = ({
   isAdmin,
   onClose,
   onLocateExercise,
+  canOpenGymMap,
   onExercisesUpdated,
 }) => {
   const [search, setSearch] = useState('');
@@ -236,13 +239,15 @@ const ExerciseTutorials: React.FC<ExerciseTutorialsProps> = ({
                   </>
                 )}
 
-                <button
-                  onClick={() => onLocateExercise(ex)}
-                  className="w-full py-3 rounded-xl border-none bg-lime-500 hover:bg-lime-400 text-slate-950 text-[12.5px] font-extrabold flex items-center justify-center gap-2 transition-colors"
-                >
-                  <MapPin className="w-4 h-4" />
-                  {location?.isMapped ? `Locate in ${location.matchedZones.map(z => z.name).join(', ')}` : 'Locate in Gym'}
-                </button>
+                {canOpenGymMap && (
+                  <button
+                    onClick={() => onLocateExercise(ex)}
+                    className="w-full py-3 rounded-xl border-none bg-lime-500 hover:bg-lime-400 text-slate-950 text-[12.5px] font-extrabold flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <MapPin className="w-4 h-4" />
+                    {location?.isMapped ? `Locate in ${location.matchedZones.map(z => z.name).join(', ')}` : 'Locate in Gym'}
+                  </button>
+                )}
               </div>
             </div>
           );

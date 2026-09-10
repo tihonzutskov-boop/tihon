@@ -15,6 +15,8 @@ interface UserDashboardProps {
   workoutPlan: WorkoutPlan;
   onLogout: () => void;
   onEnterGym: (gymId: string) => void;
+  // The gym map is admin-only for now; without it these cards go nowhere.
+  canOpenGymMap?: boolean;
   onStartWorkout: (dayIndex: number, gymId: string) => void;
   questionnaire: QuestionnaireAnswers | null;
   onSubmitQuestionnaire: (answers: QuestionnaireAnswers) => void;
@@ -48,7 +50,7 @@ const startOfThisWeek = (): Date => {
   return monday;
 };
 
-const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, workoutPlan, onLogout, onEnterGym, onStartWorkout, questionnaire, onSubmitQuestionnaire, onOpenTutorials, planNeedsReview, lang }) => {
+const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, workoutPlan, onLogout, onEnterGym, canOpenGymMap, onStartWorkout, questionnaire, onSubmitQuestionnaire, onOpenTutorials, planNeedsReview, lang }) => {
   const t = translations[lang];
 
   const [stats, setStats] = useState(user.stats || { workoutsCompleted: 0, totalMinutes: 0, streakDays: 0 });
@@ -336,6 +338,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, 
         )}
 
         {/* Gyms Section */}
+        {canOpenGymMap && (
+        <>
         <div className="mb-8 flex items-center justify-between">
            <h2 className="text-xl font-bold text-white flex items-center">
              <MapPin className="w-5 h-5 mr-2 text-lime-400" />
@@ -365,6 +369,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, 
             </button>
           ))}
         </div>
+        </>
+        )}
 
       </main>
 

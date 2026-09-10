@@ -258,7 +258,19 @@ const App: React.FC = () => {
     setActiveDayIndex(0);
   };
 
+  // The gym map is the floor-plan builder, and it is not ready to be put in
+  // front of clients yet — so it is admin-only for now. One flag, checked
+  // everywhere that opens it, so re-enabling it is a single edit.
+  //
+  // Guided sessions are unaffected: the Locate stage renders its own map
+  // inside the session rather than routing through this view.
+  const canOpenGymMap = user?.role === 'admin';
+
   const handleGymSelect = (gymId: string) => {
+    // Guarded here as well as at each button, so no path can strand a client
+    // in a view they have no way back out of. Bails before touching the active
+    // gym too — for a client this call should do nothing at all.
+    if (!canOpenGymMap) return;
     setActiveGymId(gymId);
     setCurrentView('app');
   };
@@ -349,7 +361,8 @@ const App: React.FC = () => {
       <>
         <LandingPage
           gyms={gyms}
-          onSelectGym= {handleGymSelect}
+          onSelectGym={handleGymSelect}
+          canOpenGymMap={canOpenGymMap}
           onLoginClick={handleLoginClick}
           onSignupClick={handleSignupClick}
         />
@@ -374,6 +387,7 @@ const App: React.FC = () => {
            planNeedsReview={planNeedsReview}
            onLogout={handleLogout}
            onEnterGym={handleGymSelect}
+           canOpenGymMap={canOpenGymMap}
            onStartWorkout={(dayIndex, gymId) => {
              setActiveGymId(gymId);
              setActiveDayIndex(dayIndex);
@@ -445,6 +459,7 @@ const App: React.FC = () => {
              isAdmin={user.role === 'admin'}
              onClose={() => setTutorialsOpen(false)}
              onLocateExercise={handleLocateLibraryExercise}
+             canOpenGymMap={canOpenGymMap}
              onExercisesUpdated={setLibraryExercises}
            />
          )}

@@ -9,9 +9,11 @@ interface LandingPageProps {
   onSelectGym: (gymId: string) => void;
   onLoginClick: () => void;
   onSignupClick: () => void;
+  // The gym map is admin-only for now, so a visitor has nowhere to explore to.
+  canOpenGymMap?: boolean;
 }
 
-const LandingPage: React.FC<LandingPageProps> = ({ gyms, onSelectGym, onLoginClick, onSignupClick }) => {
+const LandingPage: React.FC<LandingPageProps> = ({ gyms, onSelectGym, onLoginClick, onSignupClick, canOpenGymMap }) => {
   const handleExplore = () => {
     if (gyms[0]) onSelectGym(gyms[0].id);
   };
@@ -57,12 +59,14 @@ const LandingPage: React.FC<LandingPageProps> = ({ gyms, onSelectGym, onLoginCli
             >
               Get Started
             </button>
+            {canOpenGymMap && (
             <button
               onClick={handleExplore}
               className="w-full sm:w-auto bg-white/5 border border-white/10 text-white font-bold text-sm px-7 py-3.5 rounded-lg hover:bg-white/10 transition-colors"
             >
               See How It Works
             </button>
+            )}
           </div>
         </div>
       </div>

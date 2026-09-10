@@ -2718,6 +2718,9 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onS
             libraryExercises={libraryExercises}
             gym={gym}
             isAdmin
+            // This surface is admin-only, so the gym map stays reachable here
+            // while it is hidden from clients.
+            canOpenGymMap
             onClose={() => setShowTutorials(false)}
             onExercisesUpdated={setLibraryExercises}
             onLocateExercise={(ex) => {
