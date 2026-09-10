@@ -720,10 +720,8 @@ describe('DROP-2 — one bad day does not take the week down', () => {
     );
     const result = generatePlan(tpl, [exercise({ id: 'p1', name: 'Push' })], gym([]), profile({ daysPerWeek: 2 }));
     expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.reason).toBe('no_day_could_be_built');
-      expect(result.scope).toBe('week');
-    }
+    expect((result as GenerationFailure).reason).toBe('no_day_could_be_built');
+    expect((result as GenerationFailure).scope).toBe('week');
   });
 });
 
