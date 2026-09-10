@@ -573,13 +573,27 @@ export const estimateDayMinutes = (
 // Weight is deliberately absent: with no logged history there's no honest
 // basis for a number, and inventing one is the riskiest thing this engine
 // could do. Reps carry the prescription instead.
+// Rest is read off a clock, not measured. Scaling a base rest by the session
+// multiplier lands on values like 69 or 103 seconds — numbers nobody sets a
+// timer to, and which imply a precision the prescription does not have. Ten
+// second steps are what every value in the base table but the 45s already
+// sits on, and every one of them is an even number.
+//
+// Short rests lose a gradation to this: 20s scaled for a medium session is
+// 23s, which rounds back to 20. That is the honest outcome — three seconds
+// was never a real difference in a conditioning finisher.
+const REST_STEP_SECONDS = 10;
+
+export const roundRestSeconds = (seconds: number): number =>
+  Math.max(REST_STEP_SECONDS, Math.round(seconds / REST_STEP_SECONDS) * REST_STEP_SECONDS);
+
 const prescriptionFor = (slot: ExerciseSlot, profile: GenerationProfile) => {
   const sets = profile.experience === 'Beginner' ? slot.setsMin : slot.setsMax;
   const reps = Math.round((slot.repsMin + slot.repsMax) / 2);
   // Time available buys longer rest, which is the cheapest quality upgrade
   // there is: better performance on later sets, no extra recovery cost.
   const shape = shapeFor(profile.sessionMinutes);
-  const restSeconds = Math.round(slot.restSeconds * shape.restMultiplier);
+  const restSeconds = roundRestSeconds(slot.restSeconds * shape.restMultiplier);
   return { sets, reps, restSeconds };
 };
 

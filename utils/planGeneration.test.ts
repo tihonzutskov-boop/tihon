@@ -3,6 +3,7 @@ import {
   checkEligibility, eligibleExercises, gymEquipmentIds, selectSplit,
   selectForSlot, estimateDayMinutes, generatePlan, validatePlan, buildDefaultBlueprint,
   buildCombinedBlueprint, assignAimsToDays, aimProfile, GenerationProfile, EligibilityContext,
+  roundRestSeconds,
 } from './planGeneration';
 import type { GenerationFailure } from './planGeneration';
 import { LibraryExercise, Gym, ExerciseSlot, PlanTemplate, Exercise, ALL_JOINT_STRESS_AREAS } from '../types';
@@ -1040,6 +1041,59 @@ describe('warm-up and cooldown', () => {
     };
     const result = generatePlan(tpl, library, gym([]), profile({ daysPerWeek: 1 }));
     expect(result.ok).toBe(true);
+  });
+});
+
+describe('rest prescription', () => {
+  it('prescribes rest in whole ten-second steps, never an arbitrary number', () => {
+    const pool = [exercise({ id: 'p1', name: 'Push' })];
+    const blueprint: PlanTemplate = {
+      id: 't1', name: 'T', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 60, days: [],
+      blueprintDays: [{
+        id: 'bd1', name: 'Day 1', slots: [slot({ id: 's1', movementPattern: 'horizontal_push', priority: 1 })],
+      }],
+    };
+    const rests: number[] = [];
+    // Every session length, so every rest multiplier is exercised.
+    for (const sessionMinutes of [30, 45, 60, 75, 90]) {
+      const run = generatePlan(blueprint, pool, gym([]), profile({ sessionMinutes, daysPerWeek: 1 }));
+      expect(run.ok).toBe(true);
+      if (!run.ok) continue;
+      for (const day of run.days) {
+        for (const ex of day.exercises) {
+          for (const detail of ex.setDetails || []) rests.push(detail.restSec);
+        }
+      }
+    }
+    // Guards against the loop above silently checking nothing.
+    expect(rests.length).toBeGreaterThan(0);
+    for (const rest of rests) {
+      expect(rest % 10).toBe(0);
+      expect(rest % 2).toBe(0);
+    }
+  });
+
+  describe('roundRestSeconds', () => {
+    it('snaps the multiplier\'s arbitrary output onto readable steps', () => {
+      // What each base rest becomes once scaled for a longer session.
+      expect(roundRestSeconds(69)).toBe(70);
+      expect(roundRestSeconds(103.5)).toBe(100);
+      expect(roundRestSeconds(121.5)).toBe(120);
+      expect(roundRestSeconds(162)).toBe(160);
+    });
+
+    it('leaves a rest already on a step exactly where it is', () => {
+      for (const rest of [20, 30, 60, 90, 120]) expect(roundRestSeconds(rest)).toBe(rest);
+    });
+
+    it('rounds the one odd base rest up rather than down', () => {
+      expect(roundRestSeconds(45)).toBe(50);
+    });
+
+    it('never returns a rest of nothing', () => {
+      expect(roundRestSeconds(0)).toBe(10);
+      expect(roundRestSeconds(3)).toBe(10);
+    });
   });
 });
 
