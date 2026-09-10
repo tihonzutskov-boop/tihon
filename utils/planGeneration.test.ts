@@ -209,7 +209,9 @@ describe('duration handling', () => {
     };
     const result = generatePlan(blueprint, pool, gym([]), profile({ sessionMinutes: 1, daysPerWeek: 1 }));
     expect(result.ok).toBe(false);
-    expect((result as GenerationFailure).reason).toBe('cannot_fit_duration');
+    expect((result as GenerationFailure).reason).toBe('no_day_could_be_built');
+    expect((result as GenerationFailure).scope).toBe('week');
+    expect((result as GenerationFailure).detail).toContain('min of primary work');
   });
 
   it('counts rest between sets, not after the last one', () => {
@@ -228,7 +230,8 @@ describe('generation failure', () => {
     };
     const result = generatePlan(blueprint, [exercise({ id: 'p1', name: 'Push' })], gym([]), profile());
     expect(result.ok).toBe(false);
-    expect((result as GenerationFailure).reason).toBe('no_candidate_for_slot');
+    expect((result as GenerationFailure).reason).toBe('no_day_could_be_built');
+    expect((result as GenerationFailure).detail).toContain('Nothing at this gym');
   });
 
   it('skips an optional slot with no candidate instead of failing', () => {
@@ -426,7 +429,8 @@ describe('graceful skip when a required slot cannot be filled', () => {
     };
     const r = generatePlan(bp, library, gym([]), profile({ daysPerWeek: 1 }));
     expect(r.ok).toBe(false);
-    expect((r as GenerationFailure).reason).toBe('no_candidate_for_slot');
+    expect((r as GenerationFailure).reason).toBe('no_day_could_be_built');
+    expect((r as GenerationFailure).detail).toContain('Nothing at this gym');
   });
 
   it('produces a plan that passes validation after skipping', () => {
@@ -667,6 +671,59 @@ describe('goal selection', () => {
   it('offers Mobility, not General fitness, as a new-client choice', () => {
     expect(QUESTIONNAIRE_GOALS).toContain('Mobility');
     expect(QUESTIONNAIRE_GOALS).not.toContain('General fitness');
+  });
+});
+
+describe('DROP-2 — one bad day does not take the week down', () => {
+  const twoDays = (badDaySlots: ExerciseSlot[], goodDaySlots: ExerciseSlot[]): PlanTemplate => ({
+    id: 't', name: 'T', goal: 'Muscle gain', daysPerWeek: '2', durationMin: 60, days: [],
+    blueprintDays: [
+      { id: 'bd1', name: 'Day 1', slots: goodDaySlots },
+      { id: 'bd2', name: 'Day 2', slots: badDaySlots },
+    ],
+  });
+
+  it('delivers the days it could build and reports the one it could not', () => {
+    // Day 2 asks for a movement pattern nothing in the library covers.
+    const tpl = twoDays(
+      [slot({ id: 'bad', movementPattern: 'vertical_pull', priority: 1 })],
+      [slot({ id: 'good', movementPattern: 'horizontal_push', priority: 1 })],
+    );
+    const result = generatePlan(tpl, [exercise({ id: 'p1', name: 'Push' })], gym([]), profile({ daysPerWeek: 2 }));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.days).toHaveLength(1);
+    expect(result.days[0].name).toBe('Day 1');
+    expect(result.dayFailures).toHaveLength(1);
+    expect(result.dayFailures[0].dayName).toBe('Day 2');
+    expect(result.dayFailures[0].scope).toBe('day');
+    expect(result.dayFailures[0].reason).toBe('no_candidate_for_slot');
+  });
+
+  it('reports no day failures when every day builds', () => {
+    const tpl = twoDays(
+      [slot({ id: 'a', movementPattern: 'horizontal_push', priority: 1 })],
+      [slot({ id: 'b', movementPattern: 'horizontal_push', priority: 1 })],
+    );
+    const result = generatePlan(tpl, [exercise({ id: 'p1', name: 'Push' })], gym([]), profile({ daysPerWeek: 2 }));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.dayFailures).toEqual([]);
+  });
+
+  // Only when nothing at all can be built does this become the client's
+  // problem rather than one flagged day.
+  it('fails at week level only when no day can be built', () => {
+    const tpl = twoDays(
+      [slot({ id: 'a', movementPattern: 'vertical_pull', priority: 1 })],
+      [slot({ id: 'b', movementPattern: 'vertical_pull', priority: 1 })],
+    );
+    const result = generatePlan(tpl, [exercise({ id: 'p1', name: 'Push' })], gym([]), profile({ daysPerWeek: 2 }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe('no_day_could_be_built');
+      expect(result.scope).toBe('week');
+    }
   });
 });
 

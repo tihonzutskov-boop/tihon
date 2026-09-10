@@ -4,7 +4,7 @@
 import type {
   LibraryExercise, Gym, ExerciseSlot, BlueprintDay, PlanTemplate,
   ExperienceLevel, JointStressArea, WorkoutDay, Exercise, SetDetail,
-  MovementPattern, MuscleGroup,
+  MovementPattern, MuscleGroup, SlotRole,
 } from '../types.js';
 // A real import, not type-only: the session's length decides its whole shape,
 // so these run at generation time. Compiled alongside planGeneration into the
@@ -248,13 +248,28 @@ const GOALS_WITH_CONDITIONING = new Set(['Weight loss', 'Endurance']);
 // renumbers them to sit after whichever blocks came before. Split out so
 // buildCombinedBlueprint can call it once per selected aim without
 // duplicating the goal → template → prescription logic.
+// SLOT-1. Derived rather than written onto all ~25 template lines, because the
+// mapping is exact and one rule is easier to keep honest than 25 hand-set
+// values: what used to be required is primary; what was optional splits by
+// whether dropping it costs the session a movement pattern (a compound —
+// supporting) or only finishing work (an isolation — accessory).
+const roleOfSpec = (spec: SlotSpec): SlotRole =>
+  !spec.optional ? 'primary' : (spec.kind === 'compound' ? 'supporting' : 'accessory');
+
+// Admin-authored blueprints predate SLOT-1 and carry no role, so they fall
+// back to what they do carry. Anything droppable reads as accessory there —
+// the safe reading, since it keeps the old single-bucket behaviour rather
+// than promoting unknown slots into protected primary work.
+const roleOf = (slot: ExerciseSlot): SlotRole =>
+  slot.role ?? (slot.optional ? 'accessory' : 'primary');
+
 const slotsForGoal = (goal: string, dayName: string, shape: SessionShape): ExerciseSlot[] => {
   const rx = GOAL_PRESCRIPTION[goal] || GOAL_PRESCRIPTION[DEFAULT_GOAL];
   // A mobility session has no upper/lower or push/pull split to speak of —
   // it works whichever regions the client has, every time — so it ignores
   // the day-name-driven template lookup that every other goal uses.
   const base = goal === 'Mobility' ? MOBILITY : (DAY_TEMPLATES.find(t => t.match(dayName))?.slots || FULL_BODY);
-  const focused = shape.includeAccessories ? base : base.filter(sp => !sp.optional);
+  const focused = shape.includeAccessories ? base : base.filter(sp => roleOfSpec(sp) === 'primary');
   const withFinisher: SlotSpec[] = GOALS_WITH_CONDITIONING.has(goal) && shape.includeAccessories
     ? [...focused, { pattern: 'conditioning', kind: 'isolation', optional: true }]
     : focused;
@@ -265,6 +280,7 @@ const slotsForGoal = (goal: string, dayName: string, shape: SessionShape): Exerc
     movementPattern: spec.pattern,
     priority: i + 1,
     optional: spec.optional,
+    role: roleOfSpec(spec),
     // Conditioning and mobility work sit outside the compound/isolation
     // split, so leaving the category unset lets any exercise tagged for
     // that pattern fill the slot rather than none.
@@ -463,16 +479,35 @@ const prescriptionFor = (slot: ExerciseSlot, profile: GenerationProfile) => {
 // Generation
 // ---------------------------------------------------------------------------
 
+export type GenerationFailureReason =
+  'no_candidate_for_slot' | 'cannot_fit_duration' | 'no_blueprint_days' | 'no_day_could_be_built';
+
 export interface GenerationFailure {
   ok: false;
-  reason: 'no_candidate_for_slot' | 'cannot_fit_duration' | 'no_blueprint_days';
+  reason: GenerationFailureReason;
   detail: string;
+  // DROP-2: a week-level failure is one the client's aims and split cannot
+  // satisfy at all — regenerating the week is the fix. Day-level problems no
+  // longer arrive here; they come back on a successful result as dayFailures.
+  scope: 'week';
+}
+
+// DROP-2: one day that cannot be built fails that day only. The rest of the
+// week still generates and is delivered, and the failed day is reported for
+// the admin queue — the fix there is usually a same-day exercise swap, not
+// regenerating anything.
+export interface DayFailure {
+  dayName: string;
+  reason: GenerationFailureReason;
+  detail: string;
+  scope: 'day';
 }
 
 export interface GenerationSuccess {
   ok: true;
   days: WorkoutDay[];
   decisions: SlotDecision[];
+  dayFailures: DayFailure[];
 }
 
 export interface SlotDecision {
@@ -572,7 +607,7 @@ export const generatePlan = (
 ): GenerationResult => {
   const blueprintDays = blueprint.blueprintDays || [];
   if (blueprintDays.length === 0) {
-    return { ok: false, reason: 'no_blueprint_days', detail: `Template ${blueprint.id} has no blueprint days` };
+    return { ok: false, reason: 'no_blueprint_days', scope: 'week', detail: `Template ${blueprint.id} has no blueprint days` };
   }
 
   const ctx: EligibilityContext = { profile, availableEquipmentIds: gymEquipmentIds(gym) };
@@ -580,6 +615,9 @@ export const generatePlan = (
 
   const days: WorkoutDay[] = [];
   const decisions: SlotDecision[] = [];
+  // DROP-2: collected rather than returned. A day that cannot be built stops
+  // that day, not the week.
+  const dayFailures: DayFailure[] = [];
   // Full-body splits (and any split where a slot template repeats — e.g. two
   // Upper days) reuse the exact same slots on more than one day. Selection is
   // otherwise deterministic, so without this a client on a 3-day full-body
@@ -630,34 +668,54 @@ export const generatePlan = (
       return { sets, reps, restSeconds };
     }), 0);
 
+    // DROP-1: whole exercises come out, never partial sets, and they come out
+    // in role order — all accessory work before any supporting work, so a
+    // session sheds finishing work before it gives up a movement pattern.
+    // Within one role, the lowest-priority exercise goes first. Primary work
+    // is never dropped; a day that still doesn't fit is DROP-2's case.
+    const DROP_ORDER: SlotRole[] = ['accessory', 'supporting'];
+
     const droppedIds: string[] = [];
     while (measure() > trainingBudget) {
       let dropIdx = -1;
-      let worstPriority = -Infinity;
-      picked.forEach((p, i) => {
-        if (p.slot.optional && p.slot.priority > worstPriority) {
-          worstPriority = p.slot.priority;
-          dropIdx = i;
-        }
-      });
+      for (const tier of DROP_ORDER) {
+        let worstPriority = -Infinity;
+        picked.forEach((p, i) => {
+          if (roleOf(p.slot) === tier && p.slot.priority > worstPriority) {
+            worstPriority = p.slot.priority;
+            dropIdx = i;
+          }
+        });
+        if (dropIdx !== -1) break;
+      }
       if (dropIdx === -1) {
-        return {
-          ok: false,
+        // Every accessory and supporting exercise is already gone and the
+        // primary work still overruns. Primary work is never cut to fit, and a
+        // partial primary prescription is never delivered, so this day stops
+        // here and the week carries on without it.
+        dayFailures.push({
+          dayName: bpDay.name,
           reason: 'cannot_fit_duration',
-          detail: `"${bpDay.name}" needs ${measure()} min of required work but only ${trainingBudget} min is available after warm-up and cooldown`,
-        };
+          scope: 'day',
+          detail: `"${bpDay.name}" needs ${measure()} min of primary work but only ${trainingBudget} min is available after warm-up and cooldown`,
+        });
+        break;
       }
       droppedIds.push(picked[dropIdx].slot.id);
       picked.splice(dropIdx, 1);
     }
 
+    if (measure() > trainingBudget) continue;  // recorded just above
+
     if (picked.length === 0) {
       const wanted = bpDay.slots.map(sl => sl.movementPattern).join(', ');
-      return {
-        ok: false,
+      dayFailures.push({
+        dayName: bpDay.name,
         reason: 'no_candidate_for_slot',
+        scope: 'day',
         detail: `Nothing at this gym can fill any slot in "${bpDay.name}" (needed: ${wanted})`,
-      };
+      });
+      continue;
     }
 
     unfilledRequired.forEach(u => decisions.push({
@@ -714,7 +772,21 @@ export const generatePlan = (
     picked.forEach(p => usedEarlierInWeek.add(p.le.id));
   }
 
-  return { ok: true, days, decisions };
+  // Every day failed, so there is no plan to deliver — that is a week-level
+  // problem (the aims, split and gym cannot produce a single session), and
+  // regenerating the week is the fix rather than swapping one exercise.
+  if (days.length === 0) {
+    return {
+      ok: false,
+      reason: 'no_day_could_be_built',
+      scope: 'week',
+      detail: dayFailures.length > 0
+        ? `No day could be built. First reason: ${dayFailures[0].detail}`
+        : 'No day could be built from this blueprint.',
+    };
+  }
+
+  return { ok: true, days, decisions, dayFailures };
 };
 
 // ---------------------------------------------------------------------------
@@ -751,7 +823,13 @@ export const validatePlan = (
   const ctx: EligibilityContext = { profile, availableEquipmentIds: gymEquipmentIds(gym) };
   const byId = new Map(library.map(le => [le.id, le]));
 
-  if (days.length !== profile.daysPerWeek) {
+  // DROP-2: a week can legitimately come back short when one day was
+  // infeasible and was flagged for an admin instead of being delivered
+  // half-built. Validation must not then reject the days that did build —
+  // that would turn one bad day back into a failed week, which is the
+  // behaviour DROP-2 exists to remove. More days than asked for is still
+  // wrong, and no days at all never reaches validation.
+  if (days.length > profile.daysPerWeek) {
     errors.push(`Expected ${profile.daysPerWeek} days, generated ${days.length}`);
   }
 

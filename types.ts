@@ -392,12 +392,23 @@ export interface QuestionnaireAnswers {
 // One unfilled requirement in a blueprint day — "a horizontal push goes
 // here" — that the generator resolves to a real exercise per user. Distinct
 // from SessionBlock, which groups exercises that have *already* been chosen.
+// SLOT-1: a main-block slot's role decides both where it sits in the session
+// and how early it is dropped when the day runs over. Replaces the old
+// required/optional pair — 'primary' is what 'required' meant, and what was
+// one undifferentiated 'optional' bucket now splits by whether losing it costs
+// the session a movement pattern (supporting) or only finishing work
+// (accessory).
+export type SlotRole = 'primary' | 'supporting' | 'accessory';
+
 export interface ExerciseSlot {
   id: string;
   movementPattern: MovementPattern;
   exerciseCategory?: ExerciseCategory; // narrows selection (e.g. isolation-only accessory slot)
   priority: number;                    // lower = more important; the duration fitter drops the highest number first
   optional?: boolean;                  // only an optional slot may be dropped to fit the session length
+  // Absent on admin-authored blueprints written before SLOT-1; consumers fall
+  // back to reading `optional` for those (see roleOf in planGeneration).
+  role?: SlotRole;
   setsMin: number;
   setsMax: number;
   repsMin: number;

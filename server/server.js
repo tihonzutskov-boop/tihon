@@ -988,6 +988,14 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
             await recordGenerationFailure(req.user.id, match?.id || null, gymId, 'validation_failed',
               check.errors.join('; '));
           } else {
+            // DROP-2: the week generated, but any day that could not be
+            // built is still an admin's problem to fix — recorded here so it
+            // reaches the issues queue even though the plan itself delivered.
+            for (const failure of result.dayFailures || []) {
+              await recordGenerationFailure(
+                req.user.id, match?.id || null, gymId, failure.reason, failure.detail
+              );
+            }
             planDays = assignWeekdaysToTemplateDays(result.days, answers.preferredDays, null);
             generationMeta = {
               generatedAt: new Date().toISOString(),
