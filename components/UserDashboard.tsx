@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { User, Gym, Language, WorkoutPlan, Weekday, QuestionnaireAnswers } from '../types';
 import { translations, getGymTranslation, translateDayName } from '../translations';
-import { Trophy, Flame, Clock, LogOut, ArrowRight, MapPin, Check, Play, Minus, History } from 'lucide-react';
+import { Trophy, Flame, Clock, LogOut, ArrowRight, MapPin, Check, Play, Minus, History, PlayCircle } from 'lucide-react';
 import GymMap from './GymMap';
 import TrainingQuestionnaire from './TrainingQuestionnaire';
 import WorkoutHistory from './WorkoutHistory';
@@ -210,21 +210,40 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, 
           />
         </div>
 
-        {/* The tiles above are the roll-up; this is the record behind them —
-            what was actually lifted, set by set, session by session. */}
-        <button
-          onClick={() => setHistoryOpen(true)}
-          className="w-full mb-10 -mt-6 flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-slate-900 border border-slate-800 hover:border-lime-500/50 transition-colors group"
-        >
-          <span className="flex items-center gap-2.5 text-left">
-            <History className="w-4 h-4 text-slate-500 group-hover:text-lime-400 transition-colors" />
-            <span>
-              <span className="block text-sm font-bold text-white">Training history</span>
-              <span className="block text-[11px] text-slate-500">Every session you have logged — weights, reps and effort</span>
+        {/* The tiles above are the roll-up; these are the two things behind
+            them — what was actually lifted, and how each movement is done. */}
+        <div className="grid sm:grid-cols-2 gap-3 mb-10 -mt-6">
+          <button
+            onClick={() => setHistoryOpen(true)}
+            className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-slate-900 border border-slate-800 hover:border-lime-500/50 transition-colors group"
+          >
+            <span className="flex items-center gap-2.5 text-left">
+              <History className="w-4 h-4 text-slate-500 group-hover:text-lime-400 transition-colors flex-shrink-0" />
+              <span>
+                <span className="block text-sm font-bold text-white">Training history</span>
+                <span className="block text-[11px] text-slate-500">Every session you have logged — weights, reps and effort</span>
+              </span>
             </span>
-          </span>
-          <ArrowRight className="w-4 h-4 text-slate-600 group-hover:text-lime-400 transition-colors flex-shrink-0" />
-        </button>
+            <ArrowRight className="w-4 h-4 text-slate-600 group-hover:text-lime-400 transition-colors flex-shrink-0" />
+          </button>
+
+          {/* onOpenTutorials was wired through App and AdminPage but never
+              given a control here, so the tutorials were reachable only by
+              admins — the people least likely to need them. */}
+          <button
+            onClick={onOpenTutorials}
+            className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-slate-900 border border-slate-800 hover:border-lime-500/50 transition-colors group"
+          >
+            <span className="flex items-center gap-2.5 text-left">
+              <PlayCircle className="w-4 h-4 text-slate-500 group-hover:text-lime-400 transition-colors flex-shrink-0" />
+              <span>
+                <span className="block text-sm font-bold text-white">{t.exerciseTutorials}</span>
+                <span className="block text-[11px] text-slate-500">How every movement is done, step by step</span>
+              </span>
+            </span>
+            <ArrowRight className="w-4 h-4 text-slate-600 group-hover:text-lime-400 transition-colors flex-shrink-0" />
+          </button>
+        </div>
 
         {/* My Training Plan */}
         <div className="mb-3 flex items-center justify-between flex-wrap gap-2">

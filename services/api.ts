@@ -357,12 +357,25 @@ export const api = {
     }
   },
 
-  async savePlan(name: string, days: WorkoutDay[]): Promise<void> {
-    await fetch(`${API_BASE}/plans/me`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, days }),
-    });
+  // Reports its outcome rather than discarding it. This used to be
+  // fire-and-forget, which meant a failed save was indistinguishable from a
+  // successful one: the client saw their edit applied, reloaded later, and
+  // found it gone with nothing having said so.
+  async savePlan(name: string, days: WorkoutDay[]): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const response = await fetch(`${API_BASE}/plans/me`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, days }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        return { ok: false, error: body.error || `Server responded with ${response.status}` };
+      }
+      return { ok: true };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Could not reach the server' };
+    }
   },
 
   // --- TRAINING QUESTIONNAIRE ---

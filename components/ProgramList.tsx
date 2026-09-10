@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { WorkoutPlan, Language, Exercise, WorkoutDay, Weekday, LibraryExercise } from '../types';
 import { translations, translateMuscle, translateExerciseName, translateDayName } from '../translations';
-import { Trash2, Dumbbell, X, Calendar, Plus, Edit2, Check, ChevronRight, MapPin, Play, Download, Info, PartyPopper } from 'lucide-react';
+import { Trash2, Dumbbell, X, Calendar, Plus, Edit2, Check, ChevronRight, MapPin, Play, Download, Info, PartyPopper, AlertTriangle } from 'lucide-react';
 import { getEquipmentIcon } from '../utils/equipmentIcons';
 import { exportWorkoutToPdf } from '../utils/pdfExporter';
 import ExerciseDetailModal from './ExerciseDetailModal';
@@ -24,7 +24,10 @@ interface ProgramListProps {
   onClose?: () => void;
   isLoggedIn?: boolean;
   onCompleteWorkout?: (dayName: string, exerciseCount: number, planDayId?: string) => Promise<void>;
-  onSavePlan?: () => void;
+  // Returns the save's outcome when the caller can report one, so the button
+  // confirms what actually happened. A caller that returns nothing is treated
+  // as before.
+  onSavePlan?: () => Promise<{ ok: boolean; error?: string }> | void;
   onSetDayWeekday?: (dayId: string, weekday: Weekday | undefined) => void;
   onAddDay?: () => void;
   onRemoveDay?: (dayId: string) => void;
@@ -60,6 +63,7 @@ const ProgramList: React.FC<ProgramListProps> = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedDetailExercise, setSelectedDetailExercise] = useState<Exercise | null>(null);
   const [isPlanSaved, setIsPlanSaved] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const t = translations[lang];
@@ -528,18 +532,34 @@ const ProgramList: React.FC<ProgramListProps> = ({
                   {t.clear}
                 </button>
                 <button
-                  onClick={() => {
-                    onSavePlan?.();
+                  onClick={async () => {
+                    // "Saved!" used to appear the instant this was clicked,
+                    // whether or not the save reached the server — the one
+                    // thing a failed save must not do is confirm itself.
+                    setSaveFailed(false);
+                    const result = await onSavePlan?.();
+                    if (result && !result.ok) {
+                      setSaveFailed(true);
+                      setTimeout(() => setSaveFailed(false), 4000);
+                      return;
+                    }
                     setIsPlanSaved(true);
                     setTimeout(() => setIsPlanSaved(false), 2500);
                   }}
                   className={`flex-1 py-2.5 font-black rounded-xl text-xs transition-all shadow-lg flex items-center justify-center gap-1.5 min-h-[44px] ${
-                    isPlanSaved 
-                      ? 'bg-emerald-500 text-slate-950 shadow-emerald-900/30' 
+                    saveFailed
+                      ? 'bg-red-600 text-white shadow-red-900/30'
+                      : isPlanSaved
+                      ? 'bg-emerald-500 text-slate-950 shadow-emerald-900/30'
                       : 'bg-gradient-to-r from-lime-500 to-lime-600 hover:from-lime-400 hover:to-lime-500 text-slate-950 shadow-lime-900/20 active:scale-95'
                   }`}
                 >
-                  {isPlanSaved ? (
+                  {saveFailed ? (
+                    <>
+                      <AlertTriangle className="w-4 h-4" />
+                      <span>{lang === 'et' ? 'Ei salvestunud' : lang === 'ru' ? 'Не сохранено' : "Didn't save"}</span>
+                    </>
+                  ) : isPlanSaved ? (
                     <>
                       <Check className="w-4 h-4" />
                       <span>{lang === 'et' ? 'Salvestatud!' : lang === 'ru' ? 'Сохранено!' : 'Saved!'}</span>

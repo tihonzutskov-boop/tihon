@@ -121,6 +121,9 @@ const App: React.FC = () => {
   // stops adapting and asks for a decision rather than extrapolating.
   const [planNeedsReview, setPlanNeedsReview] = useState(false);
   const [tutorialsOpen, setTutorialsOpen] = useState(false);
+  // A plan save that fails has to say so. Silence here reads as success and
+  // the edit is gone by the next reload.
+  const [planSaveError, setPlanSaveError] = useState<string | null>(null);
   
   const [activeDayIndex, setActiveDayIndex] = useState(0);
   const [workoutPlan, setWorkoutPlan] = useState<WorkoutPlan>({
@@ -271,6 +274,12 @@ const App: React.FC = () => {
       return false;
     }
     return true;
+  };
+
+  const persistPlan = async (plan: WorkoutPlan) => {
+    const result = await api.savePlan(plan.name, plan.days);
+    setPlanSaveError(result.ok ? null : result.error || 'Could not save your plan');
+    return result;
   };
 
   const handleLoginClick = () => {
@@ -560,16 +569,18 @@ const App: React.FC = () => {
             onClose={() => setIsPlanOpen(false)}
             isLoggedIn={!!user}
             onCompleteWorkout={(dayName, exerciseCount, planDayId) => api.completeWorkout(dayName, exerciseCount, planDayId)}
-            onSavePlan={() => api.savePlan(workoutPlan.name, workoutPlan.days)}
+            onSavePlan={() => persistPlan(workoutPlan)}
             onSetDayWeekday={(dayId, weekday) => {
-              setWorkoutPlan(prev => {
-                const updated = {
-                  ...prev,
-                  days: prev.days.map(d => d.id === dayId ? { ...d, weekday } : d)
-                };
-                api.savePlan(updated.name, updated.days);
-                return updated;
-              });
+              // The next plan is computed here rather than inside the updater:
+              // a state updater has to be pure, and this one was firing the
+              // save from inside it — so StrictMode ran it twice and sent two
+              // PUTs for one weekday change.
+              const updated = {
+                ...workoutPlan,
+                days: workoutPlan.days.map(d => (d.id === dayId ? { ...d, weekday } : d)),
+              };
+              setWorkoutPlan(updated);
+              persistPlan(updated);
             }}
             lang={lang}
           />
@@ -654,6 +665,29 @@ const App: React.FC = () => {
           />
         )}
       </main>
+
+      {/* A failed plan save is otherwise invisible: the edit stays on screen
+          and disappears at the next reload. Dismissible, and retryable from
+          the plan panel's own Save button. */}
+      {planSaveError && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[200] max-w-md w-[calc(100%-2rem)] bg-red-950/90 border border-red-800/60 rounded-xl px-4 py-3 shadow-lg backdrop-blur-sm flex items-start gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-bold text-red-300">Your plan didn’t save</p>
+            <p className="text-[11px] text-red-200/70 mt-0.5 break-words">{planSaveError}</p>
+            <p className="text-[11px] text-red-200/70 mt-1">
+              The change is still on screen but is not stored yet — press Save in the plan panel to try again.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setPlanSaveError(null)}
+            className="ml-auto flex-shrink-0 text-red-300/70 hover:text-red-200 text-xs font-bold px-1"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 };
