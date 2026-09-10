@@ -236,8 +236,6 @@ const DAY_TEMPLATES: { match: (name: string) => boolean; slots: SlotSpec[] }[] =
   { match: n => n.startsWith('Legs'), slots: LEGS },
 ];
 
-// Goals centered on calorie burn / work capacity get a conditioning finisher.
-const GOALS_WITH_CONDITIONING = new Set(['Weight loss', 'Endurance']);
 
 // Builds a complete blueprint from goal + days/week alone — no admin
 // authoring required. An admin-authored blueprint always wins when one
@@ -253,6 +251,76 @@ const GOALS_WITH_CONDITIONING = new Set(['Weight loss', 'Endurance']);
 // values: what used to be required is primary; what was optional splits by
 // whether dropping it costs the session a movement pattern (a compound —
 // supporting) or only finishing work (an isolation — accessory).
+// §2.2 — aim profiles. Each aim declares the same four fields, and the engine
+// reads them rather than asking which aim it is holding. That is the point:
+// mobility stops being "the aim that is different in kind" and becomes an aim
+// with different values in the same fields, so nothing downstream needs a
+// `goal === 'Mobility'` branch.
+//
+// `ownTemplate` is null for aims that build from the day's split; mobility
+// carries its own because its session has no upper/lower or push/pull to
+// split along.
+export type OrderHeuristic = 'heaviest_first' | 'priority_first' | 'easier_range_to_demanding_range';
+
+export interface AimProfile {
+  intensityAxis: 'load' | 'pace_hr_power' | 'range_control';
+  progressionAxis: 'load' | 'duration_or_pace' | 'usable_range';
+  orderHeuristic: OrderHeuristic;
+  ownTemplate: SlotSpec[] | null;
+  /** Whether a day of this aim is named for the aim rather than the split. */
+  namesOwnDays: boolean;
+  /** GOALS_WITH_CONDITIONING, moved onto the profile where it belongs. */
+  conditioningFinisher: boolean;
+}
+
+const AIM_PROFILES: Record<string, AimProfile> = {
+  'Muscle gain': {
+    intensityAxis: 'load', progressionAxis: 'load', orderHeuristic: 'heaviest_first',
+    ownTemplate: null, namesOwnDays: false, conditioningFinisher: false,
+  },
+  'Weight loss': {
+    intensityAxis: 'load', progressionAxis: 'load', orderHeuristic: 'heaviest_first',
+    ownTemplate: null, namesOwnDays: false, conditioningFinisher: true,
+  },
+  'General fitness': {
+    intensityAxis: 'load', progressionAxis: 'load', orderHeuristic: 'heaviest_first',
+    ownTemplate: null, namesOwnDays: false, conditioningFinisher: false,
+  },
+  'Endurance': {
+    intensityAxis: 'pace_hr_power', progressionAxis: 'duration_or_pace', orderHeuristic: 'priority_first',
+    ownTemplate: null, namesOwnDays: false, conditioningFinisher: true,
+  },
+  'Mobility': {
+    intensityAxis: 'range_control', progressionAxis: 'usable_range',
+    orderHeuristic: 'easier_range_to_demanding_range',
+    ownTemplate: MOBILITY, namesOwnDays: true, conditioningFinisher: false,
+  },
+};
+
+export const aimProfile = (aim: string): AimProfile =>
+  AIM_PROFILES[aim] || AIM_PROFILES[DEFAULT_GOAL];
+
+// STRUCT-1: preparation, then primary work, then supporting and accessory in
+// the later part of the same block — not a separate section.
+const ROLE_ORDER: Record<SlotRole, number> = { primary: 0, supporting: 1, accessory: 2 };
+
+// ORDER-1: role decides the coarse position; the aim's own heuristic decides
+// the order inside a role. Only heaviest_first reorders anything today —
+// priority_first and easier_range_to_demanding_range both defer to the
+// template's authored sequence, which is already written in that order, so
+// applying them is a no-op rather than a guess dressed up as a rule.
+const orderMainBlock = (slots: ExerciseSlot[], heuristic: OrderHeuristic): ExerciseSlot[] =>
+  [...slots].sort((a, b) => {
+    const byRole = ROLE_ORDER[roleOf(a)] - ROLE_ORDER[roleOf(b)];
+    if (byRole !== 0) return byRole;
+    if (heuristic === 'heaviest_first') {
+      const heaviness = (sl: ExerciseSlot) => (sl.exerciseCategory === 'compound' ? 0 : 1);
+      const byHeaviness = heaviness(a) - heaviness(b);
+      if (byHeaviness !== 0) return byHeaviness;
+    }
+    return a.priority - b.priority;
+  });
+
 const roleOfSpec = (spec: SlotSpec): SlotRole =>
   !spec.optional ? 'primary' : (spec.kind === 'compound' ? 'supporting' : 'accessory');
 
@@ -265,16 +333,16 @@ const roleOf = (slot: ExerciseSlot): SlotRole =>
 
 const slotsForGoal = (goal: string, dayName: string, shape: SessionShape): ExerciseSlot[] => {
   const rx = GOAL_PRESCRIPTION[goal] || GOAL_PRESCRIPTION[DEFAULT_GOAL];
-  // A mobility session has no upper/lower or push/pull split to speak of —
-  // it works whichever regions the client has, every time — so it ignores
-  // the day-name-driven template lookup that every other goal uses.
-  const base = goal === 'Mobility' ? MOBILITY : (DAY_TEMPLATES.find(t => t.match(dayName))?.slots || FULL_BODY);
+  const aim = aimProfile(goal);
+  // An aim either brings its own template or builds from the day's split —
+  // read off the profile rather than asked for by name.
+  const base = aim.ownTemplate || DAY_TEMPLATES.find(t => t.match(dayName))?.slots || FULL_BODY;
   const focused = shape.includeAccessories ? base : base.filter(sp => roleOfSpec(sp) === 'primary');
-  const withFinisher: SlotSpec[] = GOALS_WITH_CONDITIONING.has(goal) && shape.includeAccessories
+  const withFinisher: SlotSpec[] = aim.conditioningFinisher && shape.includeAccessories
     ? [...focused, { pattern: 'conditioning', kind: 'isolation', optional: true }]
     : focused;
 
-  return withFinisher.map((spec, i) => ({
+  const built = withFinisher.map((spec, i) => ({
     ...rx[spec.kind],
     id: `slot-${i}`, // placeholder — the caller (single- or combined-blueprint) assigns the real, namespaced id
     movementPattern: spec.pattern,
@@ -288,6 +356,10 @@ const slotsForGoal = (goal: string, dayName: string, shape: SessionShape): Exerc
       ? undefined
       : rx[spec.kind].exerciseCategory,
   }));
+
+  // STRUCT-1 / ORDER-1 applied once, here, so every caller gets a main block
+  // already in training order.
+  return orderMainBlock(built, aim.orderHeuristic);
 };
 
 export const buildDefaultBlueprint = (goal: string, daysPerWeek: number, sessionMinutes = 60): BlueprintDay[] =>
@@ -315,8 +387,8 @@ export const assignAimsToDays = (goals: string[], dayCount: number): string[] =>
 // split entirely (see slotsForGoal), so carrying the split's name onto it would
 // describe the day as something it isn't.
 const dayLabel = (aim: string, splitName: string, aimDayIndex: number, aimHasManyDays: boolean): string =>
-  aim === 'Mobility'
-    ? (aimHasManyDays ? `Mobility ${aimDayIndex + 1}` : 'Mobility')
+  aimProfile(aim).namesOwnDays
+    ? (aimHasManyDays ? `${aim} ${aimDayIndex + 1}` : aim)
     : splitName;
 
 export const buildCombinedBlueprint = (goals: string[], daysPerWeek: number, sessionMinutes = 60): BlueprintDay[] => {

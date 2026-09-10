@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   checkEligibility, eligibleExercises, gymEquipmentIds, selectSplit,
   selectForSlot, estimateDayMinutes, generatePlan, validatePlan, buildDefaultBlueprint,
-  buildCombinedBlueprint, assignAimsToDays, GenerationProfile, EligibilityContext,
+  buildCombinedBlueprint, assignAimsToDays, aimProfile, GenerationProfile, EligibilityContext,
 } from './planGeneration';
 import type { GenerationFailure } from './planGeneration';
 import { LibraryExercise, Gym, ExerciseSlot, PlanTemplate, Exercise, ALL_JOINT_STRESS_AREAS } from '../types';
@@ -671,6 +671,59 @@ describe('goal selection', () => {
   it('offers Mobility, not General fitness, as a new-client choice', () => {
     expect(QUESTIONNAIRE_GOALS).toContain('Mobility');
     expect(QUESTIONNAIRE_GOALS).not.toContain('General fitness');
+  });
+});
+
+describe('aim profiles and main-block order', () => {
+  it('declares the same four fields for every aim', () => {
+    ['Muscle gain', 'Weight loss', 'Endurance', 'Mobility'].forEach(aim => {
+      const p = aimProfile(aim);
+      expect(p.intensityAxis).toBeTruthy();
+      expect(p.progressionAxis).toBeTruthy();
+      expect(p.orderHeuristic).toBeTruthy();
+      expect(typeof p.namesOwnDays).toBe('boolean');
+    });
+  });
+
+  // §2.2's actual purpose: mobility differs by its values, not by being a
+  // special case in the code.
+  it('gives mobility its own template through the profile, not a branch', () => {
+    expect(aimProfile('Mobility').ownTemplate).not.toBeNull();
+    expect(aimProfile('Muscle gain').ownTemplate).toBeNull();
+    expect(aimProfile('Mobility').intensityAxis).toBe('range_control');
+    expect(aimProfile('Muscle gain').intensityAxis).toBe('load');
+  });
+
+  it('falls back to a default profile for an unrecognised aim', () => {
+    expect(aimProfile('Something else entirely').orderHeuristic).toBeTruthy();
+  });
+
+  it('marks only the conditioning aims for a finisher', () => {
+    expect(aimProfile('Weight loss').conditioningFinisher).toBe(true);
+    expect(aimProfile('Endurance').conditioningFinisher).toBe(true);
+    expect(aimProfile('Muscle gain').conditioningFinisher).toBe(false);
+  });
+
+  // STRUCT-1: supporting and accessory work occupies the later part of the
+  // main block, never before primary work.
+  it('orders every main block primary, then supporting, then accessory', () => {
+    const rank = { primary: 0, supporting: 1, accessory: 2 } as const;
+    ['Muscle gain', 'Endurance', 'Mobility'].forEach(aim => {
+      const slots = buildCombinedBlueprint([aim], 1, 90)[0].slots;
+      const ranks = slots.map(sl => rank[sl.role as keyof typeof rank]);
+      expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
+    });
+  });
+
+  // ORDER-1: a strength aim runs the heavier work first inside a role.
+  it('puts compound work before isolation within a role for a load-based aim', () => {
+    const slots = buildCombinedBlueprint(['Muscle gain'], 1, 90)[0].slots;
+    const supporting = slots.filter(sl => sl.role === 'supporting');
+    const firstIsolation = supporting.findIndex(sl => sl.exerciseCategory === 'isolation');
+    const lastCompound = supporting.map(sl => sl.exerciseCategory).lastIndexOf('compound');
+    if (firstIsolation !== -1 && lastCompound !== -1) {
+      expect(lastCompound).toBeLessThan(firstIsolation);
+    }
   });
 });
 
