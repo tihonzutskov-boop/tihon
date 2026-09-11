@@ -1,5 +1,6 @@
 import path from 'path';
 import fs from 'fs';
+import { Readable } from 'node:stream';
 import { fileURLToPath } from 'url';
 import express from 'express';
 import cookieParser from 'cookie-parser';
@@ -1842,6 +1843,164 @@ app.get('/api/storage/status', requireAdmin, async (req, res) => {
     storingVideosIn: access.ok ? 'object storage' : 'database (storage unreachable)',
   });
 });
+
+// What is still in the database, and what it weighs. Read-only: this is the
+// number to look at before deciding anything, not a side effect of migrating.
+app.get('/api/storage/videos', requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT e.id, e.name, e.tutorial_video_key IS NOT NULL AS migrated,
+             COALESCE(c.pieces, 0)::int AS pieces,
+             COALESCE(c.bytes, 0)::bigint AS bytes,
+             (e.tutorial_video IS NOT NULL) AS has_legacy_blob
+        FROM exercises e
+        LEFT JOIN (
+          SELECT exercise_id, COUNT(*) AS pieces, SUM(byte_len) AS bytes
+            FROM exercise_video_chunks GROUP BY exercise_id
+        ) c ON c.exercise_id = e.id
+       WHERE c.pieces IS NOT NULL OR e.tutorial_video IS NOT NULL OR e.tutorial_video_key IS NOT NULL
+       ORDER BY COALESCE(c.bytes, 0) DESC
+    `);
+    const pending = rows.filter(r => !r.migrated);
+    const inDatabase = rows.filter(r => r.pieces > 0 || r.has_legacy_blob);
+    return res.json({
+      storingNewVideosIn: r2.isConfigured() ? 'object storage' : 'database',
+      totalVideos: rows.length,
+      migrated: rows.length - pending.length,
+      pending: pending.length,
+      // Space still held by the database, which is what the purge frees.
+      bytesStillInDatabase: inDatabase.reduce((a, r) => a + Number(r.bytes || 0), 0),
+      videos: rows.map(r => ({
+        id: r.id,
+        name: r.name,
+        bytes: Number(r.bytes || 0),
+        migrated: r.migrated,
+        stillInDatabase: r.pieces > 0 || r.has_legacy_blob,
+      })),
+    });
+  } catch (err) {
+    console.error('Could not read video storage state:', err.message);
+    return res.status(500).json({ error: 'Database error reading video storage' });
+  }
+});
+
+// Copies videos into object storage, a few per call. Batched because one
+// request moving every video would outlast any sane HTTP timeout, and because
+// a batch that fails should cost only that batch.
+//
+// Nothing is deleted here. The database keeps every original until /purge is
+// called separately, so a failure at any point still leaves a playable video.
+app.post('/api/storage/videos/migrate', requireAdmin, async (req, res) => {
+  if (!r2.isConfigured()) {
+    return res.status(400).json({ error: `Object storage is not configured (missing ${r2.missingConfig().join(', ')})` });
+  }
+  const batchSize = Math.min(parseInt(req.body?.batchSize, 10) || 3, 10);
+
+  let client;
+  const moved = [];
+  const failed = [];
+  try {
+    client = await pool.connect();
+    const { rows } = await client.query(`
+      SELECT e.id, e.name, e.tutorial_video_type, e.tutorial_video_version,
+             COALESCE(c.pieces, 0)::int AS pieces
+        FROM exercises e
+        LEFT JOIN (SELECT exercise_id, COUNT(*) AS pieces FROM exercise_video_chunks GROUP BY exercise_id) c
+          ON c.exercise_id = e.id
+       WHERE e.tutorial_video_key IS NULL
+         AND (c.pieces IS NOT NULL OR e.tutorial_video IS NOT NULL)
+       ORDER BY e.name ASC LIMIT $1
+    `, [batchSize]);
+
+    for (const row of rows) {
+      const contentType = row.tutorial_video_type || 'video/mp4';
+      const version = row.tutorial_video_version || Date.now().toString(36);
+      const key = r2.videoKey(row.id, version, contentType);
+      try {
+        const source = row.pieces > 0
+          ? Readable.from(videoChunkStream(client, row.id))
+          : Readable.from([(await client.query('SELECT tutorial_video FROM exercises WHERE id = $1', [row.id])).rows[0].tutorial_video]);
+        await r2.putVideo(key, source, contentType);
+        await client.query(
+          'UPDATE exercises SET tutorial_video_key = $2, tutorial_video_version = $3 WHERE id = $1',
+          [row.id, key, version]
+        );
+        moved.push(row.name);
+      } catch (err) {
+        // The object is unreferenced if the row was not updated — clear it
+        // rather than pay to store something nothing can find.
+        await r2.deleteVideo(key);
+        failed.push({ name: row.name, error: err.message });
+      }
+    }
+
+    const remaining = await client.query(
+      `SELECT COUNT(*)::int AS n FROM exercises e
+        LEFT JOIN (SELECT exercise_id, COUNT(*) AS pieces FROM exercise_video_chunks GROUP BY exercise_id) c
+          ON c.exercise_id = e.id
+        WHERE e.tutorial_video_key IS NULL AND (c.pieces IS NOT NULL OR e.tutorial_video IS NOT NULL)`
+    );
+    return res.json({ moved, failed, remaining: remaining.rows[0].n, note: 'Database copies are untouched.' });
+  } catch (err) {
+    console.error('Video migration batch failed:', err.message);
+    return res.status(500).json({ error: err.message, moved, failed });
+  } finally {
+    client?.release();
+  }
+});
+
+// Frees the database copies — the only destructive step, and deliberately its
+// own call. It refuses any exercise whose video is not already in object
+// storage, so it can never remove the last copy of anything.
+app.post('/api/storage/videos/purge', requireAdmin, async (req, res) => {
+  let client;
+  try {
+    client = await pool.connect();
+    const { rows } = await client.query(`
+      SELECT e.id, e.name, COALESCE(SUM(c.byte_len), 0)::bigint AS bytes
+        FROM exercises e JOIN exercise_video_chunks c ON c.exercise_id = e.id
+       WHERE e.tutorial_video_key IS NOT NULL
+       GROUP BY e.id, e.name
+    `);
+    let freed = 0;
+    for (const row of rows) {
+      await client.query('DELETE FROM exercise_video_chunks WHERE exercise_id = $1', [row.id]);
+      await client.query("UPDATE exercises SET tutorial_video = NULL, tutorial_video_url = '' WHERE id = $1", [row.id]);
+      freed += Number(row.bytes);
+    }
+    // DELETE marks rows dead without handing the disk back, which is the whole
+    // point here. VACUUM FULL rewrites the table to actually reclaim it.
+    let reclaimed = true;
+    let vacuumError = null;
+    try {
+      await client.query('VACUUM FULL exercise_video_chunks');
+    } catch (err) {
+      reclaimed = false;
+      vacuumError = err.message;
+    }
+    return res.json({ purged: rows.length, bytesFreed: freed, reclaimed, vacuumError });
+  } catch (err) {
+    console.error('Video purge failed:', err.message);
+    return res.status(500).json({ error: err.message });
+  } finally {
+    client?.release();
+  }
+});
+
+// Reads one exercise's chunks in order without holding the whole video.
+async function* videoChunkStream(client, exerciseId) {
+  const { rows } = await client.query(
+    'SELECT seq FROM exercise_video_chunks WHERE exercise_id = $1 ORDER BY seq ASC',
+    [exerciseId]
+  );
+  for (const { seq } of rows) {
+    const piece = await client.query(
+      'SELECT bytes FROM exercise_video_chunks WHERE exercise_id = $1 AND seq = $2',
+      [exerciseId, seq]
+    );
+    if (piece.rows[0]?.bytes) yield piece.rows[0].bytes;
+  }
+}
 
 // Streams the request body into object storage. The database keeps only the
 // key — no bytes, no chunk rows, and therefore no way for a video to fill it.

@@ -320,6 +320,51 @@ export const api = {
     }
   },
 
+  // --- VIDEO STORAGE ---
+  //
+  // Videos used to be stored in Postgres, which filled its disk and took the
+  // whole app down. These drive the move to object storage.
+
+  async fetchVideoStorage(): Promise<any | null> {
+    try {
+      const response = await fetch(`${API_BASE}/storage/videos`);
+      if (!response.ok) return null;
+      return await response.json();
+    } catch {
+      return null;
+    }
+  },
+
+  // Moves a few at a time; the caller loops until `remaining` reaches zero.
+  // One request for every video would outlast any reasonable HTTP timeout.
+  async migrateVideoBatch(batchSize = 3): Promise<{ ok: boolean; moved?: string[]; failed?: any[]; remaining?: number; error?: string }> {
+    try {
+      const response = await fetch(`${API_BASE}/storage/videos/migrate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batchSize }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) return { ok: false, error: body.error || `Server responded with ${response.status}` };
+      return { ok: true, ...body };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Could not reach the server' };
+    }
+  },
+
+  // The destructive half. Refuses anything not already in object storage, so
+  // it cannot remove the last copy of a video.
+  async purgeDatabaseVideos(): Promise<{ ok: boolean; purged?: number; bytesFreed?: number; reclaimed?: boolean; vacuumError?: string; error?: string }> {
+    try {
+      const response = await fetch(`${API_BASE}/storage/videos/purge`, { method: 'POST' });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) return { ok: false, error: body.error || `Server responded with ${response.status}` };
+      return { ok: true, ...body };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Could not reach the server' };
+    }
+  },
+
   // --- SESSION CHECK-INS ---
   //
   // The two things the training log cannot show: whether the client is ill

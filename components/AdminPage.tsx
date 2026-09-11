@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { GymZone, EquipmentType, Gym, GymDimensions, GymEntrance, GymAnnex, GymMachine, LibraryExercise, EquipmentItem } from '../types';
 import GymMap from './GymMap';
 import ExerciseLibrary from './ExerciseLibrary';
+import VideoStoragePanel from './VideoStoragePanel';
 import ExerciseTutorials from './ExerciseTutorials';
 import EquipmentLibrary, { getEquipmentIconComponent } from './EquipmentLibrary';
 import AdminCoaching from './AdminCoaching';
@@ -2694,11 +2695,14 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onS
             onGymChange={(updated) => update(updated, true)}
           />
         ) : activeTab === 'exercises' ? (
-          <ExerciseLibrary
-            gym={gym}
-            equipmentList={equipmentList}
-            onOpenTutorials={() => setShowTutorials(true)}
-          />
+          <div className="flex-1 overflow-y-auto">
+            <VideoStoragePanel />
+            <ExerciseLibrary
+              gym={gym}
+              equipmentList={equipmentList}
+              onOpenTutorials={() => setShowTutorials(true)}
+            />
+          </div>
         ) : (
           <AdminCoaching />
         )}
