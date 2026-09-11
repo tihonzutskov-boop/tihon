@@ -348,3 +348,14 @@ CREATE TABLE IF NOT EXISTS session_checkins (
 -- DELOAD-5's persistence check), newest first.
 CREATE INDEX IF NOT EXISTS idx_session_checkins_lookup
   ON session_checkins (user_id, recorded_at DESC);
+
+-- Videos move out of the database. Storing them as bytes in Postgres removed
+-- the request-body ceiling that base64-in-JSON had, but only moved it: the
+-- database disk filled, and a Postgres that cannot write its WAL refuses
+-- connections outright — so the whole app went down, not just video uploads.
+--
+-- This column holds the object key in R2. When it is set the video is served
+-- straight from object storage and the database stores nothing but the key;
+-- when it is NULL the video is still in exercise_video_chunks and is served
+-- the old way, so both can coexist while videos are migrated.
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS tutorial_video_key TEXT;

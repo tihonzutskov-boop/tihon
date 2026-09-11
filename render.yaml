@@ -34,3 +34,18 @@ services:
         generateValue: true
       - key: ADMIN_EMAILS
         sync: false
+      # Tutorial video storage. Until all five are set the server keeps writing
+      # videos into Postgres, which is what filled the database disk and took
+      # the whole app down — a full Postgres refuses connections, it does not
+      # just reject uploads.
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      # The public base a browser plays from (an r2.dev domain or your own).
+      - key: R2_PUBLIC_BASE_URL
+        sync: false

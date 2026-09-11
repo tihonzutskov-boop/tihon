@@ -13,6 +13,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1130.0",
+    "@aws-sdk/lib-storage": "^3.1130.0",
     "cookie-parser": "^1.4.7",
     "express": "^4.21.2",
     "google-auth-library": "^10.0.0",

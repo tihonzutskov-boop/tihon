@@ -14,6 +14,7 @@ import {
   isAdminEmail,
 } from './auth.js';
 import { mediaUrl, sendDataUri, serveMediaColumn, serveVideo, blobWrite } from './media.js';
+import * as r2 from './r2.js';
 // Compiled from utils/planGeneration.ts by `npm run build:engine` — the same
 // engine the frontend and the test suite use, so there is exactly one
 // implementation of the eligibility and safety rules.
@@ -1720,7 +1721,7 @@ app.get('/api/exercises', async (req, res) => {
               tutorial_video_file_name, steps, exercise_type, video_duration_label,
               harder_exercise_id, easier_exercise_id, harder_tutorial, easier_tutorial,
               movement_pattern, exercise_category, min_experience, joint_stress,
-              primary_muscles, secondary_muscles, generation_enabled,
+              primary_muscles, secondary_muscles, generation_enabled, tutorial_video_key,
               CASE WHEN image_url <> '' THEN substr(md5(image_url), 1, 8) END AS image_v,
               CASE
                 -- Read the stored token rather than hashing the video. Hashing
@@ -1728,6 +1729,8 @@ app.get('/api/exercises', async (req, res) => {
                 -- the table in full, just to build a string that only has to
                 -- change when the video does. COALESCE covers videos uploaded
                 -- before the column existed.
+                WHEN tutorial_video_key IS NOT NULL
+                  THEN COALESCE(tutorial_video_version, 'v1')
                 WHEN tutorial_video_size IS NOT NULL
                   THEN COALESCE(tutorial_video_version, 'v1')
                 WHEN tutorial_video IS NOT NULL
@@ -1751,9 +1754,15 @@ app.get('/api/exercises', async (req, res) => {
       imageUrl: row.image_v ? mediaUrl('exercises', `${row.id}/image`, row.image_v) : '',
       makeHarder: row.make_harder || '',
       makeEasier: row.make_easier || '',
-      tutorialVideoUrl: row.tutorial_v
-        ? mediaUrl('exercises', `${row.id}/tutorial-video`, row.tutorial_v)
-        : '',
+      // A key means the bytes are in object storage and the browser fetches
+      // them directly — no server hop, and none of the range-request slicing
+      // the database path needs. Everything not yet migrated still resolves
+      // to the old URL, so both generations play from one field.
+      tutorialVideoUrl: row.tutorial_video_key
+        ? r2.publicUrl(row.tutorial_video_key)
+        : row.tutorial_v
+          ? mediaUrl('exercises', `${row.id}/tutorial-video`, row.tutorial_v)
+          : '',
       tutorialVideoFileName: row.tutorial_video_file_name || '',
       steps: row.steps || [],
       exerciseType: row.exercise_type || 'standard',
@@ -1803,6 +1812,78 @@ const parseByteLimit = (value, fallbackBytes) => {
 };
 const VIDEO_UPLOAD_MAX_BYTES = parseByteLimit(process.env.VIDEO_UPLOAD_LIMIT, 200 * 1024 * 1024);
 
+// Whether video storage is actually usable, checked against the real bucket.
+// Worth its own endpoint because every other way of finding out involves
+// uploading a video and seeing what happens.
+app.get('/api/storage/status', requireAdmin, async (req, res) => {
+  if (!r2.isConfigured()) {
+    return res.json({
+      configured: false,
+      missing: r2.missingConfig(),
+      storingVideosIn: 'database',
+      note: 'Videos are being written to Postgres. Set the missing variables to move them to object storage.',
+    });
+  }
+  const access = await r2.checkAccess();
+  return res.json({
+    configured: true,
+    reachable: access.ok,
+    error: access.error,
+    storingVideosIn: access.ok ? 'object storage' : 'database (storage unreachable)',
+  });
+});
+
+// Streams the request body into object storage. The database keeps only the
+// key — no bytes, no chunk rows, and therefore no way for a video to fill it.
+const uploadVideoToObjectStorage = async (req, res, contentType, version) => {
+  const key = r2.videoKey(req.params.id, version, contentType);
+  const mb = (bytes) => (bytes / (1024 * 1024)).toFixed(1);
+  let received = 0;
+  req.on('data', (c) => { received += c.length; });
+
+  let client;
+  try {
+    // The row is read first: uploading bytes for an exercise that does not
+    // exist would leave an object nothing references and nothing cleans up.
+    client = await pool.connect();
+    const existing = await client.query(
+      'SELECT tutorial_video_key FROM exercises WHERE id = $1',
+      [req.params.id]
+    );
+    if (existing.rows.length === 0) return res.status(404).json({ error: 'Exercise not found' });
+    const previousKey = existing.rows[0].tutorial_video_key;
+
+    await r2.putVideo(key, req, contentType);
+
+    await client.query(
+      `UPDATE exercises
+          SET tutorial_video_key = $2, tutorial_video_type = $3, tutorial_video_version = $4,
+              tutorial_video_size = $5, tutorial_video = NULL, tutorial_video_url = ''
+        WHERE id = $1`,
+      [req.params.id, key, contentType, version, received || null]
+    );
+    // Any pieces from the old in-database video are now dead weight on the
+    // disk that filling is what caused this move in the first place.
+    await client.query('DELETE FROM exercise_video_chunks WHERE exercise_id = $1', [req.params.id]);
+
+    // Only once the row points at the new object: deleting the old one first
+    // would leave the exercise with no playable video if the update failed.
+    if (previousKey && previousKey !== key) await r2.deleteVideo(previousKey);
+
+    console.log(`Tutorial video stored in object storage: ${mb(received)}MB (${contentType}) at ${key}`);
+    return res.json({ success: true, tutorialVideoUrl: r2.publicUrl(key) });
+  } catch (err) {
+    console.error(`Object storage upload failed after ${mb(received)}MB:`, err.message);
+    // The object may be half-written; it is unreferenced either way, so clear
+    // it rather than leaving it to be paid for forever.
+    await r2.deleteVideo(key);
+    if (!res.headersSent) return res.status(500).json({ error: 'Could not save the video to storage' });
+    return res.end();
+  } finally {
+    client?.release();
+  }
+};
+
 // No body parser here on purpose: buffering the whole upload first is exactly
 // what could not fit. The request is consumed as a stream and written to the
 // database a chunk at a time, so peak memory is one chunk rather than the
@@ -1814,6 +1895,13 @@ app.put('/api/exercises/:id/tutorial-video', requireAdmin, async (req, res) => {
   }
 
   const version = Date.now().toString(36);
+
+  // Object storage when it is available, the database when it is not. The
+  // fallback is not hypothetical politeness: it is what lets this deploy
+  // before the bucket exists, and what keeps already-stored videos playing
+  // while they are migrated.
+  if (r2.isConfigured()) return uploadVideoToObjectStorage(req, res, contentType, version);
+
   const mb = (bytes) => (bytes / (1024 * 1024)).toFixed(1);
   let received = 0;
   let client;
@@ -1901,13 +1989,22 @@ app.delete('/api/exercises/:id/tutorial-video', requireAdmin, async (req, res) =
   let client;
   try {
     client = await pool.connect();
+    // Read the key before clearing it, or the object is orphaned in the bucket
+    // with nothing left pointing at it to ever find it again.
+    const existing = await client.query(
+      'SELECT tutorial_video_key FROM exercises WHERE id = $1',
+      [req.params.id]
+    );
+    const key = existing.rows[0]?.tutorial_video_key;
+
     await client.query('DELETE FROM exercise_video_chunks WHERE exercise_id = $1', [req.params.id]);
     await client.query(
       `UPDATE exercises SET tutorial_video = NULL, tutorial_video_type = NULL, tutorial_video_url = '',
-              tutorial_video_size = NULL, tutorial_video_version = NULL
+              tutorial_video_size = NULL, tutorial_video_version = NULL, tutorial_video_key = NULL
         WHERE id = $1`,
       [req.params.id]
     );
+    if (key) await r2.deleteVideo(key);
     return res.json({ success: true });
   } catch (err) {
     console.error(err);
