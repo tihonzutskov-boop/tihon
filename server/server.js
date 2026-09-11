@@ -114,13 +114,23 @@ process.on('unhandledRejection', (reason) => {
 
 
 // Apply the schema (all statements are idempotent, safe to re-run on every boot)
-const initDb = async () => {
+const initDb = async (attempt = 1) => {
   try {
     const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
     await pool.query(schema);
-    console.log('Database schema applied.');
+    console.log(`Database schema applied${attempt > 1 ? ` (attempt ${attempt})` : ''}.`);
   } catch (err) {
-    console.warn('Database initialization postponed (Postgres connection unavailable yet):', err.message);
+    // This used to log once and give up, which left the server running for as
+    // long as it lived against whatever schema the database happened to have.
+    // A deploy that started while Postgres was unavailable would then answer
+    // every request with columns that were never added — indistinguishable,
+    // from outside, from the app being broken.
+    //
+    // Retries for as long as it takes instead, because the condition it is
+    // waiting on (the database coming back) is temporary by nature.
+    const delay = Math.min(30_000, 2 ** attempt * 1000);
+    console.warn(`Schema not applied (attempt ${attempt}): ${err.message} — retrying in ${delay / 1000}s`);
+    setTimeout(() => initDb(attempt + 1), delay).unref?.();
   }
 };
 initDb();
