@@ -205,7 +205,13 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idToken }),
     });
-    if (!response.ok) throw new Error('Google sign-in failed');
+    if (!response.ok) {
+      // The server distinguishes a rejected token from a misconfigured server
+      // from a database failure. Replacing that with a fixed string here threw
+      // away the only thing that said which had happened.
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error || `Sign-in failed (server responded with ${response.status})`);
+    }
     const data = await response.json();
     return data.user;
   },

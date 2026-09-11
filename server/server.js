@@ -172,8 +172,28 @@ app.post('/api/auth/google', async (req, res) => {
   const { idToken } = req.body;
   let client;
 
+  // Token verification and the database work are separated on purpose. They
+  // used to share one try block, so a database outage during sign-in came back
+  // as "Google sign-in failed" — sending whoever was debugging it to Google's
+  // console when the problem was Postgres, and giving the person signing in a
+  // reason that was not true.
+  let payload;
   try {
-    const payload = await verifyGoogleToken(idToken);
+    payload = await verifyGoogleToken(idToken);
+  } catch (err) {
+    // A server missing its client id is our fault, not the caller's, and it
+    // fails for every single user rather than just this one — so it is a 500
+    // and it says so, instead of hiding inside a generic rejection.
+    const misconfigured = /not configured/i.test(err.message || '');
+    console.error(misconfigured ? 'Sign-in misconfigured:' : 'Google token rejected:', err.message);
+    return res.status(misconfigured ? 500 : 401).json({
+      error: misconfigured
+        ? 'Sign-in is not configured on this server — GOOGLE_CLIENT_ID is missing.'
+        : 'Google could not verify that sign-in. If this keeps happening, the server may be configured with a different Google client id than the app.',
+    });
+  }
+
+  try {
     const { email, name, sub: googleId, picture } = payload;
 
     client = await pool.connect();
@@ -205,8 +225,10 @@ app.post('/api/auth/google', async (req, res) => {
     setSessionCookie(res, signSession(user));
     res.json({ user: userProfile });
   } catch (err) {
-    console.error(err);
-    res.status(401).json({ error: 'Google sign-in failed' });
+    // Google already vouched for this person by the time we get here, so this
+    // is our problem — reporting it as a failed sign-in would blame them for it.
+    console.error('Sign-in database error:', err.message);
+    res.status(500).json({ error: 'Signed in with Google, but the server could not load your account.' });
   } finally {
     client?.release();
   }

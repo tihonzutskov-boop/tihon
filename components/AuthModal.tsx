@@ -42,8 +42,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, lang }) => {
         const user = await api.googleLogin(response.credential);
         onSuccess(user);
         onClose();
-      } catch (err) {
-        setError('Sign-in failed. Please try again.');
+      } catch (err: any) {
+        // Shows what actually went wrong rather than a fixed line. Whoever is
+        // stuck on this screen — a client or whoever they report it to — needs
+        // to be able to tell "try again" from "the server is misconfigured".
+        setError(err?.message || 'Sign-in failed. Please try again.');
       } finally {
         setLoading(false);
       }
