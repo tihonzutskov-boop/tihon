@@ -1062,6 +1062,51 @@ describe('warm-up and cooldown', () => {
   });
 });
 
+describe('bookendRoles — one exercise can serve both ends', () => {
+  it('picks an exercise marked for both, for both', () => {
+    const bike = exercise({
+      id: 'bike', name: 'Gym Bike', exerciseCategory: 'cardio',
+      movementPattern: 'conditioning', bookendRoles: ['warmup', 'cooldown'],
+    });
+    expect(selectBookendExercise('warmup', [bike])?.id).toBe('bike');
+    expect(selectBookendExercise('cooldown', [bike])?.id).toBe('bike');
+  });
+
+  it('honours a role the exercise is not marked for', () => {
+    // Marked warm-up only, and something else is marked for the cooldown.
+    const warmOnly = exercise({
+      id: 'warm', name: 'Easy Bike', exerciseCategory: 'cardio',
+      movementPattern: 'conditioning', bookendRoles: ['warmup'],
+    });
+    const coolOnly = exercise({
+      id: 'cool', name: 'Hamstring Stretch', exerciseCategory: 'mobility',
+      movementPattern: 'mobility', bookendRoles: ['cooldown'],
+    });
+    expect(selectBookendExercise('warmup', [warmOnly, coolOnly])?.id).toBe('warm');
+    expect(selectBookendExercise('cooldown', [warmOnly, coolOnly])?.id).toBe('cool');
+  });
+
+  it('still honours the old single-value tagging, unmigrated', () => {
+    const legacy = exercise({
+      id: 'legacy', name: 'Legacy Warmup', exerciseCategory: 'warmup',
+      movementPattern: 'conditioning',
+    });
+    expect(selectBookendExercise('warmup', [legacy])?.id).toBe('legacy');
+  });
+
+  it('leaves an exercise marked for neither out of contention when something is marked', () => {
+    const marked = exercise({
+      id: 'marked', name: 'Marked', exerciseCategory: 'cardio',
+      movementPattern: 'conditioning', bookendRoles: ['warmup'],
+    });
+    const unmarked = exercise({
+      id: 'unmarked', name: 'Unmarked Cardio', exerciseCategory: 'cardio',
+      movementPattern: 'conditioning',
+    });
+    expect(selectBookendExercise('warmup', [unmarked, marked])?.id).toBe('marked');
+  });
+});
+
 describe('cardio is bookend-only', () => {
   const bike = exercise({
     id: 'bike', name: 'Gym Bike', exerciseCategory: 'cardio',

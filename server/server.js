@@ -663,7 +663,7 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
     // volume ceiling below has to know which muscles every exercise in the
     // plan trains, whether or not anything is withdrawn.
     const libRes = await client.query(
-      `SELECT id, name, target_muscle, movement_pattern, exercise_category,
+      `SELECT id, name, target_muscle, movement_pattern, exercise_category, bookend_roles,
               min_experience, joint_stress, primary_muscles, generation_enabled,
               equipment_id, video_url
          FROM exercises`
@@ -673,6 +673,7 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
       name: r.name,
       targetMuscle: r.target_muscle,
       movementPattern: r.movement_pattern,
+      bookendRoles: r.bookend_roles || [],
       exerciseCategory: r.exercise_category,
       minExperience: r.min_experience,
       jointStress: r.joint_stress || [],
@@ -1005,7 +1006,7 @@ const loadLibraryForGeneration = async () => {
   // SELECT * pulled every base64 blob into memory just to drop it here.
   const result = await pool.query(
     `SELECT id, name, target_muscle, equipment_required, required_equipment_ids,
-            category, instructions, equipment_id, movement_pattern,
+            category, instructions, equipment_id, movement_pattern, bookend_roles,
             exercise_category, min_experience, joint_stress,
             primary_muscles, secondary_muscles, generation_enabled
      FROM exercises`
@@ -1020,6 +1021,7 @@ const loadLibraryForGeneration = async () => {
     instructions: row.instructions || '',
     equipmentId: row.equipment_id || '',
     movementPattern: row.movement_pattern || undefined,
+    bookendRoles: row.bookend_roles || [],
     exerciseCategory: row.exercise_category || undefined,
     minExperience: row.min_experience || undefined,
     jointStress: row.joint_stress || [],
@@ -1731,7 +1733,7 @@ app.get('/api/exercises', async (req, res) => {
               category, instructions, equipment_id, video_url, make_harder, make_easier,
               tutorial_video_file_name, steps, exercise_type, video_duration_label,
               harder_exercise_id, easier_exercise_id, harder_tutorial, easier_tutorial,
-              movement_pattern, exercise_category, min_experience, joint_stress,
+              movement_pattern, exercise_category, bookend_roles, min_experience, joint_stress,
               primary_muscles, secondary_muscles, generation_enabled, tutorial_video_key,
               CASE WHEN image_url <> '' THEN substr(md5(image_url), 1, 8) END AS image_v,
               CASE
@@ -1783,6 +1785,8 @@ app.get('/api/exercises', async (req, res) => {
       harderTutorial: row.harder_tutorial || {},
       easierTutorial: row.easier_tutorial || {},
       movementPattern: row.movement_pattern || undefined,
+      bookendRoles: row.bookend_roles || [],
+    bookendRoles: row.bookend_roles || [],
       exerciseCategory: row.exercise_category || undefined,
       minExperience: row.min_experience || undefined,
       jointStress: row.joint_stress || [],
@@ -2185,12 +2189,12 @@ app.delete('/api/exercises/:id/tutorial-video', requireAdmin, async (req, res) =
 
 // POST Create Exercise
 app.post('/api/exercises', requireAdmin, async (req, res) => {
-  const { id, name, targetMuscle, equipmentRequired, requiredEquipmentIds, category, instructions, equipmentId, videoUrl, imageUrl, makeHarder, makeEasier, tutorialVideoUrl, tutorialVideoFileName, steps, exerciseType, videoDurationLabel, harderExerciseId, easierExerciseId, harderTutorial, easierTutorial, movementPattern, exerciseCategory, minExperience, jointStress, primaryMuscles, secondaryMuscles, generationEnabled } = req.body;
+  const { id, name, targetMuscle, equipmentRequired, requiredEquipmentIds, category, instructions, equipmentId, videoUrl, imageUrl, makeHarder, makeEasier, tutorialVideoUrl, tutorialVideoFileName, steps, exerciseType, videoDurationLabel, harderExerciseId, easierExerciseId, harderTutorial, easierTutorial, movementPattern, exerciseCategory, bookendRoles, minExperience, jointStress, primaryMuscles, secondaryMuscles, generationEnabled } = req.body;
   let client;
   try {
     client = await pool.connect();
     await client.query(
-      'INSERT INTO exercises (id, name, target_muscle, equipment_required, required_equipment_ids, category, instructions, equipment_id, video_url, image_url, make_harder, make_easier, tutorial_video_url, tutorial_video_file_name, steps, exercise_type, video_duration_label, harder_exercise_id, easier_exercise_id, harder_tutorial, easier_tutorial, movement_pattern, exercise_category, min_experience, joint_stress, generation_enabled, primary_muscles, secondary_muscles) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)',
+      'INSERT INTO exercises (id, name, target_muscle, equipment_required, required_equipment_ids, category, instructions, equipment_id, video_url, image_url, make_harder, make_easier, tutorial_video_url, tutorial_video_file_name, steps, exercise_type, video_duration_label, harder_exercise_id, easier_exercise_id, harder_tutorial, easier_tutorial, movement_pattern, exercise_category, min_experience, joint_stress, generation_enabled, primary_muscles, secondary_muscles, bookend_roles) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)',
       [
         id,
         name,
@@ -2219,7 +2223,8 @@ app.post('/api/exercises', requireAdmin, async (req, res) => {
         JSON.stringify(jointStress || []),
         generationEnabled === true,
         JSON.stringify(primaryMuscles || []),
-        JSON.stringify(secondaryMuscles || [])
+        JSON.stringify(secondaryMuscles || []),
+        JSON.stringify(bookendRoles || [])
       ]
     );
     res.json({ success: true, id });
@@ -2234,21 +2239,21 @@ app.post('/api/exercises', requireAdmin, async (req, res) => {
 // PUT Update Exercise
 app.put('/api/exercises/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
-  const { name, targetMuscle, equipmentRequired, requiredEquipmentIds, category, instructions, equipmentId, videoUrl, imageUrl, makeHarder, makeEasier, tutorialVideoUrl, tutorialVideoFileName, steps, exerciseType, videoDurationLabel, harderExerciseId, easierExerciseId, harderTutorial, easierTutorial, movementPattern, exerciseCategory, minExperience, jointStress, primaryMuscles, secondaryMuscles, generationEnabled } = req.body;
+  const { name, targetMuscle, equipmentRequired, requiredEquipmentIds, category, instructions, equipmentId, videoUrl, imageUrl, makeHarder, makeEasier, tutorialVideoUrl, tutorialVideoFileName, steps, exerciseType, videoDurationLabel, harderExerciseId, easierExerciseId, harderTutorial, easierTutorial, movementPattern, exerciseCategory, bookendRoles, minExperience, jointStress, primaryMuscles, secondaryMuscles, generationEnabled } = req.body;
   let client;
   try {
     client = await pool.connect();
     // Upsert: the item being "updated" may be one of the client-side default
     // exercises that was never actually inserted into the database yet.
     await client.query(
-      `INSERT INTO exercises (id, name, target_muscle, equipment_required, required_equipment_ids, category, instructions, equipment_id, video_url, image_url, make_harder, make_easier, tutorial_video_url, tutorial_video_file_name, steps, exercise_type, video_duration_label, harder_exercise_id, easier_exercise_id, harder_tutorial, easier_tutorial, movement_pattern, exercise_category, min_experience, joint_stress, generation_enabled, primary_muscles, secondary_muscles)
-       VALUES ($28, $1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::text, ''), $10, $11, COALESCE($12::text, ''), $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
+      `INSERT INTO exercises (id, name, target_muscle, equipment_required, required_equipment_ids, category, instructions, equipment_id, video_url, image_url, make_harder, make_easier, tutorial_video_url, tutorial_video_file_name, steps, exercise_type, video_duration_label, harder_exercise_id, easier_exercise_id, harder_tutorial, easier_tutorial, movement_pattern, exercise_category, min_experience, joint_stress, generation_enabled, primary_muscles, secondary_muscles, bookend_roles)
+       VALUES ($28, $1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::text, ''), $10, $11, COALESCE($12::text, ''), $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $29)
        ON CONFLICT (id) DO UPDATE SET
          name=$1, target_muscle=$2, equipment_required=$3, required_equipment_ids=$4, category=$5, instructions=$6, equipment_id=$7, video_url=$8,
          image_url=COALESCE($9::text, exercises.image_url),
          make_harder=$10, make_easier=$11,
          tutorial_video_url=COALESCE($12::text, exercises.tutorial_video_url),
-         tutorial_video_file_name=$13, steps=$14, exercise_type=$15, video_duration_label=$16, harder_exercise_id=$17, easier_exercise_id=$18, harder_tutorial=$19, easier_tutorial=$20, movement_pattern=$21, exercise_category=$22, min_experience=$23, joint_stress=$24, generation_enabled=$25, primary_muscles=$26, secondary_muscles=$27`,
+         tutorial_video_file_name=$13, steps=$14, exercise_type=$15, video_duration_label=$16, harder_exercise_id=$17, easier_exercise_id=$18, harder_tutorial=$19, easier_tutorial=$20, movement_pattern=$21, exercise_category=$22, min_experience=$23, joint_stress=$24, generation_enabled=$25, primary_muscles=$26, secondary_muscles=$27, bookend_roles=$29`,
       [
         name,
         targetMuscle || '',
@@ -2277,7 +2282,8 @@ app.put('/api/exercises/:id', requireAdmin, async (req, res) => {
         generationEnabled === true,
         JSON.stringify(primaryMuscles || []),
         JSON.stringify(secondaryMuscles || []),
-        id
+        id,
+        JSON.stringify(bookendRoles || [])
       ]
     );
     res.json({ success: true });

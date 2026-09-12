@@ -359,3 +359,11 @@ CREATE INDEX IF NOT EXISTS idx_session_checkins_lookup
 -- when it is NULL the video is still in exercise_video_chunks and is served
 -- the old way, so both can coexist while videos are migrated.
 ALTER TABLE exercises ADD COLUMN IF NOT EXISTS tutorial_video_key TEXT;
+
+-- Which bookends an exercise can serve, as a set rather than the single value
+-- exercise_category allowed. That column answers "what kind of movement is
+-- this" and was doing double duty as "where in the session does it go", which
+-- made the two mutually exclusive: an exercise could be cardio or a warm-up,
+-- never both. Empty for most exercises; legacy rows tagged
+-- exercise_category = 'warmup'/'cooldown' still work without being migrated.
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS bookend_roles JSONB DEFAULT '[]';

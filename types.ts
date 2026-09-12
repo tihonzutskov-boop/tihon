@@ -337,6 +337,11 @@ export interface LibraryExercise {
   // only becomes selectable once an admin has actually filled these in.
   movementPattern?: MovementPattern;
   exerciseCategory?: ExerciseCategory;
+  // Which bookends this exercise can serve, independent of what kind of
+  // movement it is. exerciseCategory conflated the two — an exercise could be
+  // 'cardio' or 'warmup' but never both, so a bike that suits the warm-up and
+  // the cooldown equally had no way to say so. Empty for most exercises.
+  bookendRoles?: ('warmup' | 'cooldown')[];
   minExperience?: ExperienceLevel; // hard gate, not a scoring penalty — a beginner never gets an advanced-only lift
   jointStress?: JointStressArea[]; // areas this exercise loads; excluded for users reporting injury there
   primaryMuscles?: MuscleGroup[];   // what this mainly trains — drives weekly balance checks

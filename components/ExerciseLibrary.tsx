@@ -354,6 +354,8 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
   const [formMovementPattern, setFormMovementPattern] = useState<MovementPattern | ''>('');
   const [showPatternHelp, setShowPatternHelp] = useState(false);
   const [formExerciseCategoryTag, setFormExerciseCategoryTag] = useState<ExerciseCategory | ''>('');
+  // Multi-select, unlike Type: an exercise can serve both ends of a session.
+  const [formBookendRoles, setFormBookendRoles] = useState<('warmup' | 'cooldown')[]>([]);
   const [formMinExperience, setFormMinExperience] = useState<ExperienceLevel | ''>('');
   const [formJointStress, setFormJointStress] = useState<JointStressArea[]>([]);
   const [formPrimaryMuscles, setFormPrimaryMuscles] = useState<MuscleGroup[]>([]);
@@ -411,6 +413,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     // derive rather than making the admin restate them. Only when the
     // structured field is still empty, so a deliberate choice always wins.
     setFormExerciseCategoryTag(ex.exerciseCategory || deriveExerciseCategory(ex.category));
+    setFormBookendRoles(ex.bookendRoles || []);
     setFormMinExperience(ex.minExperience || '');
     setFormJointStress(keepValid(ex.jointStress, ALL_JOINT_STRESS_AREAS));
     setFormPrimaryMuscles(
@@ -1069,6 +1072,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                     easierExerciseId: formEasierVariation.mode === 'link' ? formEasierVariation.linkedId : '',
                     movementPattern: formMovementPattern || undefined,
                     exerciseCategory: formExerciseCategoryTag || undefined,
+                    bookendRoles: formBookendRoles,
                     minExperience: formMinExperience || undefined,
                     jointStress: formJointStress,
                     primaryMuscles: formPrimaryMuscles,
@@ -1479,6 +1483,34 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                             </button>
                           ))}
                         </div>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">
+                          Can serve as
+                        </label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(['warmup', 'cooldown'] as const).map(role => {
+                            const on = formBookendRoles.includes(role);
+                            return (
+                              <button
+                                key={role}
+                                type="button"
+                                onClick={() => setFormBookendRoles(prev =>
+                                  prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]
+                                )}
+                                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors ${
+                                  on ? 'bg-lime-500 text-slate-950' : 'bg-slate-950 text-slate-400 border border-slate-800 hover:border-slate-600'
+                                }`}
+                              >
+                                {role === 'warmup' ? 'Warm-up' : 'Cooldown'}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <p className="text-[9.5px] text-slate-500 mt-1.5 leading-relaxed">
+                          Pick both if it suits either end. Separate from Type, so a cardio machine
+                          can be both without stopping being cardio.
+                        </p>
                       </div>
                       <div>
                         <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Minimum experience</label>

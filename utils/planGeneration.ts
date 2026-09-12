@@ -700,6 +700,10 @@ export const selectBookendExercise = (
 ): LibraryExercise | null => {
   const scoreOne = (ex: LibraryExercise): number => {
     let score = 0;
+    // Explicitly marked for this bookend. The legacy exerciseCategory check
+    // below still counts, so exercises tagged before bookendRoles existed keep
+    // working without being re-tagged.
+    if (ex.bookendRoles?.includes(kind)) score += BOOKEND_SCORING.taggedForBookend;
     if (ex.exerciseCategory === kind) score += BOOKEND_SCORING.taggedForBookend;
     if (ex.exerciseCategory === 'mobility') score += BOOKEND_SCORING.mobility;
     if (ex.movementPattern === 'mobility') score += BOOKEND_SCORING.mobilityPattern;
