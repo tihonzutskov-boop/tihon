@@ -974,7 +974,12 @@ describe('warm-up and cooldown', () => {
 
   // The safety property from before still holds: a library with nothing
   // suitable costs a locatable warm-up, never the warm-up itself.
-  it('names a bookend for itself, not for the machine backing it', () => {
+  // Previously asserted the opposite: the bookend was named "Warm-up" and the
+  // machine deliberately kept out of the title, because a bare machine name
+  // read as equipment prescribed with no instruction. Per-exercise notes are
+  // what changed that — "Treadmill" plus what to do on it is an instruction,
+  // where "Treadmill" alone was not.
+  it('names the backing exercise and keeps its place on the map', () => {
     const bike = exercise({
       id: 'bike', name: 'Exercise Bike', exerciseCategory: 'cardio', movementPattern: 'mobility',
       equipmentId: 'zone-cardio',
@@ -985,7 +990,7 @@ describe('warm-up and cooldown', () => {
       bike,
       'd0-warmup',
     );
-    expect(built.name).toBe('Warm-up');
+    expect(built.name).toBe('Exercise Bike');
     // The machine is still what gives the block a place on the map.
     expect(built.equipmentId).toBe('zone-cardio');
     expect(built.libraryExerciseId).toBe('bike');
@@ -1059,6 +1064,57 @@ describe('warm-up and cooldown', () => {
     };
     const result = generatePlan(tpl, library, gym([]), profile({ daysPerWeek: 1 }));
     expect(result.ok).toBe(true);
+  });
+});
+
+describe('bookend notes', () => {
+  const block = { name: 'Warm-up', minutes: 5, steps: ['2 minutes easy cardio', 'Arm circles'] };
+  const coolBlock = { name: 'Cooldown', minutes: 5, steps: ['2 minutes walking'] };
+  const treadmill = exercise({
+    id: 'tread', name: 'Treadmill', exerciseCategory: 'cardio', movementPattern: 'conditioning',
+    bookendRoles: ['warmup', 'cooldown'],
+    warmupNote: 'Easy pace for 5 minutes — you should still be able to talk.',
+    cooldownNote: 'Walking pace for 3 minutes, let your breathing settle.',
+  });
+
+  it('names the exercise being done, not the block', () => {
+    expect(buildBookendExercise('warmup', block, treadmill, 'x').name).toBe('Treadmill');
+  });
+
+  it('carries the note for the end of the session it is filling', () => {
+    expect(buildBookendExercise('warmup', block, treadmill, 'x').notes).toBe(treadmill.warmupNote);
+    expect(buildBookendExercise('cooldown', coolBlock, treadmill, 'x').notes).toBe(treadmill.cooldownNote);
+  });
+
+  it('falls back to the block steps when no note is written', () => {
+    const untagged = exercise({
+      id: 'bike', name: 'Bike', exerciseCategory: 'cardio', movementPattern: 'conditioning',
+    });
+    expect(buildBookendExercise('warmup', block, untagged, 'x').notes)
+      .toBe('2 minutes easy cardio · Arm circles');
+  });
+
+  it('does not use the warm-up note for the cooldown when only one is written', () => {
+    const warmOnly = exercise({
+      id: 'w', name: 'Rower', exerciseCategory: 'cardio', movementPattern: 'conditioning',
+      warmupNote: 'Build to a steady pace.',
+    });
+    expect(buildBookendExercise('cooldown', coolBlock, warmOnly, 'x').notes).toBe('2 minutes walking');
+  });
+
+  it('still names the block when the library cannot fill it', () => {
+    const built = buildBookendExercise('warmup', block, null, 'x');
+    expect(built.name).toBe('Warm-up');
+    expect(built.notes).toBe('2 minutes easy cardio · Arm circles');
+  });
+
+  it('ignores a note that is only whitespace', () => {
+    const blank = exercise({
+      id: 'b', name: 'Bike', exerciseCategory: 'cardio', movementPattern: 'conditioning',
+      warmupNote: '   ',
+    });
+    expect(buildBookendExercise('warmup', block, blank, 'x').notes)
+      .toBe('2 minutes easy cardio · Arm circles');
   });
 });
 

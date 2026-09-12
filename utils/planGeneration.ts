@@ -727,11 +727,13 @@ export const buildBookendExercise = (
   idSuffix: string,
 ): Exercise => ({
   id: `gbk-${idSuffix}`,
-  // Named for what it is, not for the machine that happens to back it. A
-  // warm-up titled "Exercise Bike" reads as a prescribed piece of equipment;
-  // the library entry is here to give the block a place on the map, not to
-  // become the block. Where to go is carried by equipmentId below.
-  name: block.name,
+  // Named for the exercise being done, with the note below saying what to do
+  // on it. An earlier version titled this "Warm-up" instead, because a bare
+  // machine name read as equipment being prescribed with no instruction. The
+  // note is what fixes that: "Treadmill" followed by "easy pace, enough to
+  // raise your heart rate" is a usable instruction, where "Treadmill" alone
+  // was not. Falls back to the block name when the library cannot fill it.
+  name: le ? le.name : block.name,
   targetMuscle: le?.targetMuscle || 'Full body',
   // Tracked by duration rather than sets, which is what these actually are.
   sets: 0,
@@ -741,7 +743,11 @@ export const buildBookendExercise = (
   equipmentId: le?.equipmentId || 'manual',
   ...(le ? { libraryExerciseId: le.id } : {}),
   bookend: kind,
-  notes: block.steps.join(' · '),
+  // The exercise's own instruction for this end of the session, falling back
+  // to the day's generic steps when an admin has not written one — a thin
+  // library still produces a bookend the client can follow.
+  notes: (kind === 'warmup' ? le?.warmupNote : le?.cooldownNote)?.trim()
+    || block.steps.join(' · '),
 });
 
 export const generatePlan = (

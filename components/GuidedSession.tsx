@@ -288,6 +288,16 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   const pct = Math.round(((current + 1) / total) * 100);
 
   const instructions = libraryExercise?.instructions || exercise.notes;
+  // The note for this end of the session, read from the library entry so an
+  // admin's edit shows immediately without regenerating every stored plan.
+  //
+  // Deliberately does not fall back to exercise.notes: the generator already
+  // fills that with the day's joined block steps when no note exists, so
+  // falling back to it would mean the numbered step list below never rendered
+  // — the fallback would silently swallow the thing it was falling back to.
+  const bookendNote = exercise.bookend
+    ? ((exercise.bookend === 'warmup' ? libraryExercise?.warmupNote : libraryExercise?.cooldownNote) || '').trim()
+    : '';
   const gifUrl = libraryExercise?.imageUrl;
   const harder = libraryExercise?.makeHarder || exercise.makeHarder;
   const easier = libraryExercise?.makeEasier || exercise.makeEasier;
@@ -455,18 +465,13 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
           <div className="p-5 pb-4">
             <p className="text-[11px] font-extrabold text-lime-400 uppercase tracking-wide mb-1.5">
               {exercise.bookend
-                ? `${exercise.cardioMinutes || 0} min`
+                ? `${exercise.cardioMinutes || 0} min · ${stage.label}`
                 : `${exercise.targetMuscle} · ${stage.label}`}
             </p>
             {/* Plans generated before bookends were named for themselves still
                 carry the backing machine's name, so the title is corrected
                 here too rather than only at the source. */}
-            <h2 className="text-xl font-extrabold text-white">
-              {exercise.bookend
-                ? (exercise.bookend === 'warmup' ? day.warmup?.name : day.cooldown?.name)
-                  || (exercise.bookend === 'warmup' ? 'Warm-up' : 'Cooldown')
-                : exercise.name}
-            </h2>
+            <h2 className="text-xl font-extrabold text-white">{exercise.name}</h2>
           </div>
           {stage.key === 'video' ? (
             <div className="relative aspect-video border-b border-slate-800 bg-black overflow-hidden">
@@ -649,18 +654,22 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                     Head to the <span className="font-bold text-slate-300">{zone.name}</span>.
                   </p>
                 )}
-                <ul className="space-y-1.5">
-                  {(exercise.bookend === 'warmup' ? day.warmup : day.cooldown)?.steps.map((step, i) => (
-                    <li key={i} className="text-sm text-slate-400 leading-relaxed flex gap-2.5">
-                      <span className="text-slate-600 font-bold shrink-0">{i + 1}</span>
-                      <span>{step}</span>
-                    </li>
-                  ))}
-                </ul>
-                {/* Falls back to the entry's own notes when the day carries no
-                    structured steps — an older plan, or one built by hand. */}
-                {!(exercise.bookend === 'warmup' ? day.warmup : day.cooldown)?.steps?.length && exercise.notes && (
-                  <p className="text-sm text-slate-400 leading-relaxed">{exercise.notes}</p>
+                {/* What to do on this specific machine, written per exercise
+                    by an admin. Without it the title is just equipment being
+                    named at someone; with it, it is an instruction. */}
+                {bookendNote ? (
+                  <p className="text-sm text-slate-300 leading-relaxed">{bookendNote}</p>
+                ) : (
+                  // No note written for this exercise yet, so the day's generic
+                  // block steps stand in rather than leaving the screen blank.
+                  <ul className="space-y-1.5">
+                    {(exercise.bookend === 'warmup' ? day.warmup : day.cooldown)?.steps.map((step, i) => (
+                      <li key={i} className="text-sm text-slate-400 leading-relaxed flex gap-2.5">
+                        <span className="text-slate-600 font-bold shrink-0">{i + 1}</span>
+                        <span>{step}</span>
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </>
             )}

@@ -342,6 +342,13 @@ export interface LibraryExercise {
   // 'cardio' or 'warmup' but never both, so a bike that suits the warm-up and
   // the cooldown equally had no way to say so. Empty for most exercises.
   bookendRoles?: ('warmup' | 'cooldown')[];
+  // What to actually do with this exercise at each end of a session. Kept
+  // separate because the same machine rarely means the same thing twice — a
+  // treadmill warm-up builds to an easy jog, the same treadmill as a cooldown
+  // walks it back down. Falls back to the day's generic block steps when
+  // empty, so an untagged library still produces a usable bookend.
+  warmupNote?: string;
+  cooldownNote?: string;
   minExperience?: ExperienceLevel; // hard gate, not a scoring penalty — a beginner never gets an advanced-only lift
   jointStress?: JointStressArea[]; // areas this exercise loads; excluded for users reporting injury there
   primaryMuscles?: MuscleGroup[];   // what this mainly trains — drives weekly balance checks

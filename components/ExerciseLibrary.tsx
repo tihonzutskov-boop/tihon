@@ -356,6 +356,8 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
   const [formExerciseCategoryTag, setFormExerciseCategoryTag] = useState<ExerciseCategory | ''>('');
   // Multi-select, unlike Type: an exercise can serve both ends of a session.
   const [formBookendRoles, setFormBookendRoles] = useState<('warmup' | 'cooldown')[]>([]);
+  const [formWarmupNote, setFormWarmupNote] = useState('');
+  const [formCooldownNote, setFormCooldownNote] = useState('');
   const [formMinExperience, setFormMinExperience] = useState<ExperienceLevel | ''>('');
   const [formJointStress, setFormJointStress] = useState<JointStressArea[]>([]);
   const [formPrimaryMuscles, setFormPrimaryMuscles] = useState<MuscleGroup[]>([]);
@@ -414,6 +416,8 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     // structured field is still empty, so a deliberate choice always wins.
     setFormExerciseCategoryTag(ex.exerciseCategory || deriveExerciseCategory(ex.category));
     setFormBookendRoles(ex.bookendRoles || []);
+    setFormWarmupNote(ex.warmupNote || '');
+    setFormCooldownNote(ex.cooldownNote || '');
     setFormMinExperience(ex.minExperience || '');
     setFormJointStress(keepValid(ex.jointStress, ALL_JOINT_STRESS_AREAS));
     setFormPrimaryMuscles(
@@ -1073,6 +1077,8 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                     movementPattern: formMovementPattern || undefined,
                     exerciseCategory: formExerciseCategoryTag || undefined,
                     bookendRoles: formBookendRoles,
+                    warmupNote: formWarmupNote.trim(),
+                    cooldownNote: formCooldownNote.trim(),
                     minExperience: formMinExperience || undefined,
                     jointStress: formJointStress,
                     primaryMuscles: formPrimaryMuscles,
@@ -1511,6 +1517,38 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                           Pick both if it suits either end. Separate from Type, so a cardio machine
                           can be both without stopping being cardio.
                         </p>
+
+                        {/* Only shown for a role the exercise actually has —
+                            a note for a bookend it never fills is work asked
+                            for and then thrown away. */}
+                        {formBookendRoles.includes('warmup') && (
+                          <div className="mt-2.5">
+                            <label className="block text-[9.5px] text-lime-400 font-bold uppercase tracking-wider mb-1">
+                              What to do as a warm-up
+                            </label>
+                            <textarea
+                              value={formWarmupNote}
+                              onChange={e => setFormWarmupNote(e.target.value)}
+                              rows={2}
+                              placeholder="e.g. 5 minutes, easy pace — you should still be able to hold a conversation."
+                              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-[11px] text-slate-200 placeholder:text-slate-600 resize-none focus:outline-none focus:border-lime-500"
+                            />
+                          </div>
+                        )}
+                        {formBookendRoles.includes('cooldown') && (
+                          <div className="mt-2.5">
+                            <label className="block text-[9.5px] text-sky-400 font-bold uppercase tracking-wider mb-1">
+                              What to do as a cooldown
+                            </label>
+                            <textarea
+                              value={formCooldownNote}
+                              onChange={e => setFormCooldownNote(e.target.value)}
+                              rows={2}
+                              placeholder="e.g. 3 minutes, walking pace — let your breathing settle before you leave."
+                              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-[11px] text-slate-200 placeholder:text-slate-600 resize-none focus:outline-none focus:border-sky-500"
+                            />
+                          </div>
+                        )}
                       </div>
                       <div>
                         <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Minimum experience</label>

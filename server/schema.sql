@@ -367,3 +367,9 @@ ALTER TABLE exercises ADD COLUMN IF NOT EXISTS tutorial_video_key TEXT;
 -- never both. Empty for most exercises; legacy rows tagged
 -- exercise_category = 'warmup'/'cooldown' still work without being migrated.
 ALTER TABLE exercises ADD COLUMN IF NOT EXISTS bookend_roles JSONB DEFAULT '[]';
+
+-- What the client should do with this exercise when it is the warm-up or the
+-- cooldown. Separate per role: the same treadmill builds to an easy jog at the
+-- start of a session and walks the breathing back down at the end.
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS warmup_note TEXT;
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS cooldown_note TEXT;
