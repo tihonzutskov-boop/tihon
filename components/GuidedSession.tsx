@@ -715,11 +715,17 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                   // tutorial above it: the video teaches the machine, the note
                   // prescribes this session's use of it.
                   <p className="text-sm text-slate-300 leading-relaxed">{bookendNote}</p>
-                ) : hasTutorialVideo ? null : (
-                  // No note and no tutorial, so the day's generic block steps
-                  // stand in rather than leaving the screen blank. Suppressed
-                  // when the tutorial is playing, since its captions already
-                  // walk through the steps and two lists would compete.
+                ) : (
+                  // The day's warm-up protocol, shown whenever no exercise
+                  // note overrides it — including alongside the tutorial.
+                  //
+                  // These were briefly suppressed when a tutorial was playing,
+                  // on the theory that two step lists compete. They do not:
+                  // the tutorial's captions teach the machine ("set the seat"),
+                  // while these are the protocol and carry the pacing ("four
+                  // minutes, building from very easy to breathing harder").
+                  // Hiding them left a warm-up screen with no instruction on
+                  // it at all.
                   <ul className="space-y-1.5">
                     {(exercise.bookend === 'warmup' ? day.warmup : day.cooldown)?.steps.map((step, i) => (
                       <li key={i} className="text-sm text-slate-400 leading-relaxed flex gap-2.5">
