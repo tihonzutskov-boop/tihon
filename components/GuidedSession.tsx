@@ -369,8 +369,12 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   const harderMedia = resolveVariationMedia('harder');
   const easierMedia = resolveVariationMedia('easier');
 
-  const tutorialSteps = libraryExercise?.steps || [];
-  const hasTutorialVideo = !!(libraryExercise?.tutorialVideoUrl && tutorialSteps.length > 0);
+  // Whose tutorial to play. For a bookend this is the resolved machine, which
+  // may not be the one stored on the plan — a warm-up should teach the client
+  // how to use the treadmill the same way every other exercise teaches its own.
+  const mediaExercise = bookendExercise || libraryExercise;
+  const tutorialSteps = mediaExercise?.steps || [];
+  const hasTutorialVideo = !!(mediaExercise?.tutorialVideoUrl && tutorialSteps.length > 0);
 
   const playNextTutorialStep = () => {
     if (tutorialPlayingRef.current) return;
@@ -532,7 +536,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                 allowFullScreen
               />
             </div>
-          ) : stage.key === 'bookend' ? null : stage.key === 'tutorial' && hasTutorialVideo ? (
+          ) : (stage.key === 'tutorial' || stage.key === 'bookend') && hasTutorialVideo ? (
             <>
               {/* Caption + Next Step used to sit as an absolute overlay on
                   top of the video — on a phone that overlay was tall
@@ -543,7 +547,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
               <div className="relative aspect-video border-b border-slate-800 bg-black overflow-hidden">
                 <video
                   ref={tutorialVideoRef}
-                  src={libraryExercise!.tutorialVideoUrl}
+                  src={mediaExercise!.tutorialVideoUrl}
                   muted
                   playsInline
                   className="w-full h-full object-cover"
@@ -599,7 +603,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                 </div>
               </div>
             </>
-          ) : (
+          ) : stage.key === 'bookend' ? null : (
             // Identify is the step where the photo is the whole point — it is
             // how someone picks this machine out of a room of machines — so it
             // gets more height, and the image is contained rather than cropped
@@ -707,10 +711,15 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                     by an admin. Without it the title is just equipment being
                     named at someone; with it, it is an instruction. */}
                 {bookendNote ? (
+                  // What to do today, which is a different thing from the
+                  // tutorial above it: the video teaches the machine, the note
+                  // prescribes this session's use of it.
                   <p className="text-sm text-slate-300 leading-relaxed">{bookendNote}</p>
-                ) : (
-                  // No note written for this exercise yet, so the day's generic
-                  // block steps stand in rather than leaving the screen blank.
+                ) : hasTutorialVideo ? null : (
+                  // No note and no tutorial, so the day's generic block steps
+                  // stand in rather than leaving the screen blank. Suppressed
+                  // when the tutorial is playing, since its captions already
+                  // walk through the steps and two lists would compete.
                   <ul className="space-y-1.5">
                     {(exercise.bookend === 'warmup' ? day.warmup : day.cooldown)?.steps.map((step, i) => (
                       <li key={i} className="text-sm text-slate-400 leading-relaxed flex gap-2.5">
