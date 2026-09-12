@@ -1516,6 +1516,14 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                         <p className="text-[9.5px] text-slate-500 mt-1.5 leading-relaxed">
                           Pick both if it suits either end. Separate from Type, so a cardio machine
                           can be both without stopping being cardio.
+                          {formBookendRoles.length === 0 && (
+                            // The note boxes only exist once a role is picked, which
+                            // made them impossible to discover: nothing on screen said
+                            // they were there to be found.
+                            <span className="block mt-1 text-lime-400/80">
+                              Pick one to write what the client should do on it.
+                            </span>
+                          )}
                         </p>
 
                         {/* Only shown for a role the exercise actually has —
