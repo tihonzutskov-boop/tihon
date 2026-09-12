@@ -257,7 +257,19 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
     setRows(next);
   };
   const updateSet = (i: number, field: 'reps' | 'weight', value: string) => {
-    const next = rows.map((r, idx) => (idx === i ? { ...r, [field]: value } : r));
+    const next = rows.map((r, idx) => {
+      if (idx !== i) return r;
+      const updated = { ...r, [field]: value };
+      // Entering a weight ticks the set. Typing what you lifted is already a
+      // statement that you lifted it, and making someone say it twice is the
+      // kind of friction that gets a set logged as undone by accident —
+      // which the progression rules then read as work that never happened.
+      //
+      // Clearing it unticks, so the two can never disagree. The checkbox
+      // stays tappable for anyone who wants to say otherwise.
+      if (field === 'weight') updated.done = value.trim() !== '';
+      return updated;
+    });
     setRows(next);
   };
   const addSet = () => setRows([...rows, { reps: exercise.reps || '', weight: '', done: false }]);
