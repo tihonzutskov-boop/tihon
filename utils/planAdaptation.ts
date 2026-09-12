@@ -347,18 +347,21 @@ export const needsProgramReview = (weeksTrained: number): boolean =>
 // Redistributing would mean walking back sets on unrelated exercises the
 // client has nothing wrong with, which is a bigger and riskier feature than
 // refusing one increase; holding is the conservative reading of the same rule.
-// VOL-1: 6–14 hard sets per muscle per week, with 16 permitted only where
-// recovery and progression support it. This is a real reduction from the
-// previous 20 — that number was set generously to keep selection from being
-// starved, which is a different concern from what a beginner recovers from,
-// and 14 sits closer to what the cited evidence supports for untrained
-// lifters.
+// The weekly hard-set budget per muscle: 6 at the bottom, 12 at the top.
 //
-// The 16 exception is not implemented: it needs a recovery-and-progression
-// signal the engine does not yet compute, and inventing one would make the
-// ceiling look considered while actually being arbitrary. 14 stands until
-// that signal exists.
-export const VOLUME_CEILING_PER_MUSCLE_PER_WEEK = 14;
+// This is deliberately narrower than VOL-1 as written, which allows 6-14 and
+// permits 16 where recovery and progression support it. The code and the
+// rulebook disagree here on purpose rather than by neglect: every client is a
+// beginner (the intake offers no other level), the engine cannot yet measure
+// whether recovery supports more, and the cost of being one set light for
+// someone who could handle more is far lower than the cost of being four sets
+// heavy for someone who cannot.
+//
+// If VOL-1's conditional 16 is ever implemented, it needs the recovery signal
+// first — the pre-session check-in now collects the fatigue reports that such
+// a signal would read, but nothing computes one yet, and a ceiling that moves
+// on an invented signal only looks considered.
+export const VOLUME_CEILING_PER_MUSCLE_PER_WEEK = 12;
 
 // VOL-1's lower bound. Nothing reads this yet — acting on a shortfall is
 // VOL-2's job (correct it inside the same week only if it fits, otherwise

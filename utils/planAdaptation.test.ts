@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { evaluateExercise, needsProgramReview, selectSubstitute, applyWeeklyVolumeCeiling, applySubstitution, VOLUME_CEILING_PER_MUSCLE_PER_WEEK as CEILING, VolumeCandidate, AdaptationDecision, AdaptationInput } from './planAdaptation';
+import { evaluateExercise, needsProgramReview, selectSubstitute, applyWeeklyVolumeCeiling, applySubstitution, VOLUME_CEILING_PER_MUSCLE_PER_WEEK as CEILING, VOLUME_FLOOR_PER_MUSCLE_PER_WEEK as VOLUME_FLOOR, VolumeCandidate, AdaptationDecision, AdaptationInput } from './planAdaptation';
 import { ExerciseLog, LibraryExercise, Exercise } from '../types';
 
 // --- fixtures ---------------------------------------------------------------
@@ -399,6 +399,19 @@ describe('applyWeeklyVolumeCeiling', () => {
     ...over,
   });
 
+  // Every other test here is written relative to CEILING, which makes them
+  // robust to the number changing — and blind to it changing by accident.
+  // These two pin the values themselves.
+  it('budgets 6 to 12 hard sets per muscle per week', () => {
+    expect(VOLUME_FLOOR).toBe(6);
+    expect(CEILING).toBe(12);
+  });
+
+  it('keeps the floor below the ceiling with room to progress between them', () => {
+    expect(VOLUME_FLOOR).toBeLessThan(CEILING);
+    expect(CEILING - VOLUME_FLOOR).toBeGreaterThanOrEqual(4);
+  });
+
   it('allows an add-set that lands exactly at the ceiling', () => {
     const result = applyWeeklyVolumeCeiling([candidate({ id: 'a', baseSets: CEILING - 1 })]);
     expect(result[0].decision.action).toBe('add-set');
@@ -417,7 +430,7 @@ describe('applyWeeklyVolumeCeiling', () => {
       candidate({ id: 'bench', muscles: ['Chest'], baseSets: CEILING - 6 }),
       candidate({ id: 'flye', muscles: ['Chest'], baseSets: 6 }),
     ]);
-    // Combined base is already 20 — at the ceiling before either add-set.
+    // Combined base already sits exactly at the ceiling, before either add-set.
     expect(result.find(r => r.id === 'bench')!.decision.action).toBe('maintain');
     expect(result.find(r => r.id === 'flye')!.decision.action).toBe('maintain');
   });
@@ -455,8 +468,8 @@ describe('applyWeeklyVolumeCeiling', () => {
   });
 
   it('never reduces sets that are already prescribed, even at or over the ceiling', () => {
-    // Base volume alone is already over 20 (a generator concern, not this
-    // pass's job to fix) — the add-set is still just held, nothing is cut.
+    // Base volume alone is already past the ceiling (a generator concern, not
+    // this pass's job to fix) — the add-set is held, but nothing is cut.
     const result = applyWeeklyVolumeCeiling([candidate({ id: 'a', baseSets: CEILING + 5 })]);
     expect(result[0].decision.action).toBe('maintain');
   });
