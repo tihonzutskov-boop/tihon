@@ -1294,22 +1294,45 @@ describe('rest prescription', () => {
     // Guards against the loop above silently checking nothing.
     expect(rests.length).toBeGreaterThan(0);
     for (const rest of rests) {
-      expect(rest % 10).toBe(0);
+      // Ten-second steps under a minute, half-minutes over it; even either way.
+      expect(rest % (rest > 60 ? 30 : 10)).toBe(0);
       expect(rest % 2).toBe(0);
     }
   });
 
   describe('roundRestSeconds', () => {
-    it('snaps the multiplier\'s arbitrary output onto readable steps', () => {
-      // What each base rest becomes once scaled for a longer session.
-      expect(roundRestSeconds(69)).toBe(70);
-      expect(roundRestSeconds(103.5)).toBe(100);
+    it('keeps short rests on ten-second steps', () => {
+      expect(roundRestSeconds(23)).toBe(20);
+      expect(roundRestSeconds(34.5)).toBe(30);
+      expect(roundRestSeconds(40.5)).toBe(40);
+      expect(roundRestSeconds(51.75)).toBe(50);
+    });
+
+    it('snaps anything past a minute onto half-minutes', () => {
+      // Nobody waiting between sets counts to 140, so past the minute mark the
+      // step widens to the unit people actually use.
+      expect(roundRestSeconds(69)).toBe(60);
+      expect(roundRestSeconds(81)).toBe(90);
+      expect(roundRestSeconds(103.5)).toBe(90);
       expect(roundRestSeconds(121.5)).toBe(120);
-      expect(roundRestSeconds(162)).toBe(160);
+      expect(roundRestSeconds(138)).toBe(150);
+      expect(roundRestSeconds(162)).toBe(150);
+    });
+
+    it('produces only rests that can be said as minutes and halves', () => {
+      const bases = [20, 30, 45, 60, 90, 120];
+      const multipliers = [1.0, 1.15, 1.35];
+      for (const base of bases) {
+        for (const m of multipliers) {
+          const rest = roundRestSeconds(base * m);
+          if (rest > 60) expect(rest % 30).toBe(0);
+          else expect(rest % 10).toBe(0);
+        }
+      }
     });
 
     it('leaves a rest already on a step exactly where it is', () => {
-      for (const rest of [20, 30, 60, 90, 120]) expect(roundRestSeconds(rest)).toBe(rest);
+      for (const rest of [20, 30, 60, 90, 120, 150]) expect(roundRestSeconds(rest)).toBe(rest);
     });
 
     it('rounds the one odd base rest up rather than down', () => {

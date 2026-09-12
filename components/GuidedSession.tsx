@@ -43,12 +43,20 @@ interface SetRow {
   done: boolean;
 }
 
-// Rest reads more naturally in minutes once it passes one, which is where a
-// beginner's compound rest usually sits.
+// Rest reads in the unit a person would actually count in. Under a minute that
+// is seconds; at a minute and over it is minutes, including the half — nobody
+// waiting between sets counts to 150.
+//
+// Written 1:30 rather than 1,30 on purpose: a comma there reads as a decimal,
+// and 1,30 minutes is 1 minute 18 seconds to anyone who takes it literally.
 const formatRest = (seconds: number | undefined | null): string => {
   if (seconds == null || seconds <= 0) return '—';
-  if (seconds >= 60 && seconds % 60 === 0) return `${seconds / 60} min`;
-  return `${seconds}s`;
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return remainder === 0
+    ? `${minutes} min`
+    : `${minutes}:${String(remainder).padStart(2, '0')} min`;
 };
 
 const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, libraryExercises, onClose, onFinish }) => {

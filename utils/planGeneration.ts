@@ -594,9 +594,16 @@ export const estimateDayMinutes = (
 // 23s, which rounds back to 20. That is the honest outcome — three seconds
 // was never a real difference in a conditioning finisher.
 const REST_STEP_SECONDS = 10;
+// Past a minute the unit people actually use changes. Nobody counts 140
+// seconds; they wait two minutes. Half-minute steps above the boundary keep
+// every long rest expressible as "1 min", "1:30 min", "2 min".
+const LONG_REST_BOUNDARY_SECONDS = 60;
+const LONG_REST_STEP_SECONDS = 30;
 
-export const roundRestSeconds = (seconds: number): number =>
-  Math.max(REST_STEP_SECONDS, Math.round(seconds / REST_STEP_SECONDS) * REST_STEP_SECONDS);
+export const roundRestSeconds = (seconds: number): number => {
+  const step = seconds > LONG_REST_BOUNDARY_SECONDS ? LONG_REST_STEP_SECONDS : REST_STEP_SECONDS;
+  return Math.max(REST_STEP_SECONDS, Math.round(seconds / step) * step);
+};
 
 const prescriptionFor = (slot: ExerciseSlot, profile: GenerationProfile) => {
   const sets = profile.experience === 'Beginner' ? slot.setsMin : slot.setsMax;
