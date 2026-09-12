@@ -1067,6 +1067,53 @@ describe('warm-up and cooldown', () => {
   });
 });
 
+describe('the bookend matches what the day trains', () => {
+  // Mirrors the live library's cardio, muscle tags and all.
+  const tread = exercise({ id: 'tread', name: 'Treadmill', exerciseCategory: 'cardio',
+    movementPattern: 'conditioning', bookendRoles: ['warmup', 'cooldown'],
+    primaryMuscles: ['Quads', 'Calves'] });
+  const stair = exercise({ id: 'stair', name: 'Stairmaster', exerciseCategory: 'cardio',
+    movementPattern: 'conditioning', bookendRoles: ['warmup', 'cooldown'],
+    primaryMuscles: ['Quads', 'Glutes'] });
+  const rower = exercise({ id: 'rower', name: 'Air Rower', exerciseCategory: 'cardio',
+    movementPattern: 'conditioning', bookendRoles: ['warmup', 'cooldown'],
+    primaryMuscles: ['Lats'] });
+  const pool = [tread, stair, rower];
+
+  it('warms up an upper day on something that drives the upper body', () => {
+    const upper = new Set(['Chest', 'Lats', 'Shoulders', 'Triceps'] as any);
+    expect(selectBookendExercise('warmup', pool, upper as any)?.id).toBe('rower');
+  });
+
+  it('warms up a leg day on something that drives the legs', () => {
+    const legs = new Set(['Quads', 'Glutes', 'Hamstrings'] as any);
+    expect(selectBookendExercise('warmup', pool, legs as any)?.id).toBe('stair');
+  });
+
+  it('prefers the closer match when several overlap', () => {
+    // Treadmill matches Quads and Calves; Stairmaster only Quads.
+    const calves = new Set(['Quads', 'Calves'] as any);
+    expect(selectBookendExercise('warmup', pool, calves as any)?.id).toBe('tread');
+  });
+
+  it('lets an explicit tag outrank the day', () => {
+    // Untagged but perfectly matching, against tagged and not matching.
+    const matchingUntagged = exercise({ id: 'bike', name: 'Bike', exerciseCategory: 'cardio',
+      movementPattern: 'conditioning', primaryMuscles: ['Quads', 'Glutes', 'Hamstrings'] });
+    const legs = new Set(['Quads', 'Glutes', 'Hamstrings'] as any);
+    expect(selectBookendExercise('warmup', [matchingUntagged, rower], legs as any)?.id).toBe('rower');
+  });
+
+  it('still picks something when the day trains nothing it matches', () => {
+    const unrelated = new Set(['Neck'] as any);
+    expect(selectBookendExercise('warmup', pool, unrelated as any)).not.toBeNull();
+  });
+
+  it('behaves as before when no day muscles are given', () => {
+    expect(selectBookendExercise('warmup', pool)).not.toBeNull();
+  });
+});
+
 describe('bookend notes', () => {
   const block = { name: 'Warm-up', minutes: 5, steps: ['2 minutes easy cardio', 'Arm circles'] };
   const coolBlock = { name: 'Cooldown', minutes: 5, steps: ['2 minutes walking'] };

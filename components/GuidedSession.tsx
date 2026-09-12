@@ -163,11 +163,26 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   // work: nothing about it is logged, progressed, or compared against a previous
   // session, so it carrying a different machine than the day it was generated
   // changes nothing downstream.
+  // What this day actually trains, so a resolved bookend matches it the same
+  // way a freshly generated one does — a leg day warmed up on something that
+  // drives the legs, an upper day on something that drives the upper body.
+  const musclesTrainedToday = useMemo(() => {
+    const muscles = new Set<string>();
+    for (const ex of exercises) {
+      if (ex.bookend) continue;
+      const le = ex.libraryExerciseId ? libraryExercises.find(l => l.id === ex.libraryExerciseId) : undefined;
+      (le?.primaryMuscles || []).forEach(m => muscles.add(m));
+    }
+    return muscles;
+  }, [exercises, libraryExercises]);
+
   const bookendExercise = useMemo(
     () => (exercise?.bookend
-      ? libraryExercise || selectBookendExercise(exercise.bookend, libraryExercises) || undefined
+      ? libraryExercise
+        || selectBookendExercise(exercise.bookend, libraryExercises, musclesTrainedToday as Set<any>)
+        || undefined
       : undefined),
-    [exercise, libraryExercise, libraryExercises]
+    [exercise, libraryExercise, libraryExercises, musclesTrainedToday]
   );
 
   const zone = useMemo(() => {

@@ -692,14 +692,30 @@ const buildExercise = (
 // Preference order: an exercise explicitly tagged for this bookend, then
 // general mobility work, then a cardio machine — which is what the steps
 // actually describe, and the most locatable thing in the room.
-const BOOKEND_SCORING = { taggedForBookend: 30, mobility: 20, mobilityPattern: 15, cardio: 10 };
+// dayMuscleMatch is per overlapping muscle and deliberately small: three
+// overlaps (24) still lose to a single explicit bookend tag (30), so an admin's
+// tagging always outranks the day, and the day only breaks ties within the
+// group of exercises already marked for this end of the session.
+const BOOKEND_SCORING = { taggedForBookend: 30, mobility: 20, mobilityPattern: 15, cardio: 10, dayMuscleMatch: 8 };
 
 export const selectBookendExercise = (
   kind: 'warmup' | 'cooldown',
   pool: LibraryExercise[],
+  // What this day actually trains. A warm-up prepares the tissue about to be
+  // loaded, so a leg day should be warmed up on something that drives the legs
+  // and an upper day on something that drives the upper body. Optional, and an
+  // empty set simply scores nothing — every existing caller keeps its old
+  // behaviour without passing it.
+  dayMuscles: Set<MuscleGroup> | MuscleGroup[] = [],
 ): LibraryExercise | null => {
+  const trained = dayMuscles instanceof Set ? dayMuscles : new Set(dayMuscles);
   const scoreOne = (ex: LibraryExercise): number => {
     let score = 0;
+    // Counted per muscle rather than as a yes/no, so on a lower day a
+    // stairmaster (quads + glutes) is picked over a treadmill (quads only).
+    for (const m of ex.primaryMuscles || []) {
+      if (trained.has(m)) score += BOOKEND_SCORING.dayMuscleMatch;
+    }
     // Explicitly marked for this bookend. The legacy exerciseCategory check
     // below still counts, so exercises tagged before bookendRoles existed keep
     // working without being re-tagged.
@@ -916,9 +932,9 @@ export const generatePlan = (
       name: bpDay.name,
       // Bookends bracket the working exercises, in the order they're done.
       exercises: [
-        buildBookendExercise('warmup', warmup, selectBookendExercise('warmup', pool), `${d}-warmup`),
+        buildBookendExercise('warmup', warmup, selectBookendExercise('warmup', pool, musclesInDay), `${d}-warmup`),
         ...picked.map((p, i) => buildExercise(p.le, p.slot, profile, `${d}-${i}`)),
-        buildBookendExercise('cooldown', cooldown, selectBookendExercise('cooldown', pool), `${d}-cooldown`),
+        buildBookendExercise('cooldown', cooldown, selectBookendExercise('cooldown', pool, musclesInDay), `${d}-cooldown`),
       ],
       warmup,
       cooldown,
