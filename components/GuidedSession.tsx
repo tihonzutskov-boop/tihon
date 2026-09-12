@@ -345,6 +345,23 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   const easier = libraryExercise?.makeEasier || exercise.makeEasier;
   const allSetsDone = rows.length > 0 && rows.every(r => r.done);
 
+  // What still has to be recorded before this exercise can be left.
+  //
+  // Only working sets are gated. A warm-up, a cooldown and a cardio entry have
+  // no sets and no effort rating to give, so requiring one would trap the
+  // client on a screen with nothing on it to satisfy the requirement.
+  //
+  // Bodyweight counts as a weight: the field accepts 0, and asking for it is
+  // the point — "did you add weight to that pull-up" is exactly the thing the
+  // progression rules cannot infer from a blank.
+  const missingBeforeNext: string[] = [];
+  if (stage.key === 'tutorial' && !exercise.isCardio && !exercise.bookend) {
+    if (!allSetsDone) missingBeforeNext.push('tick every set you finished');
+    if (rows.some(r => r.weight.trim() === '')) missingBeforeNext.push('enter the weight for every set (0 if bodyweight)');
+    if (!effortState[exIdx]) missingBeforeNext.push('rate how hard it was');
+  }
+  const canLeaveExercise = missingBeforeNext.length === 0;
+
   // A Harder/Easier variation can carry its own tutorial two ways: a quick
   // inline one (YouTube link + plain steps, entered right on the field) or
   // a link to another library exercise that has its own tutorial. Quick
@@ -957,6 +974,22 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
           </div>
         )}
 
+        {stage.key !== 'locate' && !canLeaveExercise && (
+          <div className="mb-2.5 px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800">
+            <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+              Before the next exercise
+            </p>
+            <ul className="space-y-0.5">
+              {missingBeforeNext.map(item => (
+                <li key={item} className="text-[11.5px] text-slate-400 flex gap-1.5">
+                  <span className="text-slate-600">•</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {stage.key !== 'locate' && (
           <div className="flex gap-2.5 mb-6">
             <button
@@ -968,7 +1001,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
             </button>
             <button
               onClick={() => (isLastStage ? (saveError ? onFinish() : finishSession()) : go(1))}
-              disabled={saving}
+              disabled={saving || !canLeaveExercise}
               className="flex-1 py-3 rounded-xl text-sm font-extrabold bg-lime-500 hover:bg-lime-400 active:scale-95 text-slate-950 transition-all duration-150 disabled:opacity-60 disabled:active:scale-100"
             >
               {isLastStage
