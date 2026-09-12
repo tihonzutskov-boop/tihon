@@ -4,6 +4,7 @@ import { WorkoutDay, Gym, EquipmentItem, LibraryExercise, Exercise, EffortRating
 import { api } from '../services/api';
 import GymMap from './GymMap';
 import { planSessionRoute } from '../utils/sessionRoute';
+import { selectBookendExercise } from '../utils/planGeneration';
 import { getYouTubeEmbedUrl } from '../utils/youtubeEmbed';
 
 interface GuidedSessionProps {
@@ -146,14 +147,44 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   // client who finds their machine occupied has somewhere to go.
   const alternatives = routeStop?.alternatives || [];
 
+  const libraryExercise = useMemo(
+    () => (exercise?.libraryExerciseId ? libraryExercises.find(le => le.id === exercise.libraryExerciseId) : undefined),
+    [exercise, libraryExercises]
+  );
+
+  // A bookend with nothing linked is resolved here instead.
+  //
+  // Plans are stored as a blob, and one generated when the library had nothing
+  // suitable — or before bookends were backed at all — saved a warm-up with no
+  // exercise behind it. Those plans would show the generic block steps forever,
+  // with no name and no note, however many notes an admin later wrote.
+  //
+  // Safe to resolve at display time precisely because a bookend is not training
+  // work: nothing about it is logged, progressed, or compared against a previous
+  // session, so it carrying a different machine than the day it was generated
+  // changes nothing downstream.
+  const bookendExercise = useMemo(
+    () => (exercise?.bookend
+      ? libraryExercise || selectBookendExercise(exercise.bookend, libraryExercises) || undefined
+      : undefined),
+    [exercise, libraryExercise, libraryExercises]
+  );
+
   const zone = useMemo(() => {
     if (!exercise) return undefined;
     // An explicitly assigned zone always wins: an admin who pinned a machine
     // meant that machine, and routing must not second-guess it.
     const direct = gym.zones.find(z => z.id === exercise.equipmentId);
     if (direct) return direct;
+    // A bookend resolved at display time carries its own location. Without
+    // this, a stored plan whose warm-up saved equipmentId 'manual' names a
+    // machine and then declines to say where it is.
+    if (exercise.bookend && bookendExercise?.equipmentId) {
+      const viaBookend = gym.zones.find(z => z.id === bookendExercise.equipmentId);
+      if (viaBookend) return viaBookend;
+    }
     return routeStop?.zone || undefined;
-  }, [gym, exercise, routeStop]);
+  }, [gym, exercise, routeStop, bookendExercise]);
   const machine = useMemo(() => {
     if (!exercise) return undefined;
     const direct = zone?.machines?.find(m => m.id === exercise.machineId);
@@ -168,10 +199,6 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
     // flow always copies from the equipment item verbatim.
     return equipmentList.find(e => e.id === machine.equipmentId) || equipmentList.find(e => e.name === machine.name);
   }, [machine, equipmentList]);
-  const libraryExercise = useMemo(
-    () => (exercise?.libraryExerciseId ? libraryExercises.find(le => le.id === exercise.libraryExerciseId) : undefined),
-    [exercise, libraryExercises]
-  );
 
   const rows: SetRow[] = useMemo(() => {
     if (!exercise) return [];
@@ -296,7 +323,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   // falling back to it would mean the numbered step list below never rendered
   // — the fallback would silently swallow the thing it was falling back to.
   const bookendNote = exercise.bookend
-    ? ((exercise.bookend === 'warmup' ? libraryExercise?.warmupNote : libraryExercise?.cooldownNote) || '').trim()
+    ? ((exercise.bookend === 'warmup' ? bookendExercise?.warmupNote : bookendExercise?.cooldownNote) || '').trim()
     : '';
   const gifUrl = libraryExercise?.imageUrl;
   const harder = libraryExercise?.makeHarder || exercise.makeHarder;
@@ -471,7 +498,14 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
             {/* Plans generated before bookends were named for themselves still
                 carry the backing machine's name, so the title is corrected
                 here too rather than only at the source. */}
-            <h2 className="text-xl font-extrabold text-white">{exercise.name}</h2>
+            {/* A bookend prefers the library entry's name over the stored one.
+                Plans are saved as a blob, so one generated before bookends
+                carried an exercise name has "Warm-up" baked into it — reading
+                the library instead fixes those without a regeneration, the
+                same way the note does. */}
+            <h2 className="text-xl font-extrabold text-white">
+              {exercise.bookend ? (bookendExercise?.name || exercise.name) : exercise.name}
+            </h2>
           </div>
           {stage.key === 'video' ? (
             <div className="relative aspect-video border-b border-slate-800 bg-black overflow-hidden">
