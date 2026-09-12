@@ -398,6 +398,21 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   // may not be the one stored on the plan — a warm-up should teach the client
   // how to use the treadmill the same way every other exercise teaches its own.
   const mediaExercise = bookendExercise || libraryExercise;
+
+  // The live name for any exercise in this session. The plan stores a snapshot
+  // of the name at generation time while everything else about the exercise is
+  // read live, so a rename leaves the two disagreeing — used everywhere a name
+  // is shown so no screen can contradict another.
+  const displayName = (ex: Exercise): string => {
+    if (ex.bookend) {
+      const resolved = ex.libraryExerciseId
+        ? libraryExercises.find(le => le.id === ex.libraryExerciseId)
+        : selectBookendExercise(ex.bookend, libraryExercises, musclesTrainedToday as Set<any>);
+      return resolved?.name || ex.name;
+    }
+    const le = ex.libraryExerciseId ? libraryExercises.find(l => l.id === ex.libraryExerciseId) : undefined;
+    return le?.name || ex.name;
+  };
   const tutorialSteps = mediaExercise?.steps || [];
   const hasTutorialVideo = !!(mediaExercise?.tutorialVideoUrl && tutorialSteps.length > 0);
 
@@ -449,7 +464,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
             </button>
             <div className="text-right">
               <p className="text-[10.5px] font-extrabold text-lime-400 uppercase tracking-wide">Locate</p>
-              <p className="text-sm font-extrabold">{exercise.name}</p>
+              <p className="text-sm font-extrabold">{displayName(exercise)}</p>
             </div>
           </div>
           <div className="flex-1 relative m-4 rounded-2xl border border-slate-800 overflow-hidden bg-slate-900">
@@ -542,13 +557,15 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
             {/* Plans generated before bookends were named for themselves still
                 carry the backing machine's name, so the title is corrected
                 here too rather than only at the source. */}
-            {/* A bookend prefers the library entry's name over the stored one.
-                Plans are saved as a blob, so one generated before bookends
-                carried an exercise name has "Warm-up" baked into it — reading
-                the library instead fixes those without a regeneration, the
-                same way the note does. */}
+            {/* The name comes from the same place as the tutorial below it.
+                Plans are stored as a blob, so the name is a snapshot taken at
+                generation time while the video, steps and instructions are read
+                live — rename an exercise and the two drift apart, leaving a
+                card titled "Bench Press" playing a dumbbell tutorial and
+                looking for all the world like the wrong video is attached.
+                Falls back to the stored name only when the entry is gone. */}
             <h2 className="text-xl font-extrabold text-white">
-              {exercise.bookend ? (bookendExercise?.name || exercise.name) : exercise.name}
+              {mediaExercise?.name || exercise.name}
             </h2>
           </div>
           {stage.key === 'video' ? (
@@ -1047,7 +1064,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                     >
                       {doneEx ? <Check className="w-3 h-3" /> : i + 1}
                     </span>
-                    <span>{e.name}</span>
+                    <span>{displayName(e)}</span>
                     {stagesByExIdx[i][0]?.key === 'video' && (
                       <span className="text-[8.5px] font-extrabold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-400">
                         ▶ Video
@@ -1103,7 +1120,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                 onClick={() => setVariationOverlay(null)}
                 className="flex items-center gap-1.5 text-sm font-bold text-slate-400 hover:text-white transition-colors"
               >
-                <ArrowLeft className="w-4 h-4" /> {exercise.name}
+                <ArrowLeft className="w-4 h-4" /> {displayName(exercise)}
               </button>
               <span className={`ml-auto text-[9px] font-extrabold uppercase tracking-wide px-2.5 py-1 rounded-full ${tone === 'orange' ? 'bg-orange-500/15 text-orange-400' : 'bg-sky-500/15 text-sky-400'}`}>
                 {variationOverlay === 'harder' ? 'Harder variation' : 'Easier variation'}
