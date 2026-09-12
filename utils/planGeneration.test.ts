@@ -1104,7 +1104,7 @@ describe('cardio is bookend-only', () => {
     // the one slot cardio used to reach.
     const blueprint: PlanTemplate = {
       id: 't1', name: 'T', goal: 'Weight loss', daysPerWeek: '3', durationMin: 60, days: [],
-      blueprintDays: buildDefaultBlueprint('Weight loss', 3, 'Beginner'),
+      blueprintDays: buildDefaultBlueprint('Weight loss', 3),
     };
     const run = generatePlan(blueprint, library, gym([]), profile({ goal: 'Weight loss', daysPerWeek: 3 }));
     expect(run.ok).toBe(true);
