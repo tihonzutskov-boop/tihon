@@ -533,7 +533,18 @@ export const selectForSlot = (
   // the same exercise twice — which the validator then rejected, so a thin
   // library failed to produce any plan at all instead of a shorter one.
   const candidates = pool.filter(ex =>
-    ex.movementPattern === slot.movementPattern && !alreadyUsedIds.has(ex.id)
+    ex.movementPattern === slot.movementPattern &&
+    !alreadyUsedIds.has(ex.id) &&
+    // Cardio belongs in the warm-up or the cooldown, never in the training
+    // block. Enforced here rather than in checkEligibility, which answers a
+    // different question — whether this person can safely perform this
+    // exercise at this gym — and whose result also feeds bookend selection,
+    // so excluding cardio there left the warm-up with nothing to be.
+    //
+    // A filter rather than a scoring penalty: a penalty only made cardio
+    // unlikely in a main slot, and it still won whenever nothing else matched
+    // the pattern, which is exactly when it was least wanted.
+    ex.exerciseCategory !== 'cardio'
   );
   if (candidates.length === 0) return null;
 

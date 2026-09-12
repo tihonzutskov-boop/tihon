@@ -3,7 +3,7 @@ import {
   checkEligibility, eligibleExercises, gymEquipmentIds, selectSplit,
   selectForSlot, estimateDayMinutes, generatePlan, validatePlan, buildDefaultBlueprint,
   buildCombinedBlueprint, assignAimsToDays, aimProfile, GenerationProfile, EligibilityContext,
-  buildBookendExercise,
+  buildBookendExercise, selectBookendExercise,
   roundRestSeconds,
 } from './planGeneration';
 import type { GenerationFailure } from './planGeneration';
@@ -1059,6 +1059,66 @@ describe('warm-up and cooldown', () => {
     };
     const result = generatePlan(tpl, library, gym([]), profile({ daysPerWeek: 1 }));
     expect(result.ok).toBe(true);
+  });
+});
+
+describe('cardio is bookend-only', () => {
+  const bike = exercise({
+    id: 'bike', name: 'Gym Bike', exerciseCategory: 'cardio',
+    movementPattern: 'conditioning', equipmentId: 'zone-cardio',
+  });
+
+  it('never fills a main slot with cardio, even as the only candidate', () => {
+    // The case a scoring penalty could not cover: nothing else matches the
+    // pattern, so a merely-unlikely cardio pick would win by default.
+    const picked = selectForSlot(
+      slot({ id: 's1', movementPattern: 'conditioning', priority: 1 }),
+      [bike],
+      profile({}),
+      new Set(),
+    );
+    expect(picked).toBeNull();
+  });
+
+  it('still lets cardio back the warm-up and the cooldown', () => {
+    expect(selectBookendExercise('warmup', [bike])?.id).toBe('bike');
+    expect(selectBookendExercise('cooldown', [bike])?.id).toBe('bike');
+  });
+
+  it('keeps cardio eligible — it is a placement rule, not a safety one', () => {
+    // checkEligibility answers whether this person can perform this exercise
+    // at this gym. Cardio passing that and still being kept out of the main
+    // block is the distinction the two layers exist to express.
+    const ctx = { availableEquipmentIds: new Set<string>(), profile: profile({}) };
+    expect(checkEligibility(bike, ctx).eligible).toBe(true);
+  });
+
+  it('leaves no cardio anywhere in the training block of a generated plan', () => {
+    const library = [
+      bike,
+      exercise({ id: 'squat', name: 'Squat', movementPattern: 'squat', exerciseCategory: 'compound' }),
+      exercise({ id: 'push', name: 'Push-up', movementPattern: 'horizontal_push', exerciseCategory: 'compound' }),
+      exercise({ id: 'row', name: 'Row', movementPattern: 'horizontal_pull', exerciseCategory: 'compound' }),
+    ];
+    // Weight loss appends a conditioning finisher to the main block, which is
+    // the one slot cardio used to reach.
+    const blueprint: PlanTemplate = {
+      id: 't1', name: 'T', goal: 'Weight loss', daysPerWeek: '3', durationMin: 60, days: [],
+      blueprintDays: buildDefaultBlueprint('Weight loss', 3, 'Beginner'),
+    };
+    const run = generatePlan(blueprint, library, gym([]), profile({ goal: 'Weight loss', daysPerWeek: 3 }));
+    expect(run.ok).toBe(true);
+    if (!run.ok) return;
+
+    let checkedSomething = false;
+    for (const day of run.days) {
+      for (const ex of day.exercises) {
+        if (ex.bookend) continue;
+        checkedSomething = true;
+        expect(ex.libraryExerciseId).not.toBe('bike');
+      }
+    }
+    expect(checkedSomething).toBe(true);
   });
 });
 
