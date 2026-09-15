@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ClipboardList, Check } from 'lucide-react';
+import { ClipboardList, Check, ChevronUp, ChevronDown } from 'lucide-react';
 import { QuestionnaireAnswers, Weekday, ALL_JOINT_STRESS_AREAS } from '../types';
 import { QUESTIONNAIRE_GOALS } from '../constants';
 
@@ -138,6 +138,19 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
     setForm(prev => {
       const arr = prev[key];
       return { ...prev, [key]: arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value] };
+    });
+  };
+  // Newly picked goals land at the bottom of the ranking, which the client
+  // then adjusts — this is what feeds assignAimsToDays's day-per-aim rotation
+  // and buildGenerationProfile's "which aim stands in for the goal" pick, so
+  // the order here is a real priority signal, not incidental UI state.
+  const moveGoal = (index: number, direction: -1 | 1) => {
+    setForm(prev => {
+      const target = index + direction;
+      if (target < 0 || target >= prev.goals.length) return prev;
+      const next = [...prev.goals];
+      [next[index], next[target]] = [next[target], next[index]];
+      return { ...prev, goals: next };
     });
   };
   // Changing the day count invalidates whatever specific days were picked
@@ -306,6 +319,52 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
               {QUESTIONNAIRE_GOALS.map(opt => <Pill key={opt} label={opt} selected={form.goals.includes(opt)} onClick={() => toggleMulti('goals', opt)} />)}
             </div>
           </div>
+          {/* Only meaningful with two or more goals — one goal is already its
+              own rank one, and a list of one nothing has anything to reorder
+              against. Every day of the plan gets one goal as its main focus;
+              this order is what decides which goal that is, day by day. */}
+          {form.goals.length > 1 && (
+            <div>
+              <FieldLabel required hint="most important first">Rank your goals</FieldLabel>
+              <p className="text-[11.5px] text-slate-500 mb-3 leading-relaxed">
+                Your plan gives each training day to one goal. #1 gets the most days —
+                the rest fill in around it.
+              </p>
+              <div className="space-y-2">
+                {form.goals.map((goal, i) => (
+                  <div
+                    key={goal}
+                    className="flex items-center gap-3 bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5"
+                  >
+                    <span className="w-6 h-6 rounded-full bg-lime-500/10 border border-lime-500/30 text-lime-400 text-[11px] font-extrabold flex items-center justify-center flex-shrink-0">
+                      {i + 1}
+                    </span>
+                    <span className="flex-1 text-sm font-bold text-white">{goal}</span>
+                    <div className="flex gap-1 flex-shrink-0">
+                      <button
+                        type="button"
+                        disabled={i === 0}
+                        onClick={() => moveGoal(i, -1)}
+                        aria-label={`Move ${goal} up`}
+                        className="w-7 h-7 rounded-lg border border-slate-700 bg-slate-900 text-slate-400 disabled:opacity-30 disabled:cursor-default hover:text-white hover:border-slate-600 transition-colors flex items-center justify-center"
+                      >
+                        <ChevronUp className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={i === form.goals.length - 1}
+                        onClick={() => moveGoal(i, 1)}
+                        aria-label={`Move ${goal} down`}
+                        className="w-7 h-7 rounded-lg border border-slate-700 bg-slate-900 text-slate-400 disabled:opacity-30 disabled:cursor-default hover:text-white hover:border-slate-600 transition-colors flex items-center justify-center"
+                      >
+                        <ChevronDown className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div>
             <FieldLabel required>Training experience</FieldLabel>
             <div className="flex flex-wrap gap-2">

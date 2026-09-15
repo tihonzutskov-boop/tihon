@@ -1098,9 +1098,10 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
         }
       }
       const gymId = answers.gymId || null;
-      // The first selected aim stands in for "the goal" wherever the engine
-      // only has room for one (e.g. the compound-preference scoring bonus) —
-      // a secondary effect, not the thing that decides session structure.
+      // The highest-ranked aim (goals[0], from the client's explicit ranking
+      // at intake) stands in for "the goal" wherever the engine only has room
+      // for one — e.g. the compound-preference scoring bonus. A secondary
+      // effect, not the thing that decides session structure.
       const goalForPlan = match ? match.goal : (goals[0] || 'General fitness');
       const profile = buildGenerationProfile(answers, goalForPlan);
 

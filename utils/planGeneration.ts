@@ -370,9 +370,9 @@ export const buildDefaultBlueprint = (goal: string, daysPerWeek: number, session
 // longer draws slots from more than one aim, so there is nothing to interleave
 // and no shared accessory budget to police.
 //
-// MIXAIM-6: days are handed out in aim-priority order, which is the order the
-// client selected them. Two aims over three days gives the higher-priority aim
-// the odd day.
+// MIXAIM-6: days are handed out in aim-priority order — the ranking the
+// client gave their goals at intake, not the order they happened to tap them
+// in. Two aims over three days gives the higher-priority aim the odd day.
 //
 // Not yet implemented from MIXAIM-6: alternating that odd day between the two
 // aims from one week to the next. The generator builds a single week with no
