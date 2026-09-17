@@ -427,6 +427,14 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   };
   const tutorialSteps = mediaExercise?.steps || [];
   const hasTutorialVideo = !!(mediaExercise?.tutorialVideoUrl && tutorialSteps.length > 0);
+  // The other kind of video an exercise can carry: a plain YouTube
+  // follow-along (exerciseType 'video'), no native file, no timestamped
+  // steps — the same thing a video-type exercise already shows in the main
+  // flow's own 'video' stage. A bookend resolving to one of these used to
+  // fall through both video checks and land on the generic day-template
+  // text instead, because hasTutorialVideo only ever looked for the other
+  // mechanism.
+  const hasFollowAlongVideo = !!(mediaExercise?.exerciseType === 'video' && mediaExercise?.videoUrl);
 
   const playNextTutorialStep = () => {
     if (tutorialPlayingRef.current) return;
@@ -585,6 +593,20 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
               <iframe
                 src={getYouTubeEmbedUrl(libraryExercise?.videoUrl)}
                 title={exercise.name}
+                className="w-full h-full border-0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+          ) : stage.key === 'bookend' && hasFollowAlongVideo ? (
+            // Same embed a video-type exercise gets in the main flow — just
+            // the follow-along, nothing captioned or timed on top of it. A
+            // YouTube iframe has no reliable currentTime to pause at anyway,
+            // which is exactly why that mechanism is a separate, simpler one.
+            <div className="relative aspect-video border-b border-slate-800 bg-black overflow-hidden">
+              <iframe
+                src={getYouTubeEmbedUrl(mediaExercise?.videoUrl)}
+                title={mediaExercise?.name || exercise.name}
                 className="w-full h-full border-0"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
@@ -774,7 +796,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                     same way once a video exists. */}
                 {bookendNote ? (
                   <p className="text-sm text-slate-300 leading-relaxed">{bookendNote}</p>
-                ) : hasTutorialVideo ? null : (
+                ) : hasTutorialVideo || hasFollowAlongVideo ? null : (
                   <ul className="space-y-1.5">
                     {(exercise.bookend === 'warmup' ? day.warmup : day.cooldown)?.steps.map((step, i) => (
                       <li key={i} className="text-sm text-slate-400 leading-relaxed flex gap-2.5">
@@ -787,7 +809,11 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
               </>
             )}
 
-            {(stage.key === 'tutorial' || stage.key === 'bookend') && exercise.isCardio && (
+            {/* A duration card measures against a prescribed number of
+                minutes, which a plain YouTube follow-along doesn't have — its
+                length is whatever the video is. Suppressed for the same
+                reason the tutorial-video branch above already skips it. */}
+            {(stage.key === 'tutorial' || stage.key === 'bookend') && exercise.isCardio && !hasFollowAlongVideo && (
               <div className="mt-5 pt-4 border-t border-slate-800">
                 <div className="flex items-center justify-between gap-3 bg-slate-800/60 border border-slate-700 rounded-xl p-4">
                   <div>
