@@ -464,9 +464,10 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
     const exerciseToSave: LibraryExercise = {
       ...newEx,
       id: `ex-${Date.now()}`,
-      // Video exercises set their own default (the mat/turf area) without
-      // ever touching the equipment picker, so selectedEquipmentIds — which
-      // only reflects that picker's state — would wipe it out here.
+      // Both types read from the same picker now, but video's is optional and
+      // already carries the mat/turf fallback computed in the submit handler
+      // — reapplying selectedEquipmentIds here would drop that fallback
+      // whenever the admin left the picker empty.
       requiredEquipmentIds: newEx.exerciseType === 'video' ? newEx.requiredEquipmentIds : selectedEquipmentIds
     };
     const result = await api.createExercise(exerciseToSave);
@@ -480,6 +481,9 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
   const handleSaveExerciseEdit = async (updatedEx: LibraryExercise): Promise<LibraryExercise> => {
     const fullUpdated: LibraryExercise = {
       ...updatedEx,
+      // See the matching comment in handleAddNewExercise — video keeps its
+      // own already-computed value so an empty picker still falls back to
+      // the mat/turf default instead of an empty array.
       requiredEquipmentIds: updatedEx.exerciseType === 'video' ? updatedEx.requiredEquipmentIds : selectedEquipmentIds
     };
     const result = await api.saveExercise(fullUpdated);
@@ -1017,26 +1021,36 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                 const formData = new FormData(e.currentTarget);
                 const isVideo = formExerciseType === 'video';
 
-                // Video exercises are a YouTube follow-along, not an
-                // equipment-based movement — nothing to pick from the
-                // Equipment Library.
+                // A video exercise still doesn't need this to be required —
+                // most are genuine bodyweight follow-alongs, and forcing a
+                // pick where the client couldn't say what changes it would be
+                // asking for information that isn't there yet. A standard
+                // exercise has always required a pick because eligibility
+                // depends on it; that hasn't changed.
                 if (!isVideo && selectedEquipmentIds.length === 0) {
                   setFormError('Select at least one equipment item (use "Open Floor / Mat Area" for bodyweight moves).');
                   return;
                 }
                 setFormError('');
 
+                // Construct the human-readable equipment label. Shared by both
+                // branches now that a video exercise's equipment comes from
+                // the same picker as a standard exercise's — a video with a
+                // resistance band selected should say so, not "Open Floor /
+                // Mat Area" regardless of what was actually picked.
+                const selectedEqItems = selectedEquipmentIds.map(id => equipmentMap.get(id)?.name).filter(Boolean);
+                const reqString = selectedEqItems.join(', ') || (isVideo ? 'Open Floor / Mat Area' : 'None (Bodyweight)');
+
                 const exData = isVideo ? {
                   name: formData.get('name') as string,
                   targetMuscle: formMuscle,
-                  // Not truly "no equipment" — a follow-along video still
-                  // needs floor space, so it defaults to the mat/turf area.
-                  // equipmentId stays auto (unset) so it resolves against
-                  // whichever zone actually has that equipment in the
-                  // trainee's own gym, same as a standard exercise left on
-                  // "Auto-detect from equipment in zone".
-                  equipmentRequired: 'Open Floor / Mat Area',
-                  requiredEquipmentIds: ['eq-floor-mat'],
+                  // Falls back to the mat/turf area when nothing is picked —
+                  // a follow-along video still needs floor space even when it
+                  // needs nothing else. equipmentId stays auto (unset): video
+                  // exercises have no Locate/Identify stage to route to a
+                  // specific zone, so there is nothing for it to do here.
+                  equipmentRequired: reqString,
+                  requiredEquipmentIds: selectedEquipmentIds.length > 0 ? selectedEquipmentIds : ['eq-floor-mat'],
                   category: formCategory,
                   instructions: editingExercise?.instructions || '',
                   equipmentId: '',
@@ -1051,9 +1065,6 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                   easierTutorial: {},
                   exerciseType: 'video' as const
                 } : (() => {
-                  // Construct human readable equipment label
-                  const selectedEqItems = selectedEquipmentIds.map(id => equipmentMap.get(id)?.name).filter(Boolean);
-                  const reqString = selectedEqItems.join(', ') || 'None (Bodyweight)';
                   const zoneRaw = formData.get('equipmentId') as string;
                   return {
                     name: formData.get('name') as string,
@@ -1133,7 +1144,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                       }`}
                     >
                       <span>▶ Video / Follow-Along</span>
-                      <span className="text-[9px] font-semibold text-slate-500">YouTube link, no equipment needed</span>
+                      <span className="text-[9px] font-semibold text-slate-500">YouTube link, equipment optional</span>
                     </button>
                   </div>
 
@@ -1211,14 +1222,18 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                       </div>
                       <div className="flex items-start gap-2 p-3 rounded-xl bg-red-500/5 border border-red-500/15 text-[10.5px] text-slate-400 leading-relaxed">
                         <Film className="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" />
-                        <span>Equipment, target zone, sets/reps, and Harder/Easier are skipped for video exercises — trainees just watch and follow along.</span>
+                        <span>Target zone, sets/reps, and Harder/Easier are skipped for video exercises — trainees just watch and follow along. Equipment still matters, since it decides which gyms can offer this video.</span>
                       </div>
                     </div>
                   )}
 
-                  {/* Interactive Equipment Multi-Selector from Equipment Library */}
-                  {formExerciseType === 'standard' && (
-                  <>
+                  {/* Interactive Equipment Multi-Selector from Equipment Library.
+                      Shown for both exercise types now — a video follow-along
+                      still needs real gear tracked (a band, a jump rope) when
+                      it uses any, the same way a standard exercise does. Only
+                      the zone/tutorial/harder-easier fields below stay
+                      standard-only, since those genuinely don't apply to a
+                      single-stage video. */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider">
@@ -1307,6 +1322,13 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                     </div>
                   </div>
 
+                  {/* Everything below is standard-only: a video exercise has no
+                      Locate/Identify stage to route to a zone, its steps and
+                      video live in the Tutorials editor already prompted for
+                      above, and Harder/Easier variations don't apply to a
+                      single-stage follow-along. */}
+                  {formExerciseType === 'standard' && (
+                  <>
                   <div>
                     <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">{t.gymZoneLabel} <span className="text-red-500">*</span></label>
                     <select required name="equipmentId" defaultValue={editingExercise?.equipmentId || 'auto'} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-lime-500/50 transition-colors cursor-pointer min-h-[44px]">
