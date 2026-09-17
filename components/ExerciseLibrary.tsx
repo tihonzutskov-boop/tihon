@@ -1063,7 +1063,22 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                   easierExerciseId: '',
                   harderTutorial: {},
                   easierTutorial: {},
-                  exerciseType: 'video' as const
+                  exerciseType: 'video' as const,
+                  // Everything checkEligibility actually reads. Without these
+                  // a video exercise failed on generationEnabled alone, before
+                  // movementPattern or exerciseCategory were even checked —
+                  // so it could never be picked for a main slot, a bookend, or
+                  // a substitute, no matter how it was tagged elsewhere.
+                  movementPattern: formMovementPattern || undefined,
+                  exerciseCategory: formExerciseCategoryTag || undefined,
+                  bookendRoles: formBookendRoles,
+                  warmupNote: formWarmupNote.trim(),
+                  cooldownNote: formCooldownNote.trim(),
+                  minExperience: formMinExperience || undefined,
+                  jointStress: formJointStress,
+                  primaryMuscles: formPrimaryMuscles,
+                  secondaryMuscles: formSecondaryMuscles,
+                  generationEnabled: formGenerationEnabled,
                 } : (() => {
                   const zoneRaw = formData.get('equipmentId') as string;
                   return {
@@ -1222,7 +1237,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                       </div>
                       <div className="flex items-start gap-2 p-3 rounded-xl bg-red-500/5 border border-red-500/15 text-[10.5px] text-slate-400 leading-relaxed">
                         <Film className="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" />
-                        <span>Target zone, sets/reps, and Harder/Easier are skipped for video exercises — trainees just watch and follow along. Equipment still matters, since it decides which gyms can offer this video.</span>
+                        <span>Target zone, sets/reps, and Harder/Easier are skipped for video exercises — trainees just watch and follow along. Equipment and tagging below still matter: they decide which gyms can offer this video, and whether the generator can pick it on its own.</span>
                       </div>
                     </div>
                   )}
@@ -1417,8 +1432,19 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                     </div>
                   </div>
                   <p className="text-[10px] text-slate-500 -mt-2">Optional — leave either blank if it doesn't apply. Only shown to trainees when filled in.</p>
+                  </>
+                  )}
 
-                  {/* Automatic generation tagging */}
+                  {/* Automatic generation tagging. Shown for both exercise types:
+                      a video follow-along is just as reachable by the generator
+                      as a standard exercise once it carries the same movement
+                      pattern, type, and eligibility tags — checkEligibility
+                      gates on those fields, not on exerciseType. Before this,
+                      the video branch's save payload never set any of them
+                      (generationEnabled included), so every video exercise
+                      failed eligibility's first check silently and could never
+                      be selected anywhere — not a main slot, not a bookend, not
+                      a substitute. */}
                   <div className="p-3.5 rounded-xl border border-sky-500/20 bg-sky-500/[0.03] space-y-3.5">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -1670,8 +1696,6 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                       <p className="text-[10px] text-slate-500 mt-1.5">Clients reporting an injury in a selected area never get this exercise.</p>
                     </div>
                   </div>
-                  </>
-                  )}
 
                   {formError && (
                     <div className="p-3 rounded-xl bg-red-950/30 border border-red-800/40 text-xs text-red-400">
