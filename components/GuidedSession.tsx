@@ -761,25 +761,20 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                     Head to the <span className="font-bold text-slate-300">{zone.name}</span>.
                   </p>
                 )}
-                {/* What to do on this specific machine, written per exercise
-                    by an admin. Without it the title is just equipment being
-                    named at someone; with it, it is an instruction. */}
+                {/* An admin's own note always wins, video or not — it is
+                    deliberate, exercise-specific pacing ("build to a slow
+                    run") that a video demonstrating machine setup never makes
+                    redundant. The generic day-template steps are different:
+                    they exist only to fill the gap when nothing better was
+                    written, and a real tutorial video is something better —
+                    its own captioned steps ("Strap feet securely...") already
+                    say what to do, so the generic filler adds nothing once
+                    one exists. This mirrors the standard-exercise tutorial
+                    stage, which suppresses its instructions paragraph the
+                    same way once a video exists. */}
                 {bookendNote ? (
-                  // What to do today, which is a different thing from the
-                  // tutorial above it: the video teaches the machine, the note
-                  // prescribes this session's use of it.
                   <p className="text-sm text-slate-300 leading-relaxed">{bookendNote}</p>
-                ) : (
-                  // The day's warm-up protocol, shown whenever no exercise
-                  // note overrides it — including alongside the tutorial.
-                  //
-                  // These were briefly suppressed when a tutorial was playing,
-                  // on the theory that two step lists compete. They do not:
-                  // the tutorial's captions teach the machine ("set the seat"),
-                  // while these are the protocol and carry the pacing ("four
-                  // minutes, building from very easy to breathing harder").
-                  // Hiding them left a warm-up screen with no instruction on
-                  // it at all.
+                ) : hasTutorialVideo ? null : (
                   <ul className="space-y-1.5">
                     {(exercise.bookend === 'warmup' ? day.warmup : day.cooldown)?.steps.map((step, i) => (
                       <li key={i} className="text-sm text-slate-400 leading-relaxed flex gap-2.5">
