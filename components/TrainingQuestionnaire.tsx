@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { ClipboardList, Check, ChevronUp, ChevronDown } from 'lucide-react';
+import { ClipboardList, Check } from 'lucide-react';
+import RankList from './RankList';
+import { moveItem } from '../utils/reorder';
 import { QuestionnaireAnswers, Weekday, ALL_JOINT_STRESS_AREAS } from '../types';
 import {
   PRIMARY_GOALS, primaryGoalLabel, secondaryOptionsFor, pruneSecondary,
@@ -182,14 +184,8 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
         : [...prev.secondaryGoals, aim],
     }));
   };
-  const moveGoal = (index: number, direction: -1 | 1) => {
-    setForm(prev => {
-      const target = index + direction;
-      if (target < 0 || target >= prev.primaryGoals.length) return prev;
-      const next = [...prev.primaryGoals];
-      [next[index], next[target]] = [next[target], next[index]];
-      return { ...prev, primaryGoals: next };
-    });
+  const reorderGoals = (from: number, to: number) => {
+    setForm(prev => ({ ...prev, primaryGoals: moveItem(prev.primaryGoals, from, to) }));
   };
   // Changing the day count invalidates whatever specific days were picked
   // under the old count, so clear them rather than leaving a stale
@@ -371,44 +367,12 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
               <FieldLabel required hint="most important first">Rank your goals</FieldLabel>
               <p className="text-[11.5px] text-slate-500 mb-3 leading-relaxed">
                 Your plan gives each training day to one goal. #1 gets the most days —
-                the rest fill in around it.
+                the rest fill in around it. Drag to reorder.
               </p>
-              <div className="space-y-2">
-                {form.primaryGoals.map((aim, i) => {
-                  const goal = primaryGoalLabel(aim);
-                  return (
-                    <div
-                      key={aim}
-                      className="flex items-center gap-3 bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5"
-                    >
-                      <span className="w-6 h-6 rounded-full bg-lime-500/10 border border-lime-500/30 text-lime-400 text-[11px] font-extrabold flex items-center justify-center flex-shrink-0">
-                        {i + 1}
-                      </span>
-                      <span className="flex-1 text-sm font-bold text-white">{goal}</span>
-                      <div className="flex gap-1 flex-shrink-0">
-                        <button
-                          type="button"
-                          disabled={i === 0}
-                          onClick={() => moveGoal(i, -1)}
-                          aria-label={`Move ${goal} up`}
-                          className="w-7 h-7 rounded-lg border border-slate-700 bg-slate-900 text-slate-400 disabled:opacity-30 disabled:cursor-default hover:text-white hover:border-slate-600 transition-colors flex items-center justify-center"
-                        >
-                          <ChevronUp className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          disabled={i === form.primaryGoals.length - 1}
-                          onClick={() => moveGoal(i, 1)}
-                          aria-label={`Move ${goal} down`}
-                          className="w-7 h-7 rounded-lg border border-slate-700 bg-slate-900 text-slate-400 disabled:opacity-30 disabled:cursor-default hover:text-white hover:border-slate-600 transition-colors flex items-center justify-center"
-                        >
-                          <ChevronDown className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <RankList
+                items={form.primaryGoals.map(aim => ({ id: aim, label: primaryGoalLabel(aim) }))}
+                onMove={reorderGoals}
+              />
             </div>
           )}
           {secondaryOptions.length > 0 && (
