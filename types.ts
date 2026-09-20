@@ -160,6 +160,10 @@ export interface Exercise {
   makeHarder?: string; // How to make it harder variation instructions
   makeEasier?: string; // How to make it easier variation instructions
   libraryExerciseId?: string; // Optional link back to the LibraryExercise this was added from
+  // Not stored on the plan. Filled in at read time from the live library so
+  // session routing can match zones by what the exercise needs (open floor, a
+  // kettlebell) rather than only by what it is called.
+  requiredEquipmentIds?: string[];
   setDetails?: SetDetail[]; // Optional per-set reps/weight/rest, authored in the session builder; sets/reps above stay in sync as a flat summary for consumers that don't read this
   isCardio?: boolean;   // true when this exercise is tracked by a single duration instead of sets/reps (e.g. treadmill, rowing)
   cardioMinutes?: number; // minutes to perform, used when isCardio is true

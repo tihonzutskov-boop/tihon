@@ -5,6 +5,7 @@ import { api } from '../services/api';
 import GymMap from './GymMap';
 import { planSessionRoute } from '../utils/sessionRoute';
 import { selectBookendExercise } from '../utils/planGeneration';
+import { getExerciseRequiredEquipmentIds } from '../utils/equipmentMatcher';
 import { getYouTubeEmbedUrl } from '../utils/youtubeEmbed';
 
 interface GuidedSessionProps {
@@ -149,7 +150,38 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   // equipmentId 'manual' and no machineId, since a template is meant to be
   // reusable across whichever gym the trainee ends up in, so a direct id
   // lookup always misses for them.
-  const route = useMemo(() => planSessionRoute(exercises, gym), [exercises, gym]);
+  //
+  // Fed the exercises as routing needs to see them: each carrying what it
+  // requires, read live from the library. The stored plan holds a name and a
+  // placeholder location and nothing about equipment, so without this an
+  // exercise that needs open floor could only be placed if its name happened to
+  // suggest a floor.
+
+  // What this day actually trains, so a resolved bookend matches it the same
+  // way a freshly generated one does — a leg day warmed up on something that
+  // drives the legs, an upper day on something that drives the upper body.
+  const musclesTrainedToday = useMemo(() => {
+    const muscles = new Set<string>();
+    for (const ex of exercises) {
+      if (ex.bookend) continue;
+      const le = ex.libraryExerciseId ? libraryExercises.find(l => l.id === ex.libraryExerciseId) : undefined;
+      (le?.primaryMuscles || []).forEach(m => muscles.add(m));
+    }
+    return muscles;
+  }, [exercises, libraryExercises]);
+
+  const routedExercises = useMemo(() => exercises.map(ex => {
+    const entry = ex.libraryExerciseId
+      ? libraryExercises.find(l => l.id === ex.libraryExerciseId)
+      : ex.bookend
+        ? selectBookendExercise(ex.bookend, libraryExercises, musclesTrainedToday as Set<any>)
+        : undefined;
+    return entry
+      ? { ...ex, requiredEquipmentIds: getExerciseRequiredEquipmentIds(entry, equipmentList) }
+      : ex;
+  }), [exercises, libraryExercises, equipmentList, musclesTrainedToday]);
+
+  const route = useMemo(() => planSessionRoute(routedExercises, gym), [routedExercises, gym]);
   const routeStop = route[exIdx];
   // Everywhere else in the gym this same exercise could be done. Kept so a
   // client who finds their machine occupied has somewhere to go.
@@ -171,19 +203,6 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   // work: nothing about it is logged, progressed, or compared against a previous
   // session, so it carrying a different machine than the day it was generated
   // changes nothing downstream.
-  // What this day actually trains, so a resolved bookend matches it the same
-  // way a freshly generated one does — a leg day warmed up on something that
-  // drives the legs, an upper day on something that drives the upper body.
-  const musclesTrainedToday = useMemo(() => {
-    const muscles = new Set<string>();
-    for (const ex of exercises) {
-      if (ex.bookend) continue;
-      const le = ex.libraryExerciseId ? libraryExercises.find(l => l.id === ex.libraryExerciseId) : undefined;
-      (le?.primaryMuscles || []).forEach(m => muscles.add(m));
-    }
-    return muscles;
-  }, [exercises, libraryExercises]);
-
   const bookendExercise = useMemo(
     () => (exercise?.bookend
       ? libraryExercise

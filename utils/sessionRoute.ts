@@ -91,6 +91,16 @@ export const routeOptionsFor = (exercise: Exercise, gym: Gym): RouteOption[] => 
     return duplicates.map(m => ({ zone: m.zone, machine: m.machine }));
   }
 
+  // Zones matched because they hold the equipment the exercise needs — open
+  // floor. Unlike the name-match case below, these genuinely are the same thing
+  // in different places: floor is floor. So all of them are offered, the nearest
+  // is chosen, and the rest are there for when it is taken.
+  const primaryIsEquipmentZone = !location.primaryZone
+    || location.equipmentZones.some(z => z.id === location.primaryZone!.id);
+  if (location.equipmentZones.length > 0 && primaryIsEquipmentZone) {
+    return location.equipmentZones.map(zone => ({ zone, machine: null }));
+  }
+
   // Matched a zone but no specific machine. Nothing here can establish whether
   // a second matched zone holds the same equipment or was simply a looser name
   // match, so the matcher's own answer stands and no alternatives are offered —

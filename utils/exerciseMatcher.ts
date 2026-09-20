@@ -1,5 +1,8 @@
 import { GymZone, LibraryExercise, Exercise, Gym, GymMachine, EquipmentType } from '../types';
 import { getEnglishExerciseName } from '../translations';
+import { getZoneEquipmentIds, getExerciseRequiredEquipmentIds } from './equipmentMatcher';
+
+const FLOOR_MAT_ID = 'eq-floor-mat';
 
 /**
  * Standardize text helper (lowercase, trimmed, collapsed whitespace, punctuation stripped).
@@ -230,6 +233,13 @@ export interface ExerciseLocationResult {
   primaryMachine: GymMachine | null;
   needsManualReview: boolean;
   isMapped: boolean;
+  /**
+   * Zones matched because they hold the equipment the exercise needs, not
+   * because of its name. Empty unless the exercise needs open floor. These are
+   * interchangeable — one open floor is as good as another — which is what lets
+   * routing pick the nearest and offer the rest as alternatives.
+   */
+  equipmentZones: GymZone[];
 }
 
 /**
@@ -238,7 +248,7 @@ export interface ExerciseLocationResult {
  * maps to all supporting equipment, and flags unmapped exercises for manual review.
  */
 export function getExerciseLocations(
-  exercise: LibraryExercise | Exercise | { name: string; equipmentRequired?: string; equipmentId?: string; machineId?: string } | null | undefined,
+  exercise: LibraryExercise | Exercise | { name: string; equipmentRequired?: string; equipmentId?: string; machineId?: string; requiredEquipmentIds?: string[] } | null | undefined,
   gym: Gym | undefined | null
 ): ExerciseLocationResult {
   if (!exercise || !exercise.name || !gym || !gym.zones || gym.zones.length === 0) {
@@ -248,7 +258,8 @@ export function getExerciseLocations(
       primaryZone: null,
       primaryMachine: null,
       needsManualReview: true,
-      isMapped: false
+      isMapped: false,
+      equipmentZones: []
     };
   }
 
@@ -300,6 +311,38 @@ export function getExerciseLocations(
       matchStrength.set(zone.id, zoneMatched ? 'machine' : 'keyword');
     }
   });
+
+  // Match by what the exercise needs, not what it is called. Everything above
+  // works from the name, so an exercise that needs open floor but is named
+  // "Warm up + Mobility" matched nothing and was reported as unmapped — no map
+  // pin, no "head to the...", flagged for review — even though the gym has
+  // floor zones marked as allowing exactly that.
+  //
+  // A zone qualifies when it holds everything the exercise requires, the same
+  // test evaluateZoneExercises uses in the other direction, so an exercise that
+  // needs a kettlebell and a mat only lands where both are. Deliberately only
+  // for exercises that need open floor: extending this to every equipment id
+  // would change where all of them resolve, which nobody asked for. And an
+  // empty requirement is not read as "open floor" here — that would quietly
+  // route an exercise nobody filled the equipment in for, hiding the gap the
+  // needs-review flag exists to surface.
+  const equipmentZones: GymZone[] = [];
+  const equipmentOnlyZoneIds = new Set<string>();
+  const hasRequirementInfo = 'requiredEquipmentIds' in exercise || 'equipmentRequired' in exercise;
+  if (hasRequirementInfo) {
+    const required = getExerciseRequiredEquipmentIds(exercise as LibraryExercise);
+    if (required.includes(FLOOR_MAT_ID)) {
+      gym.zones.forEach(zone => {
+        const have = new Set(getZoneEquipmentIds(zone));
+        if (!required.every(id => have.has(id))) return;
+        equipmentZones.push(zone);
+        if (!matchedZonesMap.has(zone.id)) {
+          matchedZonesMap.set(zone.id, zone);
+          equipmentOnlyZoneIds.add(zone.id);
+        }
+      });
+    }
+  }
 
   // Verify explicit equipmentId / machineId if specified
   if (exercise.equipmentId && exercise.equipmentId !== 'manual') {
@@ -363,7 +406,10 @@ export function getExerciseLocations(
     if (found) primaryMachine = found.machine;
   } else if (bestNamedMachine && bestNamedMachine.zone.id === primaryZone?.id) {
     primaryMachine = bestNamedMachine.machine;
-  } else if (primaryZone && primaryZone.machines && primaryZone.machines.length > 0) {
+  } else if (primaryZone && primaryZone.machines && primaryZone.machines.length > 0 && !equipmentOnlyZoneIds.has(primaryZone.id)) {
+    // Not for a zone matched only because it has open floor: nothing in it
+    // answers to this exercise, so falling back to machines[0] would pin
+    // someone's warm-up to whichever rack happens to be listed first.
     const foundInZone = matchedMachinesList.find(m => m.zone.id === primaryZone!.id);
     primaryMachine = foundInZone ? foundInZone.machine : primaryZone.machines[0];
   }
@@ -377,7 +423,8 @@ export function getExerciseLocations(
     primaryZone,
     primaryMachine,
     needsManualReview,
-    isMapped
+    isMapped,
+    equipmentZones
   };
 }
 
