@@ -121,8 +121,8 @@ CREATE TABLE IF NOT EXISTS workout_logs (
 
 ALTER TABLE workout_logs ADD COLUMN IF NOT EXISTS plan_day_id VARCHAR(100);
 
--- One persisted training plan per user (id, name, and a weekday-scheduled
--- WorkoutDay[] blob mirroring the shape already used for zones.machines).
+-- One persisted training plan per user (id, name, and a WorkoutDay[] blob
+-- mirroring the shape already used for zones.machines).
 CREATE TABLE IF NOT EXISTS user_plans (
   id SERIAL PRIMARY KEY,
   user_id INTEGER UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -142,7 +142,7 @@ CREATE TABLE IF NOT EXISTS training_questionnaires (
 
 -- Reusable plan templates, categorized by goal + days/week. On questionnaire
 -- submission the server matches one of these and copies it into user_plans
--- with weekdays assigned — no per-user hand-building.
+-- — no per-user hand-building.
 CREATE TABLE IF NOT EXISTS plan_templates (
   id VARCHAR(100) PRIMARY KEY,
   name VARCHAR(255) NOT NULL,

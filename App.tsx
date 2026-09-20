@@ -608,18 +608,6 @@ const App: React.FC = () => {
             isLoggedIn={!!user}
             onCompleteWorkout={(dayName, exerciseCount, planDayId) => recordCompletedWorkout(dayName, exerciseCount, planDayId)}
             onSavePlan={() => persistPlan(workoutPlan)}
-            onSetDayWeekday={(dayId, weekday) => {
-              // The next plan is computed here rather than inside the updater:
-              // a state updater has to be pure, and this one was firing the
-              // save from inside it — so StrictMode ran it twice and sent two
-              // PUTs for one weekday change.
-              const updated = {
-                ...workoutPlan,
-                days: workoutPlan.days.map(d => (d.id === dayId ? { ...d, weekday } : d)),
-              };
-              setWorkoutPlan(updated);
-              persistPlan(updated);
-            }}
             lang={lang}
           />
         </div>

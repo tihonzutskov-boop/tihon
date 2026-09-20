@@ -1,15 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { WorkoutPlan, Language, Exercise, WorkoutDay, Weekday, LibraryExercise } from '../types';
+import { WorkoutPlan, Language, Exercise, WorkoutDay, LibraryExercise } from '../types';
 import { translations, translateMuscle, translateExerciseName, translateDayName } from '../translations';
 import { Trash2, Dumbbell, X, Calendar, Plus, Edit2, Check, ChevronRight, MapPin, Play, Download, Info, PartyPopper, AlertTriangle } from 'lucide-react';
 import { getEquipmentIcon } from '../utils/equipmentIcons';
 import { exportWorkoutToPdf } from '../utils/pdfExporter';
 import ExerciseDetailModal from './ExerciseDetailModal';
-
-const WEEKDAYS: { key: Weekday; label: string }[] = [
-  { key: 'mon', label: 'M' }, { key: 'tue', label: 'T' }, { key: 'wed', label: 'W' },
-  { key: 'thu', label: 'T' }, { key: 'fri', label: 'F' }, { key: 'sat', label: 'S' }, { key: 'sun', label: 'S' }
-];
 
 interface ProgramListProps {
   workout: WorkoutPlan;
@@ -28,7 +23,6 @@ interface ProgramListProps {
   // confirms what actually happened. A caller that returns nothing is treated
   // as before.
   onSavePlan?: () => Promise<{ ok: boolean; error?: string }> | void;
-  onSetDayWeekday?: (dayId: string, weekday: Weekday | undefined) => void;
   onAddDay?: () => void;
   onRemoveDay?: (dayId: string) => void;
   libraryExercises?: LibraryExercise[];
@@ -50,7 +44,6 @@ const ProgramList: React.FC<ProgramListProps> = ({
   isLoggedIn = false,
   onCompleteWorkout,
   onSavePlan,
-  onSetDayWeekday,
   onAddDay,
   onRemoveDay,
   libraryExercises,
@@ -227,26 +220,6 @@ const ProgramList: React.FC<ProgramListProps> = ({
           </div>
         )}
 
-        {currentDay && onSetDayWeekday && (
-          <div className="flex items-center gap-1.5 mt-1">
-            <span className="text-[9px] uppercase tracking-widest text-slate-600 font-bold mr-1">{lang === 'et' ? 'Nädalapäev' : lang === 'ru' ? 'День' : 'Day'}</span>
-            {WEEKDAYS.map(w => (
-              <button
-                key={w.key}
-                onClick={() => onSetDayWeekday(currentDay.id, currentDay.weekday === w.key ? undefined : w.key)}
-                title={w.key}
-                className={`
-                  w-6 h-6 rounded-md text-[10px] font-bold transition-all border flex items-center justify-center
-                  ${currentDay.weekday === w.key
-                    ? 'bg-lime-500 border-lime-500 text-slate-950'
-                    : 'bg-slate-800/60 border-slate-700 text-slate-500 hover:border-slate-500'}
-                `}
-              >
-                {w.label}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">

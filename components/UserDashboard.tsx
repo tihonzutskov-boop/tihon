@@ -1,12 +1,13 @@
 
 import React, { useEffect, useState } from 'react';
-import { User, Gym, Language, WorkoutPlan, Weekday, QuestionnaireAnswers } from '../types';
+import { User, Gym, Language, WorkoutPlan, WorkoutDay, QuestionnaireAnswers } from '../types';
 import { translations, getGymTranslation, translateDayName } from '../translations';
-import { Trophy, Flame, Clock, LogOut, ArrowRight, MapPin, Check, Play, Minus, History, PlayCircle } from 'lucide-react';
+import { Trophy, Flame, Clock, LogOut, ArrowRight, MapPin, Check, Play, History, PlayCircle } from 'lucide-react';
 import GymMap from './GymMap';
 import TrainingQuestionnaire from './TrainingQuestionnaire';
 import WorkoutHistory from './WorkoutHistory';
 import { api } from '../services/api';
+import { hasGeneratedPlan, startOfWeek, weeklySessions } from '../utils/planSchedule';
 
 interface UserDashboardProps {
   user: User;
@@ -36,27 +37,15 @@ interface WorkoutLogEntry {
   planDayId?: string | null;
 }
 
-const WEEKDAY_KEYS: Weekday[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-const WEEKDAY_SHORT: Record<Weekday, string> = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
-
-const jsDayToKey = (d: number): Weekday => WEEKDAY_KEYS[(d + 6) % 7];
-
-const startOfThisWeek = (): Date => {
-  const now = new Date();
-  const todayIdx = WEEKDAY_KEYS.indexOf(jsDayToKey(now.getDay()));
-  const monday = new Date(now);
-  monday.setHours(0, 0, 0, 0);
-  monday.setDate(monday.getDate() - todayIdx);
-  return monday;
-};
-
 const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, workoutPlan, onLogout, onEnterGym, canOpenGymMap, onStartWorkout, questionnaire, onSubmitQuestionnaire, onOpenTutorials, planNeedsReview, lang }) => {
   const t = translations[lang];
 
   const [stats, setStats] = useState(user.stats || { workoutsCompleted: 0, totalMinutes: 0, streakDays: 0 });
   const [logs, setLogs] = useState<WorkoutLogEntry[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
-  const [selectedWeekday, setSelectedWeekday] = useState<Weekday>(() => jsDayToKey(new Date().getDay()));
+  // Which session's detail is open. Until the client picks one it follows the
+  // plan: the next session they have not done this week.
+  const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
   // Which physical gym the trainee is training at today — a plan's exercises
   // are located against one specific gym's floor plan (zone ids aren't
   // shared across locations), so starting a session at the wrong gym is
@@ -72,21 +61,18 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, 
     });
   }, []);
 
-  const todayKey = jsDayToKey(new Date().getDay());
-  const weekStart = startOfThisWeek();
-  const doneThisWeekIds = new Set(
-    logs.filter(l => l.planDayId && new Date(l.completedAt) >= weekStart).map(l => l.planDayId)
+  const weekStart = startOfWeek(new Date());
+  const doneThisWeekIds = new Set<string>(
+    logs.filter(l => l.planDayId && new Date(l.completedAt) >= weekStart).map(l => l.planDayId as string)
   );
 
-  const scheduleByWeekday = WEEKDAY_KEYS.map(key => {
-    const day = workoutPlan.days.find(d => d.weekday === key);
-    const dayIndex = day ? workoutPlan.days.findIndex(d => d.id === day.id) : -1;
-    const status = !day ? 'rest' : doneThisWeekIds.has(day.id) ? 'done' : key === todayKey ? 'today' : 'upcoming';
-    return { key, day, dayIndex, status };
-  });
-
-  const selectedEntry = scheduleByWeekday.find(s => s.key === selectedWeekday) || scheduleByWeekday.find(s => s.key === todayKey)!;
-  const todayEntry = scheduleByWeekday.find(s => s.key === todayKey);
+  const hasPlan = hasGeneratedPlan(workoutPlan.days);
+  const sessions = weeklySessions<WorkoutDay>(workoutPlan.days, doneThisWeekIds);
+  const nextSession = sessions.find(x => x.status === 'next');
+  const doneCount = sessions.filter(x => x.status === 'done').length;
+  const selected = sessions.find(x => x.day.id === selectedDayId)
+    || sessions.find(x => x.status === 'next')
+    || sessions[0];
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 animate-in fade-in duration-500">
@@ -153,19 +139,19 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, 
             <div>
               <h1 className="text-2xl sm:text-3xl font-black text-white mb-1.5 tracking-tight">{t.welcomeBack}, {user.name.split(' ')[0]} 👋</h1>
               <p className="text-sm text-slate-400">
-                {todayEntry?.day
-                  ? todayEntry.status === 'done'
-                    ? `Nice work — you've completed today's session (${translateDayName(todayEntry.day.name, todayEntry.dayIndex, lang)}).`
-                    : `You have a coaching session scheduled for today — ${translateDayName(todayEntry.day.name, todayEntry.dayIndex, lang)}.`
-                  : t.readyToCrush}
+                {!hasPlan
+                  ? t.readyToCrush
+                  : nextSession
+                    ? `Your next session is ${translateDayName(nextSession.day.name, nextSession.dayIndex, lang)}${doneCount > 0 ? ` — ${doneCount} of ${sessions.length} done this week.` : '.'}`
+                    : `Nice work — you've completed all ${sessions.length} ${sessions.length === 1 ? 'session' : 'sessions'} this week.`}
               </p>
             </div>
-            {todayEntry?.day && todayEntry.status === 'today' && (
+            {hasPlan && nextSession && (
               <button
-                onClick={() => onStartWorkout(todayEntry.dayIndex, sessionGymId)}
+                onClick={() => onStartWorkout(nextSession.dayIndex, sessionGymId)}
                 className="flex-shrink-0 bg-lime-500 hover:bg-lime-400 text-slate-950 font-bold text-xs sm:text-sm px-5 py-3 rounded-xl transition-colors whitespace-nowrap"
               >
-                Start today's session
+                Start next session
               </button>
             )}
           </div>
@@ -262,59 +248,66 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, 
 
         {loadingLogs ? (
           <div className="p-8 text-center text-sm text-slate-500 bg-slate-900 border border-slate-800 rounded-2xl mb-16">Loading…</div>
-        ) : workoutPlan.days.every(d => !d.weekday) ? (
+        ) : !hasPlan ? (
           <TrainingQuestionnaire existing={questionnaire} userName={user.name.split(' ')[0]} gyms={gyms} onSubmit={onSubmitQuestionnaire} />
         ) : (
           <>
-            <div className="grid grid-cols-7 gap-2 mb-4">
-              {scheduleByWeekday.map(({ key, day, dayIndex, status }) => {
-                const isSelected = key === selectedWeekday && status !== 'rest';
+            <div className="flex items-baseline justify-between mb-2.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">This week</span>
+              <span className="text-xs font-semibold text-slate-400">
+                {doneCount} of {sessions.length} {sessions.length === 1 ? 'session' : 'sessions'} done
+              </span>
+            </div>
+            <div
+              className="grid gap-2 mb-4"
+              style={{ gridTemplateColumns: `repeat(${Math.min(sessions.length, 4)}, minmax(0, 1fr))` }}
+            >
+              {sessions.map(({ day, dayIndex, status }) => {
+                const isSelected = day.id === selected.day.id;
                 return (
                   <button
-                    key={key}
-                    disabled={status === 'rest'}
-                    onClick={() => setSelectedWeekday(key)}
+                    key={day.id}
+                    onClick={() => setSelectedDayId(day.id)}
+                    aria-pressed={isSelected}
                     className={`
-                      flex flex-col items-center gap-1.5 rounded-xl border p-3 text-center transition-all
-                      ${status === 'rest' ? 'bg-slate-900/60 border-slate-800/60 opacity-50 cursor-default' : 'bg-slate-900 border-slate-800 cursor-pointer hover:border-slate-600'}
-                      ${status === 'today' ? 'border-lime-500' : ''}
+                      flex flex-col items-center gap-1.5 rounded-xl border p-3 text-center transition-all bg-slate-900 cursor-pointer hover:border-slate-600
+                      ${status === 'next' ? 'border-lime-500' : 'border-slate-800'}
                       ${isSelected ? 'ring-1 ring-slate-500' : ''}
                     `}
                   >
-                    <span className={`text-[10px] uppercase tracking-wider font-bold ${status === 'today' ? 'text-lime-400' : 'text-slate-500'}`}>{WEEKDAY_SHORT[key]}</span>
+                    <span className={`text-[10px] uppercase tracking-wider font-bold ${status === 'next' ? 'text-lime-400' : 'text-slate-500'}`}>Session {dayIndex + 1}</span>
                     <span className={`
                       w-7 h-7 rounded-lg flex items-center justify-center text-xs
                       ${status === 'done' ? 'bg-lime-500/15 border border-lime-500/40 text-lime-400' : ''}
-                      ${status === 'today' ? 'bg-lime-500 text-slate-950' : ''}
-                      ${status === 'upcoming' ? 'bg-slate-800 border border-slate-700 text-slate-500' : ''}
-                      ${status === 'rest' ? 'bg-slate-800 border border-slate-800 text-slate-600' : ''}
+                      ${status === 'next' ? 'bg-lime-500 text-slate-950' : ''}
+                      ${status === 'todo' ? 'bg-slate-800 border border-slate-700 text-slate-500' : ''}
                     `}>
-                      {status === 'done' ? <Check className="w-3.5 h-3.5" /> : status === 'today' ? <Play className="w-3 h-3" /> : status === 'rest' ? <Minus className="w-3.5 h-3.5" /> : null}
+                      {status === 'done' ? <Check className="w-3.5 h-3.5" /> : status === 'next' ? <Play className="w-3 h-3" /> : null}
                     </span>
                     <span className="text-[10px] font-semibold text-slate-400 leading-tight min-h-[26px] flex items-center">
-                      {day ? translateDayName(day.name, dayIndex, lang) : t.restDay || 'Rest'}
+                      {translateDayName(day.name, dayIndex, lang)}
                     </span>
                   </button>
                 );
               })}
             </div>
 
-            {selectedEntry.day && (
+            {selected && (
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 mb-16">
                 <div className="flex items-center justify-between mb-1">
-                  <h3 className="text-sm font-bold text-white">{WEEKDAY_SHORT[selectedEntry.key]} &middot; {translateDayName(selectedEntry.day.name, selectedEntry.dayIndex, lang)}</h3>
+                  <h3 className="text-sm font-bold text-white">Session {selected.dayIndex + 1} &middot; {translateDayName(selected.day.name, selected.dayIndex, lang)}</h3>
                   <span className={`
                     text-[11px] font-mono font-bold px-2.5 py-1 rounded-full
-                    ${selectedEntry.status === 'done' ? 'text-lime-400 bg-lime-500/10 border border-lime-500/25' : ''}
-                    ${selectedEntry.status === 'today' ? 'text-slate-950 bg-lime-500' : ''}
-                    ${selectedEntry.status === 'upcoming' ? 'text-slate-400 bg-slate-800 border border-slate-700' : ''}
+                    ${selected.status === 'done' ? 'text-lime-400 bg-lime-500/10 border border-lime-500/25' : ''}
+                    ${selected.status === 'next' ? 'text-slate-950 bg-lime-500' : ''}
+                    ${selected.status === 'todo' ? 'text-slate-400 bg-slate-800 border border-slate-700' : ''}
                   `}>
-                    {selectedEntry.status === 'done' ? t.completed : selectedEntry.status === 'today' ? 'Today' : 'Upcoming'}
+                    {selected.status === 'done' ? t.completed : selected.status === 'next' ? 'Up next' : 'To do'}
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 mb-4">{selectedEntry.day.exercises.length} {t.items}</p>
+                <p className="text-xs text-slate-500 mb-4">{selected.day.exercises.length} {t.items}</p>
                 <div className="space-y-0">
-                  {selectedEntry.day.exercises.map((ex, i) => (
+                  {selected.day.exercises.map((ex, i) => (
                     <div key={ex.id} className={`flex items-center justify-between py-2.5 ${i > 0 ? 'border-t border-slate-800/80' : ''}`}>
                       <div>
                         <div className="text-sm font-semibold text-slate-200">{ex.name}</div>
@@ -324,14 +317,12 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, 
                     </div>
                   ))}
                 </div>
-                {selectedEntry.status !== 'rest' && (
-                  <button
-                    onClick={() => onStartWorkout(selectedEntry.dayIndex, sessionGymId)}
-                    className="w-full mt-4 py-2.5 bg-lime-500 hover:bg-lime-400 text-slate-950 font-bold rounded-xl text-xs uppercase tracking-wider transition-colors"
-                  >
-                    {selectedEntry.status === 'done' ? 'Redo this session' : 'Start coaching session'}
-                  </button>
-                )}
+                <button
+                  onClick={() => onStartWorkout(selected.dayIndex, sessionGymId)}
+                  className="w-full mt-4 py-2.5 bg-lime-500 hover:bg-lime-400 text-slate-950 font-bold rounded-xl text-xs uppercase tracking-wider transition-colors"
+                >
+                  {selected.status === 'done' ? 'Redo this session' : 'Start coaching session'}
+                </button>
               </div>
             )}
           </>

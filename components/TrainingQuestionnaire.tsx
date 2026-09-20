@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ClipboardList, Check } from 'lucide-react';
 import RankList from './RankList';
 import { moveItem } from '../utils/reorder';
-import { QuestionnaireAnswers, Weekday, ALL_JOINT_STRESS_AREAS } from '../types';
+import { QuestionnaireAnswers, ALL_JOINT_STRESS_AREAS } from '../types';
 import {
   PRIMARY_GOALS, primaryGoalLabel, secondaryOptionsFor, pruneSecondary,
   goalsFromAnswers, describeGoals,
@@ -30,15 +30,6 @@ const STEP_LABELS: Record<StepKey, string> = {
 const LEVELS = ['Beginner', 'Intermediate', 'Advanced'];
 const LEVELS_ENABLED = ['Beginner'];
 const DAYS = ['1', '2', '3', '4'];
-const WEEKDAY_OPTIONS: { value: Weekday; label: string }[] = [
-  { value: 'mon', label: 'Mon' },
-  { value: 'tue', label: 'Tue' },
-  { value: 'wed', label: 'Wed' },
-  { value: 'thu', label: 'Thu' },
-  { value: 'fri', label: 'Fri' },
-  { value: 'sat', label: 'Sat' },
-  { value: 'sun', label: 'Sun' },
-];
 const LENGTHS = ['30 min', '45 min', '60 min', '90 min'];
 const SEXES = ['Male', 'Female', 'Prefer not to say'];
 const EQUIPMENT_OPTIONS = ['Machines only', 'Comfortable with free weights', 'Anything'];
@@ -50,7 +41,7 @@ const COMMON_INJURIES = ALL_JOINT_STRESS_AREAS;
 interface FormState {
   age: string; heightCm: string; weightKg: string; sex: string;
   primaryGoals: string[]; secondaryGoals: string[]; level: string;
-  daysPerWeek: string; preferredDays: Weekday[]; minutesPerSession: string;
+  daysPerWeek: string; minutesPerSession: string;
   gymId: string;
   equipment: string; avoidExercises: string;
   injuryAreas: string[]; injuryNotes: string;
@@ -60,7 +51,7 @@ interface FormState {
 const blankForm = (): FormState => ({
   age: '', heightCm: '', weightKg: '', sex: '',
   primaryGoals: [], secondaryGoals: [], level: '',
-  daysPerWeek: '', preferredDays: [], minutesPerSession: '',
+  daysPerWeek: '', minutesPerSession: '',
   gymId: '',
   equipment: '', avoidExercises: '',
   injuryAreas: [], injuryNotes: '',
@@ -78,7 +69,6 @@ const toFormState = (existing: QuestionnaireAnswers | null): FormState => {
     secondaryGoals: goalsFromAnswers(existing).secondary,
     level: existing.level || '',
     daysPerWeek: existing.daysPerWeek || '',
-    preferredDays: existing.preferredDays || [],
     minutesPerSession: existing.minutesPerSession || '',
     gymId: existing.gymId || '',
     equipment: existing.equipment || '',
@@ -187,23 +177,6 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
   const reorderGoals = (from: number, to: number) => {
     setForm(prev => ({ ...prev, primaryGoals: moveItem(prev.primaryGoals, from, to) }));
   };
-  // Changing the day count invalidates whatever specific days were picked
-  // under the old count, so clear them rather than leaving a stale
-  // selection that no longer matches daysPerWeek.
-  const setDaysPerWeek = (opt: string) => setForm(prev => ({ ...prev, daysPerWeek: opt, preferredDays: [] }));
-  const togglePreferredDay = (day: Weekday) => {
-    setForm(prev => {
-      if (prev.preferredDays.includes(day)) {
-        return { ...prev, preferredDays: prev.preferredDays.filter(d => d !== day) };
-      }
-      if (prev.preferredDays.length >= Number(prev.daysPerWeek || 0)) return prev;
-      // Keep calendar order regardless of click order, so Day 1/Day 2/...
-      // map onto the week predictably once a plan is assigned.
-      const next = WEEKDAY_OPTIONS.map(o => o.value).filter(d => d === day || prev.preferredDays.includes(d));
-      return { ...prev, preferredDays: next };
-    });
-  };
-
   const startFresh = () => { setForm(blankForm()); setStep(0); setMaxReached(0); setMode('form'); };
   const editExisting = () => { setForm(toFormState(existing)); setStep(0); setMaxReached(STEP_KEYS.length - 1); setMode('form'); };
   const cancel = () => { setStep(0); setMaxReached(0); setMode('prompt'); };
@@ -213,7 +186,7 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
   const isStepValid = (key: StepKey): boolean => {
     if (key === 'about') return !!(form.age && form.heightCm && form.weightKg && form.sex);
     if (key === 'goal') return form.primaryGoals.length > 0 && !!form.level;
-    if (key === 'schedule') return !!(form.daysPerWeek && form.minutesPerSession) && form.preferredDays.length === Number(form.daysPerWeek);
+    if (key === 'schedule') return !!(form.daysPerWeek && form.minutesPerSession);
     if (key === 'preferences') return !!form.equipment && (gyms.length === 0 || !!form.gymId);
     if (key === 'health') return !hasHealthInfo || !!(form.medicalClearance && form.consent);
     return true;
@@ -232,7 +205,6 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
         secondaryGoals: form.secondaryGoals.length > 0 ? form.secondaryGoals : undefined,
         level: form.level,
         daysPerWeek: form.daysPerWeek,
-        preferredDays: form.preferredDays,
         minutesPerSession: form.minutesPerSession,
         gymId: form.gymId || undefined,
         equipment: form.equipment,
@@ -412,31 +384,14 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
       {key === 'schedule' && (
         <div className="space-y-5">
           <div>
-            <FieldLabel required>Days available per week</FieldLabel>
+            <FieldLabel required>How many days a week do you want to train?</FieldLabel>
+            <p className="text-[11.5px] text-slate-500 mb-3 leading-relaxed">
+              Train on whichever days suit you — your plan is a set of sessions to fit into the week.
+            </p>
             <div className="flex flex-wrap gap-2">
-              {DAYS.map(opt => <Pill key={opt} label={opt} selected={form.daysPerWeek === opt} onClick={() => setDaysPerWeek(opt)} />)}
+              {DAYS.map(opt => <Pill key={opt} label={opt} selected={form.daysPerWeek === opt} onClick={() => set('daysPerWeek', opt)} />)}
             </div>
           </div>
-          {form.daysPerWeek && (
-            <div>
-              <FieldLabel required hint={`${form.preferredDays.length} of ${form.daysPerWeek} selected`}>Which days work best?</FieldLabel>
-              <div className="flex flex-wrap gap-2">
-                {WEEKDAY_OPTIONS.map(opt => {
-                  const selected = form.preferredDays.includes(opt.value);
-                  const atCap = form.preferredDays.length >= Number(form.daysPerWeek);
-                  return (
-                    <Pill
-                      key={opt.value}
-                      label={opt.label}
-                      selected={selected}
-                      disabled={!selected && atCap}
-                      onClick={() => togglePreferredDay(opt.value)}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          )}
           <div>
             <FieldLabel required>Minutes per session</FieldLabel>
             <div className="flex flex-wrap gap-2">

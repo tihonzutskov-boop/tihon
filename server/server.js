@@ -935,43 +935,10 @@ app.get('/api/questionnaire/me', requireAuth, async (req, res) => {
   }
 });
 
-// Keyed by day COUNT, not the user's requested daysPerWeek — the matched
-// template can have a different day count than what the user asked for
-// (the fallback match below accepts any template for the goal when no
-// exact days-per-week variant exists), and spreading by the user's answer
-// instead of the template's actual day count silently drops days past
-// spread.length or leaves extra requested days empty.
-const WEEKDAY_SPREADS = {
-  1: ['wed'],
-  2: ['tue', 'thu'],
-  3: ['mon', 'wed', 'fri'],
-  4: ['mon', 'tue', 'thu', 'fri'],
-  5: ['mon', 'tue', 'wed', 'thu', 'fri'],
-  6: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'],
-  7: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'],
-};
-const WEEKDAY_ORDER = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-
-// Spreads a template's days across the week, preferring the days the user
-// actually picked (kept in calendar order regardless of click order) when
-// they cover the day count, otherwise falling back to the generic spread
-// for that count. When existingDays is passed — resyncing an already-
-// assigned plan after the coach edited the template — each day's own id
-// and weekday are carried over wherever the template still has a day at
-// that index, so a trainee's calendar placement (and anything keyed off
-// that day id) isn't disturbed just because the exercises changed; only
-// genuinely new days (the template grew) get freshly generated ones.
-const assignWeekdaysToTemplateDays = (templateDays, preferredDays, existingDays) => {
-  const dayCount = Math.min(Math.max(templateDays.length, 1), 7);
-  const userDays = Array.isArray(preferredDays)
-    ? WEEKDAY_ORDER.filter(d => preferredDays.includes(d))
-    : [];
-  const spread = userDays.length >= dayCount ? userDays.slice(0, dayCount) : (WEEKDAY_SPREADS[dayCount] || []);
-  return templateDays.map((d, i) => {
-    const existing = existingDays?.[i];
-    return { ...d, id: existing?.id || `day-${Date.now()}-${i}`, weekday: existing?.weekday || spread[i] };
-  });
-};
+// A plan is a set of sessions the client fits into the week however they like,
+// so days carry no weekday — only the id that logged sessions are keyed to.
+const withDayIds = (days) =>
+  days.map((d, i) => ({ ...d, id: `day-${Date.now()}-${i}` }));
 
 // The questionnaire stores display strings ('60 min', 'Beginner'); the engine
 // wants structured values. Normalizing in one place keeps raw questionnaire
@@ -1168,7 +1135,7 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
                 req.user.id, match?.id || null, gymId, failure.reason, failure.detail
               );
             }
-            planDays = assignWeekdaysToTemplateDays(result.days, answers.preferredDays, null);
+            planDays = withDayIds(result.days);
             generationMeta = {
               generatedAt: new Date().toISOString(),
               source: 'rules_engine',

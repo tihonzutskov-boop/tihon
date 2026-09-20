@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { PlanTemplate, CoachingClient, GenerationFailureRecord } from '../types';
 import { QUESTIONNAIRE_GOALS } from '../constants';
 import { primaryGoalLabel, secondaryGoalLabel } from '../utils/goals';
+import { hasGeneratedPlan } from '../utils/planSchedule';
 import { api } from '../services/api';
 import { ClipboardList, Loader2, ChevronRight, Plus, AlertTriangle, History } from 'lucide-react';
 import WorkoutHistory from './WorkoutHistory';
@@ -31,7 +32,7 @@ const DAYS_OPTIONS = ['1', '2', '3', '4'];
 
 type View = 'catalog' | 'clients' | 'issues';
 
-const hasScheduledPlan = (client: CoachingClient) => !!client.plan && client.plan.days.some(d => d.weekday);
+const hasAssignedPlan = (client: CoachingClient) => hasGeneratedPlan(client.plan?.days);
 
 // A template is category metadata only — goal, days/week, duration, name.
 // Every plan's actual exercises come from the rules engine (goal + days/week
@@ -361,7 +362,7 @@ const AdminCoaching: React.FC = () => {
                   </h4>
                   <div className="space-y-1.5">
                     {group.clients.map(client => {
-                      const scheduled = hasScheduledPlan(client);
+                      const scheduled = hasAssignedPlan(client);
                       return (
                         <button
                           key={client.userId}
@@ -484,7 +485,7 @@ const AdminCoaching: React.FC = () => {
               </div>
               <p className="text-xs text-slate-500 mb-1">{selectedClient.email}</p>
               <p className="text-xs text-slate-500 mb-3">
-                {hasScheduledPlan(selectedClient) ? (
+                {hasAssignedPlan(selectedClient) ? (
                   <>Assigned plan: <span className="text-lime-400 font-semibold">{selectedClient.plan?.name}</span></>
                 ) : selectedClient.answers ? (
                   'No plan assigned yet — this appears in Issues if generation failed, otherwise it is still in progress.'

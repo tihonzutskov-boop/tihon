@@ -379,7 +379,7 @@ export interface WorkoutDay {
   // Ramp-up sets before the first working set of each compound. Scales with the
   // session length: extra time buys preparation, not extra working volume.
   warmupSetsPerCompound?: number;
-  weekday?: Weekday;
+  weekday?: Weekday;  // legacy: plans used to be scheduled onto weekdays; nothing reads or sets it now
   blocks?: SessionBlock[]; // optional grouping/authoring metadata built by the session builder; exercises[] stays the flat source of truth so existing consumers (GuidedSession, self-service builder) work unchanged when this is absent
 }
 
@@ -414,7 +414,7 @@ export interface QuestionnaireAnswers {
   secondaryGoals?: string[]; // supporting aims — ride along inside the main goals' days, never own one
   level: string;              // only 'Beginner' selectable for now
   daysPerWeek: string;        // '1'..'4'
-  preferredDays: Weekday[];   // which weekdays, in calendar order — length matches daysPerWeek
+  preferredDays?: Weekday[];  // legacy: answers from before the questionnaire stopped asking which days
   minutesPerSession: string;  // '30 min'..'90 min'
   gymId?: string;             // which gym they train at — determines the equipment pool available to plan generation
   equipment: string;
