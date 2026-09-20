@@ -30,6 +30,14 @@ const STANDARD_STAGES: { key: StageKey; label: string }[] = [
 const VIDEO_STAGES: { key: StageKey; label: string }[] = [
   { key: 'video', label: 'Follow Along' },
 ];
+// An exercise done on open floor with nothing else to find has no machine to
+// identify — the Identify screen could only say "equipment not linked yet" about
+// something that was never meant to be linked. Locate still tells the client
+// where the floor is.
+const FLOOR_STAGES: { key: StageKey; label: string }[] = [
+  { key: 'locate', label: 'Locate' },
+  { key: 'tutorial', label: 'Tutorial' },
+];
 // A warm-up or cooldown is a description, not a machine. It used to walk the
 // client through Locate and Identify first — a map screen and an equipment
 // photo — which put the only thing that matters, the steps, on screen three,
@@ -63,6 +71,51 @@ const formatRest = (seconds: number | undefined | null): string => {
 
 const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, libraryExercises, onClose, onFinish }) => {
   const exercises = day.exercises;
+
+  // Planned for the whole day at once rather than per exercise, so each
+  // exercise is sent to the copy of its equipment nearest to wherever the last
+  // one left the client — starting from the door. Resolving each exercise
+  // independently picked an arbitrary copy and could send someone back and
+  // forth across the building between sets.
+  //
+  // Routing resolves locations by name/equipment matching, which is what makes
+  // plan-template exercises work at all: those are authored with
+  // equipmentId 'manual' and no machineId, since a template is meant to be
+  // reusable across whichever gym the trainee ends up in, so a direct id
+  // lookup always misses for them.
+  //
+  // Fed the exercises as routing needs to see them: each carrying what it
+  // requires, read live from the library. The stored plan holds a name and a
+  // placeholder location and nothing about equipment, so without this an
+  // exercise that needs open floor could only be placed if its name happened to
+  // suggest a floor.
+
+  // What this day actually trains, so a resolved bookend matches it the same
+  // way a freshly generated one does — a leg day warmed up on something that
+  // drives the legs, an upper day on something that drives the upper body.
+  const musclesTrainedToday = useMemo(() => {
+    const muscles = new Set<string>();
+    for (const ex of exercises) {
+      if (ex.bookend) continue;
+      const le = ex.libraryExerciseId ? libraryExercises.find(l => l.id === ex.libraryExerciseId) : undefined;
+      (le?.primaryMuscles || []).forEach(m => muscles.add(m));
+    }
+    return muscles;
+  }, [exercises, libraryExercises]);
+
+  const routedExercises = useMemo(() => exercises.map(ex => {
+    const entry = ex.libraryExerciseId
+      ? libraryExercises.find(l => l.id === ex.libraryExerciseId)
+      : ex.bookend
+        ? selectBookendExercise(ex.bookend, libraryExercises, musclesTrainedToday as Set<any>)
+        : undefined;
+    return entry
+      ? { ...ex, requiredEquipmentIds: getExerciseRequiredEquipmentIds(entry, equipmentList) }
+      : ex;
+  }), [exercises, libraryExercises, equipmentList, musclesTrainedToday]);
+
+  const route = useMemo(() => planSessionRoute(routedExercises, gym), [routedExercises, gym]);
+
   const blockTypeByExerciseId = useMemo(() => {
     const map: Record<string, string> = {};
     (day.blocks || []).forEach(b => {
@@ -77,15 +130,23 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   // rather than always exercises.length * 3.
   const stagesByExIdx = useMemo(
     () =>
-      exercises.map(ex => {
+      exercises.map((ex, i) => {
         // The bookend check comes first: a warm-up backed by a real library
         // exercise is still a warm-up, and should not inherit that exercise's
         // equipment stages.
         if (ex.bookend) return ex.bookend === 'warmup' ? WARMUP_STAGES : COOLDOWN_STAGES;
         const le = ex.libraryExerciseId ? libraryExercises.find(l => l.id === ex.libraryExerciseId) : undefined;
-        return le?.exerciseType === 'video' ? VIDEO_STAGES : STANDARD_STAGES;
+        if (le?.exerciseType === 'video') return VIDEO_STAGES;
+        // Only when it is positively known to need nothing but floor and no
+        // machine was found. An exercise nobody filled the equipment in for
+        // keeps the full set: there, a missing link is a real gap to show.
+        const required = routedExercises[i]?.requiredEquipmentIds || [];
+        const floorOnly = required.length > 0
+          && required.every(id => id === 'eq-floor-mat')
+          && !route[i]?.machine;
+        return floorOnly ? FLOOR_STAGES : STANDARD_STAGES;
       }),
-    [exercises, libraryExercises]
+    [exercises, libraryExercises, routedExercises, route]
   );
   const startIndexByExIdx = useMemo(() => {
     const starts: number[] = [];
@@ -140,49 +201,6 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
     setVariationOverlay(null);
   }, [exIdx]);
 
-  // Planned for the whole day at once rather than per exercise, so each
-  // exercise is sent to the copy of its equipment nearest to wherever the last
-  // one left the client — starting from the door. Resolving each exercise
-  // independently picked an arbitrary copy and could send someone back and
-  // forth across the building between sets.
-  //
-  // Routing resolves locations by name/equipment matching, which is what makes
-  // plan-template exercises work at all: those are authored with
-  // equipmentId 'manual' and no machineId, since a template is meant to be
-  // reusable across whichever gym the trainee ends up in, so a direct id
-  // lookup always misses for them.
-  //
-  // Fed the exercises as routing needs to see them: each carrying what it
-  // requires, read live from the library. The stored plan holds a name and a
-  // placeholder location and nothing about equipment, so without this an
-  // exercise that needs open floor could only be placed if its name happened to
-  // suggest a floor.
-
-  // What this day actually trains, so a resolved bookend matches it the same
-  // way a freshly generated one does — a leg day warmed up on something that
-  // drives the legs, an upper day on something that drives the upper body.
-  const musclesTrainedToday = useMemo(() => {
-    const muscles = new Set<string>();
-    for (const ex of exercises) {
-      if (ex.bookend) continue;
-      const le = ex.libraryExerciseId ? libraryExercises.find(l => l.id === ex.libraryExerciseId) : undefined;
-      (le?.primaryMuscles || []).forEach(m => muscles.add(m));
-    }
-    return muscles;
-  }, [exercises, libraryExercises]);
-
-  const routedExercises = useMemo(() => exercises.map(ex => {
-    const entry = ex.libraryExerciseId
-      ? libraryExercises.find(l => l.id === ex.libraryExerciseId)
-      : ex.bookend
-        ? selectBookendExercise(ex.bookend, libraryExercises, musclesTrainedToday as Set<any>)
-        : undefined;
-    return entry
-      ? { ...ex, requiredEquipmentIds: getExerciseRequiredEquipmentIds(entry, equipmentList) }
-      : ex;
-  }), [exercises, libraryExercises, equipmentList, musclesTrainedToday]);
-
-  const route = useMemo(() => planSessionRoute(routedExercises, gym), [routedExercises, gym]);
   const routeStop = route[exIdx];
   // Everywhere else in the gym this same exercise could be done. Kept so a
   // client who finds their machine occupied has somewhere to go.
@@ -252,6 +270,21 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
     // flow always copies from the equipment item verbatim.
     return equipmentList.find(e => e.id === machine.equipmentId) || equipmentList.find(e => e.name === machine.name);
   }, [machine, equipmentList]);
+
+  // What the Identify screen shows. Normally the machine the client is being
+  // sent to. When none was found, the equipment the exercise itself requires —
+  // a fitness mat has a photo even though no machine on the map is "the" mat
+  // for a floor exercise — rather than claiming nothing is linked while the
+  // exercise's own tags name the item. The floor-space item is left out: it
+  // is a place, not something to look for.
+  const identifyItem = useMemo(() => {
+    if (equipmentItem) return equipmentItem;
+    const required = (routedExercises[exIdx]?.requiredEquipmentIds || [])
+      .filter(id => id !== 'eq-floor-mat')
+      .map(id => equipmentList.find(e => e.id === id))
+      .filter((e): e is EquipmentItem => !!e);
+    return required.find(e => e.imageUrl) || required[0] || undefined;
+  }, [equipmentItem, routedExercises, exIdx, equipmentList]);
 
   const rows: SetRow[] = useMemo(() => {
     if (!exercise) return [];
@@ -730,16 +763,16 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
               className={`${stage.key === 'identify' ? 'h-72' : 'h-44'} border-b border-slate-800 flex items-center justify-center overflow-hidden bg-gradient-to-br from-slate-800 to-slate-900`}
             >
               {stage.key === 'identify' ? (
-                equipmentItem?.imageUrl ? (
+                identifyItem?.imageUrl ? (
                   <img
-                    src={equipmentItem.imageUrl}
-                    alt={equipmentItem.name}
+                    src={identifyItem.imageUrl}
+                    alt={identifyItem.name}
                     className="w-full h-full object-contain p-3"
                   />
                 ) : (
                   <div className="flex flex-col items-center gap-2 text-slate-500 text-xs font-bold uppercase tracking-wide">
                     <Dumbbell className="w-8 h-8 opacity-50" />
-                    <span>{equipmentItem ? 'No photo added yet' : 'Equipment not linked yet'}</span>
+                    <span>{identifyItem ? 'No photo added yet' : 'Equipment not linked yet'}</span>
                   </div>
                 )
               ) : stage.key === 'tutorial' ? (
@@ -772,7 +805,13 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
               <p className={`text-sm text-slate-400 leading-relaxed ${stage.key === 'video' ? 'mt-3' : ''}`}>
                 {stage.key === 'locate' && zone && `Head to the ${zone.name}. Follow the map above — it marks exactly where this machine sits on the gym floor.`}
                 {stage.key === 'locate' && !zone && 'This exercise has no zone set — ask an admin to link it in the plan editor.'}
-                {stage.key === 'identify' && (equipmentItem?.description || 'Look for the machine matching this name on the gym floor.')}
+                {stage.key === 'identify' && (
+                  equipmentItem
+                    ? (equipmentItem.description || 'Look for the machine matching this name on the gym floor.')
+                    : identifyItem
+                      ? `You'll need: ${identifyItem.name}.${identifyItem.description ? ` ${identifyItem.description}` : ''}`
+                      : 'Look for the machine matching this name on the gym floor.'
+                )}
                 {stage.key === 'tutorial' && instructions}
                 {stage.key === 'video' && instructions}
               </p>
