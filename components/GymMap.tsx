@@ -152,6 +152,11 @@ interface GymMapProps {
 
   selectedZoneId?: string | null;
   focusedZoneId?: string | null; 
+  // The zone itself is where the client is being sent. Distinct from focusing,
+  // which only zooms and dims the rest: focus is also what clicking a zone
+  // does, so it says "you are looking here" rather than "go here". Used when
+  // the target is an area (open floor) with no single machine to point at.
+  highlightedZoneId?: string | null;
   
   isEditable?: boolean;
   editMode?: 'layout' | 'room' | 'machine'; 
@@ -281,6 +286,7 @@ const GymMap: React.FC<GymMapProps> = ({
 
   selectedZoneId = null,
   focusedZoneId = null,
+  highlightedZoneId = null,
   
   isEditable = false,
   editMode = 'layout',
@@ -1435,6 +1441,7 @@ const GymMap: React.FC<GymMapProps> = ({
               {zones.map((zone, idx) => {
                 const isSelected = selectedZoneId === zone.id;
                 const isFocused = focusedZoneId === zone.id;
+                const isTargetZone = !isThumbnail && !!highlightedZoneId && highlightedZoneId === zone.id;
                 const isAmenity = isAmenityZone(zone);
                 const isMatch = matchingZoneIds.has(zone.id);
                 const hasActiveSearch = matchingZoneIds.size > 0 || mapSearchQuery.trim().length > 0 || selectedMuscleFilter !== 'All';
@@ -1486,6 +1493,18 @@ const GymMap: React.FC<GymMapProps> = ({
                     }}
                     className={`transition-all duration-300 ease-in-out ${isThumbnail ? '' : isLayoutEdit ? 'cursor-move' : isMachineEdit && isFocused ? 'cursor-default' : 'cursor-pointer'}`}
                   >
+                    {/* The zone being sent to. Same lime a targeted machine uses,
+                        pulsing, so it reads as "this one" rather than merely
+                        the zone the map happens to be zoomed on. */}
+                    {isTargetZone && (
+                      <rect
+                        x={zone.x - 5} y={zone.y - 5} width={zone.width + 10} height={zone.height + 10}
+                        fill="none" stroke="#a3e635" strokeWidth="3" rx="12"
+                        className="animate-pulse pointer-events-none"
+                        style={{ filter: 'drop-shadow(0 0 8px #a3e635aa)' }}
+                      />
+                    )}
+
                     {/* Active / Match Highlight Glow */}
                     {isMatch && !isThumbnail && (
                       <rect
@@ -1509,8 +1528,8 @@ const GymMap: React.FC<GymMapProps> = ({
                       height={zone.height}
                       fill={zoneStyle.fill}
                       fillOpacity={isAmenity ? 1 : 0.42}
-                      stroke={isSelected ? '#38bdf8' : zoneStyle.stroke}
-                      strokeWidth={isThumbnail ? 2 : (isSelected || isFocused ? 2.5 : 1.5)}
+                      stroke={isTargetZone ? '#a3e635' : isSelected ? '#38bdf8' : zoneStyle.stroke}
+                      strokeWidth={isThumbnail ? 2 : (isTargetZone ? 3 : isSelected || isFocused ? 2.5 : 1.5)}
                       rx="8"
                       className="transition-all duration-300 ease-in-out shadow-sm"
                       style={{
@@ -1528,6 +1547,16 @@ const GymMap: React.FC<GymMapProps> = ({
                         rx="8"
                         className="pointer-events-none transition-opacity duration-300 ease-in-out"
                         style={{ opacity: zoneOpacity }}
+                      />
+                    )}
+
+                    {/* Tint the zone itself, so the whole area reads as the
+                        destination and not just its edge. */}
+                    {isTargetZone && (
+                      <rect
+                        x={zone.x} y={zone.y} width={zone.width} height={zone.height}
+                        fill="#a3e635" fillOpacity={0.16} rx="8"
+                        className="pointer-events-none"
                       />
                     )}
 

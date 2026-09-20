@@ -516,6 +516,10 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                 annexes={gym.annexes}
                 focusedZoneId={zone.id}
                 selectedMachineId={machine?.id || null}
+                // With a machine, the machine is the destination and already
+                // lights up. Without one — open floor — the zone is, and
+                // zooming to it alone left nothing pointing at it.
+                highlightedZoneId={machine ? null : zone.id}
                 hideSearch
               />
             ) : (
