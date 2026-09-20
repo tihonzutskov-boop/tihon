@@ -373,3 +373,11 @@ ALTER TABLE exercises ADD COLUMN IF NOT EXISTS bookend_roles JSONB DEFAULT '[]';
 -- start of a session and walks the breathing back down at the end.
 ALTER TABLE exercises ADD COLUMN IF NOT EXISTS warmup_note TEXT;
 ALTER TABLE exercises ADD COLUMN IF NOT EXISTS cooldown_note TEXT;
+
+-- Whether this zone allows open floor exercises, when an admin has said so
+-- either way. NULL means nobody has decided, and the app falls back to
+-- guessing from the zone's type and name. Needed as its own column because
+-- "not allowed" cannot be expressed by leaving eq-floor-mat out of
+-- equipment_ids: the guess would put it straight back, which is how a group
+-- class studio kept receiving floor exercises with no way to stop it.
+ALTER TABLE zones ADD COLUMN IF NOT EXISTS floor_space BOOLEAN;

@@ -157,6 +157,11 @@ interface GymMapProps {
   // does, so it says "you are looking here" rather than "go here". Used when
   // the target is an area (open floor) with no single machine to point at.
   highlightedZoneId?: string | null;
+  // Where to pick up a mat, when the destination is open floor. Drawn in a
+  // different colour from the destination so the two can't be confused: one is
+  // where to go, the other is somewhere to stop on the way.
+  pickupZoneId?: string | null;
+  pickupMachineId?: string | null;
   
   isEditable?: boolean;
   editMode?: 'layout' | 'room' | 'machine'; 
@@ -287,6 +292,8 @@ const GymMap: React.FC<GymMapProps> = ({
   selectedZoneId = null,
   focusedZoneId = null,
   highlightedZoneId = null,
+  pickupZoneId = null,
+  pickupMachineId = null,
   
   isEditable = false,
   editMode = 'layout',
@@ -1442,6 +1449,10 @@ const GymMap: React.FC<GymMapProps> = ({
                 const isSelected = selectedZoneId === zone.id;
                 const isFocused = focusedZoneId === zone.id;
                 const isTargetZone = !isThumbnail && !!highlightedZoneId && highlightedZoneId === zone.id;
+                // Only ringed when it is a different zone from the destination —
+                // in the same zone the mat itself is marked, and a second ring
+                // around an area already lit up would say nothing new.
+                const isPickupZone = !isThumbnail && !!pickupZoneId && pickupZoneId === zone.id && !isTargetZone;
                 const isAmenity = isAmenityZone(zone);
                 const isMatch = matchingZoneIds.has(zone.id);
                 const hasActiveSearch = matchingZoneIds.size > 0 || mapSearchQuery.trim().length > 0 || selectedMuscleFilter !== 'All';
@@ -1493,6 +1504,14 @@ const GymMap: React.FC<GymMapProps> = ({
                     }}
                     className={`transition-all duration-300 ease-in-out ${isThumbnail ? '' : isLayoutEdit ? 'cursor-move' : isMachineEdit && isFocused ? 'cursor-default' : 'cursor-pointer'}`}
                   >
+                    {isPickupZone && (
+                      <rect
+                        x={zone.x - 4} y={zone.y - 4} width={zone.width + 8} height={zone.height + 8}
+                        fill="none" stroke="#38bdf8" strokeWidth="2.5" strokeDasharray="6 4" rx="11"
+                        className="animate-pulse pointer-events-none"
+                      />
+                    )}
+
                     {/* The zone being sent to. Same lime a targeted machine uses,
                         pulsing, so it reads as "this one" rather than merely
                         the zone the map happens to be zoomed on. */}
@@ -1684,6 +1703,7 @@ const GymMap: React.FC<GymMapProps> = ({
                           const isHovered = hoveredMachineId === machine.id;
                           const showAdminSelected = isEditable && isMachineSelected;
                           const isUserTarget = !isEditable && isMachineSelected;
+                          const isPickup = !isEditable && !!pickupMachineId && pickupMachineId === machine.id && !isMachineSelected;
                           const showUserGlow = !isEditable && (isMachineSelected || isHovered);
                           const isDimmed = zoneHasTarget && !isMachineSelected && !isHovered;
                           const MachineIcon = getEquipmentIcon(machine.icon, machine.name, zone.type);
@@ -1722,10 +1742,26 @@ const GymMap: React.FC<GymMapProps> = ({
                                   className="spotlight-ring"
                                 />
                               )}
+                              {isPickup && (
+                                <>
+                                  <rect
+                                    x={-6} y={-6} width={machine.width + 12} height={machine.height + 12}
+                                    rx="8" fill="none" stroke="#38bdf8" strokeWidth="2" strokeDasharray="5 3"
+                                    className="animate-pulse pointer-events-none"
+                                  />
+                                  <text
+                                    x={machine.width / 2} y={-11} textAnchor="middle"
+                                    fontSize="9" fontWeight="800" fill="#38bdf8"
+                                    className="pointer-events-none"
+                                  >
+                                    Mats
+                                  </text>
+                                </>
+                              )}
                               <rect
                                 width={machine.width} height={machine.height}
                                 fill={zoneStyle.stroke} fillOpacity={isUserTarget ? 1 : isDimmed ? 0.5 : 0.85}
-                                stroke={showAdminSelected ? "#3b82f6" : isUserTarget ? "#a3e635" : "#ffffff"}
+                                stroke={showAdminSelected ? "#3b82f6" : isUserTarget ? "#a3e635" : isPickup ? "#38bdf8" : "#ffffff"}
                                 strokeWidth={(showAdminSelected || showUserGlow) ? 2 : 1}
                                 rx="4"
                                 className={showAdminSelected ? 'machine-pulse' : isUserTarget ? 'machine-glow-lime' : (showUserGlow ? 'machine-glow-white' : '')}

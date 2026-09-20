@@ -6,6 +6,7 @@ import GymMap from './GymMap';
 import { planSessionRoute } from '../utils/sessionRoute';
 import { selectBookendExercise } from '../utils/planGeneration';
 import { getExerciseRequiredEquipmentIds } from '../utils/equipmentMatcher';
+import { nearestMatPickup, zoneCentre, matPickupMessage } from '../utils/matPickup';
 import { getYouTubeEmbedUrl } from '../utils/youtubeEmbed';
 
 interface GuidedSessionProps {
@@ -233,6 +234,16 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
     if (direct) return direct;
     return routeStop?.machine || undefined;
   }, [zone, exercise, routeStop]);
+
+  // Where to pick up a mat, for an exercise done on open floor. Advisory: the
+  // exercise is offered because the gym has floor space, and whether anyone
+  // placed a mat on the map changes only whether this line appears. Chosen
+  // nearest the floor being sent to, since that is where it will be carried.
+  const needsFloorSpace = !!routedExercises[exIdx]?.requiredEquipmentIds?.includes('eq-floor-mat');
+  const matPickup = useMemo(
+    () => (needsFloorSpace && zone ? nearestMatPickup(gym, equipmentList, zoneCentre(zone)) : null),
+    [needsFloorSpace, zone, gym, equipmentList]
+  );
   const equipmentItem = useMemo(() => {
     if (!machine) return undefined;
     // Machines placed before addMachineFromEquipment started setting
@@ -520,6 +531,8 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                 // lights up. Without one — open floor — the zone is, and
                 // zooming to it alone left nothing pointing at it.
                 highlightedZoneId={machine ? null : zone.id}
+                pickupZoneId={matPickup?.zone.id ?? null}
+                pickupMachineId={matPickup?.machine.id ?? null}
                 hideSearch
               />
             ) : (
@@ -539,6 +552,11 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                 {' in '}
                 {Array.from(new Set(alternatives.map(a => a.zone.name))).join(', ')}
                 {' if this one is busy.'}
+              </p>
+            )}
+            {matPickup && (
+              <p className="text-[11px] text-sky-300 mb-2.5 leading-relaxed">
+                {matPickupMessage(matPickup, zone?.id)}
               </p>
             )}
             <button
@@ -804,6 +822,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                 {zone && (
                   <p className="text-xs text-slate-500 mb-3">
                     Head to the <span className="font-bold text-slate-300">{zone.name}</span>.
+                    {matPickup && <span className="block mt-1 text-sky-300">{matPickupMessage(matPickup, zone.id)}</span>}
                   </p>
                 )}
                 {/* An admin's own note always wins, video or not — it is

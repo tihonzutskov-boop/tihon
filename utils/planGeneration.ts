@@ -38,7 +38,15 @@ export interface EligibilityContext {
 // actually train with here".
 export const gymEquipmentIds = (gym: Gym | null | undefined): Set<string> => {
   const ids = new Set<string>();
-  (gym?.zones || []).forEach(z => (z.equipmentIds || []).forEach(id => ids.add(id)));
+  (gym?.zones || []).forEach(z => {
+    (z.equipmentIds || []).forEach(id => {
+      // A zone an admin has marked as not allowing open floor does not
+      // contribute it, whatever else might have put it in equipmentIds.
+      if (id === 'eq-floor-mat' && z.floorSpace === false) return;
+      ids.add(id);
+    });
+    if (z.floorSpace === true) ids.add('eq-floor-mat');
+  });
   return ids;
 };
 

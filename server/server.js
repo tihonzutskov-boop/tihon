@@ -999,6 +999,9 @@ const loadGymForGeneration = async (gymId) => {
     zones: zonesRes.rows.map(z => ({
       id: z.id, name: z.name, type: z.type, x: z.x, y: z.y, width: z.width, height: z.height,
       color: z.color, icon: z.icon, equipmentIds: z.equipment_ids || [],
+      // NULL (nobody decided) has to reach the engine as undefined, not null:
+      // the engine tells "unset" from "explicitly off" by the value.
+      floorSpace: z.floor_space === null || z.floor_space === undefined ? undefined : z.floor_space,
     })),
   };
 };
@@ -1495,7 +1498,11 @@ app.get('/api/gyms', async (req, res) => {
       const zonesRes = await client.query('SELECT * FROM zones WHERE gym_id = $1', [gym.id]);
       // equipment_ids is snake_case in the DB but the client (and the
       // generation engine) read equipmentIds.
-      gym.zones = zonesRes.rows.map(z => ({ ...z, equipmentIds: z.equipment_ids || [] }));
+      gym.zones = zonesRes.rows.map(z => ({
+        ...z,
+        equipmentIds: z.equipment_ids || [],
+        floorSpace: z.floor_space === null || z.floor_space === undefined ? undefined : z.floor_space,
+      }));
 
       const annexRes = await client.query('SELECT * FROM annexes WHERE gym_id = $1', [gym.id]);
       gym.annexes = annexRes.rows;
@@ -1528,8 +1535,10 @@ app.post('/api/gyms', requireAdmin, async (req, res) => {
     if (zones && zones.length > 0) {
       for (const z of zones) {
         await client.query(
-          'INSERT INTO zones (id, gym_id, name, type, x, y, width, height, color, icon, description, machines, equipment_ids) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)',
-          [z.id, id, z.name, z.type, z.x, z.y, z.width, z.height, z.color, z.icon, z.description, JSON.stringify(z.machines || []), JSON.stringify(z.equipmentIds || [])]
+          'INSERT INTO zones (id, gym_id, name, type, x, y, width, height, color, icon, description, machines, equipment_ids, floor_space) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)',
+          [z.id, id, z.name, z.type, z.x, z.y, z.width, z.height, z.color, z.icon, z.description, JSON.stringify(z.machines || []), JSON.stringify(z.equipmentIds || []),
+           // Only a real true/false is stored; anything else means undecided.
+           z.floorSpace === true || z.floorSpace === false ? z.floorSpace : null]
         );
       }
     }
@@ -1587,8 +1596,10 @@ app.put('/api/gyms/:id', requireAdmin, async (req, res) => {
       await client.query('DELETE FROM zones WHERE gym_id = $1', [id]);
       for (const z of zones) {
         await client.query(
-          'INSERT INTO zones (id, gym_id, name, type, x, y, width, height, color, icon, description, machines, equipment_ids) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)',
-          [z.id, id, z.name, z.type, z.x, z.y, z.width, z.height, z.color, z.icon, z.description, JSON.stringify(z.machines || []), JSON.stringify(z.equipmentIds || [])]
+          'INSERT INTO zones (id, gym_id, name, type, x, y, width, height, color, icon, description, machines, equipment_ids, floor_space) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)',
+          [z.id, id, z.name, z.type, z.x, z.y, z.width, z.height, z.color, z.icon, z.description, JSON.stringify(z.machines || []), JSON.stringify(z.equipmentIds || []),
+           // Only a real true/false is stored; anything else means undecided.
+           z.floorSpace === true || z.floorSpace === false ? z.floorSpace : null]
         );
       }
     }

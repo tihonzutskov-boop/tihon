@@ -9,7 +9,7 @@ import EquipmentLibrary, { getEquipmentIconComponent } from './EquipmentLibrary'
 import AdminCoaching from './AdminCoaching';
 import { QuickAddEquipmentModal } from './QuickAddEquipmentModal';
 import { api, DEFAULT_EQUIPMENT } from '../services/api';
-import { evaluateZoneExercises, getZoneEquipmentIds } from '../utils/equipmentMatcher';
+import { evaluateZoneExercises, getZoneEquipmentIds, floorSpaceIsAssumed } from '../utils/equipmentMatcher';
 import { getExerciseLocations } from '../utils/exerciseMatcher';
 import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Eraser, Eye, EyeOff, Footprints, MapPin, LayoutTemplate, DoorOpen, Lock, Bath, Droplets, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle, Copy, ClipboardPaste, Dumbbell, Activity, Zap, Target, Layers, Box, Wind, RotateCcw, ArrowUpRight, ArrowUpLeft, ArrowDownRight, ArrowDownLeft, ArrowRight, ArrowUp, ArrowDown, MoveDown, Circle, Waves, Timer, Sparkles, Search, Video, Play, Film, Filter, X, ExternalLink, Compass, SlidersHorizontal, ChevronRight, Bookmark, BookmarkCheck, Camera, Users } from 'lucide-react';
 import { MACHINE_ICONS_LIST as MACHINE_ICONS, ICON_GROUPS } from '../utils/equipmentIcons';
@@ -685,6 +685,9 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onS
     }
   };
   const updateZone = (field: keyof GymZone, value: any) => { if (!selectedZoneId) return; const newZones = gym.zones.map(z => z.id === selectedZoneId ? { ...z, [field]: value } : z); update({ ...gym, zones: newZones }, false); };
+  // Several fields in one update. Two updateZone calls in a row each rebuild
+  // from the same stale gym, so the second silently discards the first.
+  const patchZone = (patch: Partial<GymZone>) => { if (!selectedZoneId) return; const newZones = gym.zones.map(z => z.id === selectedZoneId ? { ...z, ...patch } : z); update({ ...gym, zones: newZones }, false); };
   
   const addNewZone = () => {
     const newZone: GymZone = { id: `zone-new-${Date.now()}`, name: 'New Area', type: EquipmentType.FUNCTIONAL, x: Math.min(100, dimensions.width / 2 - 50), y: Math.min(100, dimensions.height / 2 - 50), width: 100, height: 100, color: '#84cc16', icon: 'Square', description: '', machines: [] };
@@ -1742,27 +1745,38 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onS
 
                   {/* Floor Space / Mat Area toggle */}
                   {(() => {
-                    const hasFloor = (selectedZone.equipmentIds || []).includes('eq-floor-mat') || selectedZone.hasFloorSpace;
+                    // The effective answer, guesses included — this used to read
+                    // only equipmentIds, so a Functional or Studio zone showed
+                    // "off" while the app was treating it as open floor.
+                    const hasFloor = getZoneEquipmentIds(selectedZone, equipmentList).includes('eq-floor-mat');
+                    const assumed = floorSpaceIsAssumed(selectedZone);
                     return (
                       <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 flex items-center justify-between">
                         <div className="flex flex-col">
                           <span className="text-xs font-semibold text-white flex items-center gap-1">
                             🧘 Open Floor / Mat Area
                           </span>
-                          <span className="text-[10px] text-slate-400">Allows bodyweight & floor exercises</span>
+                          <span className="text-[10px] text-slate-400">
+                            {assumed
+                              ? 'Assumed from the zone type — tap to set it yourself'
+                              : 'Allows bodyweight & floor exercises'}
+                          </span>
                         </div>
                         <button
                           type="button"
                           onClick={() => {
                             snapshot();
+                            const next = !hasFloor;
                             const currentIds = selectedZone.equipmentIds || [];
-                            let newIds: string[];
-                            if (hasFloor) {
-                              newIds = currentIds.filter(id => id !== 'eq-floor-mat');
-                            } else {
-                              newIds = [...currentIds, 'eq-floor-mat'];
-                            }
-                            updateZone('equipmentIds', newIds);
+                            // Recorded as an explicit yes/no, and equipmentIds kept
+                            // in step with it, so turning it off sticks instead of
+                            // being guessed back on.
+                            patchZone({
+                              floorSpace: next,
+                              equipmentIds: next
+                                ? (currentIds.includes('eq-floor-mat') ? currentIds : [...currentIds, 'eq-floor-mat'])
+                                : currentIds.filter(id => id !== 'eq-floor-mat'),
+                            });
                           }}
                           className={`w-9 h-5 flex items-center rounded-full p-0.5 transition-colors ${
                             hasFloor ? 'bg-lime-600 justify-end' : 'bg-slate-800 justify-start'

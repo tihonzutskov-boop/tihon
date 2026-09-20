@@ -72,6 +72,11 @@ export interface GymZone {
   description?: string;
   machines?: GymMachine[];
   equipmentIds?: string[]; // Array of EquipmentItem.id present in this zone
+  // Whether this zone allows open floor exercises, once an admin has said so
+  // either way. Undefined means undecided: the app then guesses from the
+  // zone's type and name. Its own field because "not allowed" can't be written
+  // as an absence from equipmentIds — the guess would add it straight back.
+  floorSpace?: boolean;
   isHallway?: boolean;
 }
 

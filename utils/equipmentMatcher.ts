@@ -61,7 +61,25 @@ export function getZoneEquipmentIds(zone: GymZone | null | undefined, allEquipme
     ids.add('eq-barbell-plates');
   }
 
+  // An explicit answer has the last word, applied after everything above so
+  // the guessing can't override it. Without this the floor toggle could only
+  // ever turn floor space on: switching it off removed the id, and the
+  // functional/studio inference above put it straight back.
+  if (zone.floorSpace === true) ids.add('eq-floor-mat');
+  if (zone.floorSpace === false) ids.delete('eq-floor-mat');
+
   return Array.from(ids);
+}
+
+/**
+ * True when a zone allows open floor only because of its type or name — nobody
+ * has said so either way. Lets the admin UI say the answer is a guess instead
+ * of presenting it as a decision.
+ */
+export function floorSpaceIsAssumed(zone: GymZone | null | undefined): boolean {
+  if (!zone || zone.floorSpace === true || zone.floorSpace === false) return false;
+  if ((zone.equipmentIds || []).includes('eq-floor-mat')) return false;
+  return getZoneEquipmentIds(zone).includes('eq-floor-mat');
 }
 
 /**
@@ -289,8 +307,9 @@ export function migrateGymsAndEquipment(
         };
       });
 
-      // Include floor mat for functional zones
-      if (zone.type === EquipmentType.FUNCTIONAL || (zone.name || '').toLowerCase().includes('turf') || (zone.name || '').toLowerCase().includes('mat')) {
+      // Include floor mat for functional zones — but not where an admin has
+      // said this zone does not allow it.
+      if (zone.floorSpace !== false && (zone.type === EquipmentType.FUNCTIONAL || (zone.name || '').toLowerCase().includes('turf') || (zone.name || '').toLowerCase().includes('mat'))) {
         if (!zoneEqIds.has('eq-floor-mat')) {
           zoneEqIds.add('eq-floor-mat');
           zoneModified = true;
