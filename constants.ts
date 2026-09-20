@@ -1,14 +1,13 @@
 
 import { EquipmentType, GymZone, Gym } from './types';
 
-// Shared with the admin Coaching roster so the questionnaire's goal
-// options and the admin's grouping-by-goal can never drift apart.
-// 'General fitness' dropped from new selection: for a beginner it produced a
-// program indistinguishable from 'Muscle gain' (same exercises, reps 10-12 vs
-// 8-12, rest 90s vs 120s) — a choice in name only. Merged into 'Muscle gain'.
-// The engine still resolves 'General fitness' for any answers or templates
-// that predate this change (see GOAL_PRESCRIPTION and DEFAULT_GOAL).
-export const QUESTIONNAIRE_GOALS = ['Muscle gain', 'Weight loss', 'Endurance', 'Mobility'];
+// The engine aims a client can end up with as a main goal — what the admin
+// Coaching roster groups clients and templates by. The questionnaire offers
+// friendlier names for these (see utils/goals.ts); each one resolves to an aim
+// in this list. 'Mobility' is no longer offered as a main goal (it is a
+// secondary one now) but stays here so clients who chose it earlier still show
+// up in their group.
+export const QUESTIONNAIRE_GOALS = ['Muscle gain', 'Weight loss', 'General fitness', 'Endurance', 'Mobility'];
 
 // Mock Data
 // Coordinates are RELATIVE to the gym floor top-left (0,0)

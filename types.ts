@@ -410,7 +410,8 @@ export interface QuestionnaireAnswers {
   heightCm: number;
   weightKg: number;
   sex: string;
-  goals: string[];           // multi-select
+  goals: string[];           // main goals as engine aims, most important first
+  secondaryGoals?: string[]; // supporting aims — ride along inside the main goals' days, never own one
   level: string;              // only 'Beginner' selectable for now
   daysPerWeek: string;        // '1'..'4'
   preferredDays: Weekday[];   // which weekdays, in calendar order — length matches daysPerWeek

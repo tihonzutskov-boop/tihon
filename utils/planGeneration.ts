@@ -392,14 +392,22 @@ export interface DayAims {
   secondary: string | null;
 }
 
-export const assignAimsToDays = (goals: string[], dayCount: number): DayAims[] => {
+export const assignAimsToDays = (goals: string[], dayCount: number, supporting: string[] = []): DayAims[] => {
   const aims = goals.length > 0 ? goals : [DEFAULT_GOAL];
+  // Supporting aims are the client's secondary goals. They ride along on the
+  // days the main aims own and never own a day themselves — otherwise a
+  // "secondary" mobility goal would take a whole training day off the primary
+  // goal. An aim that is already a main aim is not supporting anything.
+  const extras = supporting.filter((a, i) => !aims.includes(a) && supporting.indexOf(a) === i);
   return Array.from({ length: dayCount }, (_, i) => ({
     primary: aims[i % aims.length],
-    // With one aim there is no secondary. With more, the day's secondary is
-    // the next aim in the rotation — for the two-aim case this is simply the
-    // other one, which is what MIXAIM-6 describes.
-    secondary: aims.length > 1 ? aims[(i + 1) % aims.length] : null,
+    // With no supporting aims: one aim has no secondary, and with more the
+    // day's secondary is the next aim in the rotation — for the two-aim case
+    // simply the other one, which is what MIXAIM-6 describes. Supporting aims,
+    // when the client chose any, take that slot instead.
+    secondary: extras.length > 0
+      ? extras[i % extras.length]
+      : aims.length > 1 ? aims[(i + 1) % aims.length] : null,
   }));
 };
 
@@ -411,12 +419,12 @@ const dayLabel = (aim: string, splitName: string, aimDayIndex: number, aimHasMan
     ? (aimHasManyDays ? `${aim} ${aimDayIndex + 1}` : aim)
     : splitName;
 
-export const buildCombinedBlueprint = (goals: string[], daysPerWeek: number, sessionMinutes = 60): BlueprintDay[] => {
+export const buildCombinedBlueprint = (goals: string[], daysPerWeek: number, sessionMinutes = 60, supporting: string[] = []): BlueprintDay[] => {
   // Session length shapes what gets built, rather than trimming what was built.
   // A short session is composed of the priority work only; it is not a long
   // session with the end cut off.
   const shape = shapeFor(sessionMinutes);
-  const aimByDay = assignAimsToDays(goals, Math.max(daysPerWeek, 1));
+  const aimByDay = assignAimsToDays(goals, Math.max(daysPerWeek, 1), supporting);
 
   const dayCountPerAim = aimByDay.reduce<Record<string, number>>((acc, day) => {
     acc[day.primary] = (acc[day.primary] || 0) + 1;

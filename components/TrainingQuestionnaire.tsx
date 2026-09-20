@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { ClipboardList, Check, ChevronUp, ChevronDown } from 'lucide-react';
 import { QuestionnaireAnswers, Weekday, ALL_JOINT_STRESS_AREAS } from '../types';
-import { QUESTIONNAIRE_GOALS } from '../constants';
+import {
+  PRIMARY_GOALS, primaryGoalLabel, secondaryOptionsFor, pruneSecondary,
+  goalsFromAnswers, describeGoals,
+} from '../utils/goals';
 
 interface TrainingQuestionnaireProps {
   existing: QuestionnaireAnswers | null;
@@ -44,7 +47,7 @@ const COMMON_INJURIES = ALL_JOINT_STRESS_AREAS;
 
 interface FormState {
   age: string; heightCm: string; weightKg: string; sex: string;
-  goals: string[]; level: string;
+  primaryGoals: string[]; secondaryGoals: string[]; level: string;
   daysPerWeek: string; preferredDays: Weekday[]; minutesPerSession: string;
   gymId: string;
   equipment: string; avoidExercises: string;
@@ -54,7 +57,7 @@ interface FormState {
 
 const blankForm = (): FormState => ({
   age: '', heightCm: '', weightKg: '', sex: '',
-  goals: [], level: '',
+  primaryGoals: [], secondaryGoals: [], level: '',
   daysPerWeek: '', preferredDays: [], minutesPerSession: '',
   gymId: '',
   equipment: '', avoidExercises: '',
@@ -69,7 +72,8 @@ const toFormState = (existing: QuestionnaireAnswers | null): FormState => {
     heightCm: String(existing.heightCm ?? ''),
     weightKg: String(existing.weightKg ?? ''),
     sex: existing.sex || '',
-    goals: existing.goals || [],
+    primaryGoals: goalsFromAnswers(existing).primary,
+    secondaryGoals: goalsFromAnswers(existing).secondary,
     level: existing.level || '',
     daysPerWeek: existing.daysPerWeek || '',
     preferredDays: existing.preferredDays || [],
@@ -106,6 +110,22 @@ const Pill: React.FC<{ label: string; selected: boolean; disabled?: boolean; tag
   </button>
 );
 
+const GoalCard: React.FC<{ label: string; hint: string; selected: boolean; onClick: () => void }> = ({ label, hint, selected, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    aria-pressed={selected}
+    className={`text-left px-3.5 py-3 rounded-xl border transition-colors ${
+      selected
+        ? 'border-lime-500 bg-lime-500/10'
+        : 'border-slate-700 bg-slate-800 hover:border-slate-600'
+    }`}
+  >
+    <span className={`block text-xs font-extrabold ${selected ? 'text-lime-400' : 'text-slate-200'}`}>{label}</span>
+    <span className="block text-[10.5px] font-semibold text-slate-500 mt-0.5 leading-snug">{hint}</span>
+  </button>
+);
+
 const FieldLabel: React.FC<{ children: React.ReactNode; required?: boolean; hint?: string }> = ({ children, required, hint }) => (
   <label className="block text-xs font-extrabold text-white mb-2.5">
     {children} {required ? <span className="text-lime-400">*</span> : <span className="text-slate-500 font-semibold">(optional)</span>}
@@ -134,23 +154,41 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
   const [form, setForm] = useState<FormState>(() => toFormState(existing));
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm(prev => ({ ...prev, [key]: value }));
-  const toggleMulti = (key: 'goals' | 'injuryAreas', value: string) => {
+  const toggleMulti = (key: 'injuryAreas', value: string) => {
     setForm(prev => {
       const arr = prev[key];
       return { ...prev, [key]: arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value] };
     });
   };
-  // Newly picked goals land at the bottom of the ranking, which the client
-  // then adjusts — this is what feeds assignAimsToDays's day-per-aim rotation
-  // and buildGenerationProfile's "which aim stands in for the goal" pick, so
-  // the order here is a real priority signal, not incidental UI state.
+  // Newly picked main goals land at the bottom of the ranking, which the
+  // client then adjusts — this is what feeds assignAimsToDays's day-per-aim
+  // rotation and buildGenerationProfile's "which aim stands in for the goal"
+  // pick, so the order here is a real priority signal, not incidental UI state.
+  // The secondary goals on offer depend on the main goals, so a change here
+  // can take one away — it is dropped rather than left selected but hidden.
+  const togglePrimary = (aim: string) => {
+    setForm(prev => {
+      const primaryGoals = prev.primaryGoals.includes(aim)
+        ? prev.primaryGoals.filter(a => a !== aim)
+        : [...prev.primaryGoals, aim];
+      return { ...prev, primaryGoals, secondaryGoals: pruneSecondary(primaryGoals, prev.secondaryGoals) };
+    });
+  };
+  const toggleSecondary = (aim: string) => {
+    setForm(prev => ({
+      ...prev,
+      secondaryGoals: prev.secondaryGoals.includes(aim)
+        ? prev.secondaryGoals.filter(a => a !== aim)
+        : [...prev.secondaryGoals, aim],
+    }));
+  };
   const moveGoal = (index: number, direction: -1 | 1) => {
     setForm(prev => {
       const target = index + direction;
-      if (target < 0 || target >= prev.goals.length) return prev;
-      const next = [...prev.goals];
+      if (target < 0 || target >= prev.primaryGoals.length) return prev;
+      const next = [...prev.primaryGoals];
       [next[index], next[target]] = [next[target], next[index]];
-      return { ...prev, goals: next };
+      return { ...prev, primaryGoals: next };
     });
   };
   // Changing the day count invalidates whatever specific days were picked
@@ -178,7 +216,7 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
 
   const isStepValid = (key: StepKey): boolean => {
     if (key === 'about') return !!(form.age && form.heightCm && form.weightKg && form.sex);
-    if (key === 'goal') return form.goals.length > 0 && !!form.level;
+    if (key === 'goal') return form.primaryGoals.length > 0 && !!form.level;
     if (key === 'schedule') return !!(form.daysPerWeek && form.minutesPerSession) && form.preferredDays.length === Number(form.daysPerWeek);
     if (key === 'preferences') return !!form.equipment && (gyms.length === 0 || !!form.gymId);
     if (key === 'health') return !hasHealthInfo || !!(form.medicalClearance && form.consent);
@@ -194,7 +232,8 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
         heightCm: Number(form.heightCm),
         weightKg: Number(form.weightKg),
         sex: form.sex,
-        goals: form.goals,
+        goals: form.primaryGoals,
+        secondaryGoals: form.secondaryGoals.length > 0 ? form.secondaryGoals : undefined,
         level: form.level,
         daysPerWeek: form.daysPerWeek,
         preferredDays: form.preferredDays,
@@ -223,7 +262,8 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
 
   if (mode === 'prompt') {
     if (existing) {
-      const chips = [...existing.goals, existing.level, `${existing.daysPerWeek} days/week`, existing.minutesPerSession].filter(Boolean);
+      const described = describeGoals(existing);
+      const chips = [...described.primary, ...described.secondary, existing.level, `${existing.daysPerWeek} days/week`, existing.minutesPerSession].filter(Boolean);
       return (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 mb-16 text-center">
           <div className="w-14 h-14 rounded-full bg-lime-500 text-slate-950 flex items-center justify-center mx-auto mb-4">
@@ -261,6 +301,7 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
     );
   }
 
+  const secondaryOptions = secondaryOptionsFor(form.primaryGoals);
   const key = STEP_KEYS[step];
   const pct = Math.round(((step + 1) / STEP_KEYS.length) * 100);
   const isLast = step === STEP_KEYS.length - 1;
@@ -314,16 +355,18 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
       {key === 'goal' && (
         <div className="space-y-5">
           <div>
-            <FieldLabel required hint="choose all that apply">Primary goal</FieldLabel>
-            <div className="flex flex-wrap gap-2">
-              {QUESTIONNAIRE_GOALS.map(opt => <Pill key={opt} label={opt} selected={form.goals.includes(opt)} onClick={() => toggleMulti('goals', opt)} />)}
+            <FieldLabel required hint="choose all that apply">What's your main goal?</FieldLabel>
+            <div className="grid grid-cols-2 gap-2">
+              {PRIMARY_GOALS.map(g => (
+                <GoalCard key={g.aim} label={g.label} hint={g.hint} selected={form.primaryGoals.includes(g.aim)} onClick={() => togglePrimary(g.aim)} />
+              ))}
             </div>
           </div>
           {/* Only meaningful with two or more goals — one goal is already its
               own rank one, and a list of one nothing has anything to reorder
               against. Every day of the plan gets one goal as its main focus;
               this order is what decides which goal that is, day by day. */}
-          {form.goals.length > 1 && (
+          {form.primaryGoals.length > 1 && (
             <div>
               <FieldLabel required hint="most important first">Rank your goals</FieldLabel>
               <p className="text-[11.5px] text-slate-500 mb-3 leading-relaxed">
@@ -331,36 +374,52 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
                 the rest fill in around it.
               </p>
               <div className="space-y-2">
-                {form.goals.map((goal, i) => (
-                  <div
-                    key={goal}
-                    className="flex items-center gap-3 bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5"
-                  >
-                    <span className="w-6 h-6 rounded-full bg-lime-500/10 border border-lime-500/30 text-lime-400 text-[11px] font-extrabold flex items-center justify-center flex-shrink-0">
-                      {i + 1}
-                    </span>
-                    <span className="flex-1 text-sm font-bold text-white">{goal}</span>
-                    <div className="flex gap-1 flex-shrink-0">
-                      <button
-                        type="button"
-                        disabled={i === 0}
-                        onClick={() => moveGoal(i, -1)}
-                        aria-label={`Move ${goal} up`}
-                        className="w-7 h-7 rounded-lg border border-slate-700 bg-slate-900 text-slate-400 disabled:opacity-30 disabled:cursor-default hover:text-white hover:border-slate-600 transition-colors flex items-center justify-center"
-                      >
-                        <ChevronUp className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        disabled={i === form.goals.length - 1}
-                        onClick={() => moveGoal(i, 1)}
-                        aria-label={`Move ${goal} down`}
-                        className="w-7 h-7 rounded-lg border border-slate-700 bg-slate-900 text-slate-400 disabled:opacity-30 disabled:cursor-default hover:text-white hover:border-slate-600 transition-colors flex items-center justify-center"
-                      >
-                        <ChevronDown className="w-4 h-4" />
-                      </button>
+                {form.primaryGoals.map((aim, i) => {
+                  const goal = primaryGoalLabel(aim);
+                  return (
+                    <div
+                      key={aim}
+                      className="flex items-center gap-3 bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5"
+                    >
+                      <span className="w-6 h-6 rounded-full bg-lime-500/10 border border-lime-500/30 text-lime-400 text-[11px] font-extrabold flex items-center justify-center flex-shrink-0">
+                        {i + 1}
+                      </span>
+                      <span className="flex-1 text-sm font-bold text-white">{goal}</span>
+                      <div className="flex gap-1 flex-shrink-0">
+                        <button
+                          type="button"
+                          disabled={i === 0}
+                          onClick={() => moveGoal(i, -1)}
+                          aria-label={`Move ${goal} up`}
+                          className="w-7 h-7 rounded-lg border border-slate-700 bg-slate-900 text-slate-400 disabled:opacity-30 disabled:cursor-default hover:text-white hover:border-slate-600 transition-colors flex items-center justify-center"
+                        >
+                          <ChevronUp className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={i === form.primaryGoals.length - 1}
+                          onClick={() => moveGoal(i, 1)}
+                          aria-label={`Move ${goal} down`}
+                          className="w-7 h-7 rounded-lg border border-slate-700 bg-slate-900 text-slate-400 disabled:opacity-30 disabled:cursor-default hover:text-white hover:border-slate-600 transition-colors flex items-center justify-center"
+                        >
+                          <ChevronDown className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {secondaryOptions.length > 0 && (
+            <div>
+              <FieldLabel hint="pick any">Anything else to work on?</FieldLabel>
+              <p className="text-[11.5px] text-slate-500 mb-3 leading-relaxed">
+                Added to your sessions as extra work alongside your main goal. It never takes over a whole training day.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {secondaryOptions.map(o => (
+                  <GoalCard key={o.aim} label={o.label} hint={o.hint} selected={form.secondaryGoals.includes(o.aim)} onClick={() => toggleSecondary(o.aim)} />
                 ))}
               </div>
             </div>

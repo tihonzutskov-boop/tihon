@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { PlanTemplate, CoachingClient, GenerationFailureRecord } from '../types';
 import { QUESTIONNAIRE_GOALS } from '../constants';
+import { primaryGoalLabel, secondaryGoalLabel } from '../utils/goals';
 import { api } from '../services/api';
 import { ClipboardList, Loader2, ChevronRight, Plus, AlertTriangle, History } from 'lucide-react';
 import WorkoutHistory from './WorkoutHistory';
@@ -545,7 +546,8 @@ const AdminCoaching: React.FC = () => {
                   />
                 </div>
                 <div className="flex flex-wrap gap-1.5 mb-4">
-                  {selectedClient.answers.goals.map(g => <Tag key={g}>{g}</Tag>)}
+                  {selectedClient.answers.goals.map(g => <Tag key={g}>{primaryGoalLabel(g)}</Tag>)}
+                  {(selectedClient.answers.secondaryGoals ?? []).map(g => <Tag key={`2-${g}`}>+ {secondaryGoalLabel(g)}</Tag>)}
                 </div>
                 <Answer label="Equipment comfort" value={selectedClient.answers.equipment} />
                 {selectedClient.answers.avoidExercises && (

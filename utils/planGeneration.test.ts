@@ -670,9 +670,12 @@ describe('goal selection', () => {
     expect(bp[0].slots.length).toBeGreaterThan(0);
   });
 
-  it('offers Mobility, not General fitness, as a new-client choice', () => {
-    expect(QUESTIONNAIRE_GOALS).toContain('Mobility');
-    expect(QUESTIONNAIRE_GOALS).not.toContain('General fitness');
+  it('lists every aim a client can end up with, for the admin roster to group by', () => {
+    // The questionnaire offers friendlier names that resolve onto these; a
+    // main goal missing from this list would leave its clients ungrouped.
+    for (const aim of ['Muscle gain', 'Weight loss', 'General fitness', 'Endurance', 'Mobility']) {
+      expect(QUESTIONNAIRE_GOALS).toContain(aim);
+    }
   });
 });
 
@@ -858,6 +861,49 @@ describe('MIXAIM — aims are distributed across days, not mixed in a session', 
   it('falls back to a default aim when none were selected', () => {
     expect(assignAimsToDays([], 2)).toHaveLength(2);
     expect(assignAimsToDays([], 2)[0].secondary).toBeNull();
+  });
+
+  describe('secondary goals', () => {
+    it('never own a day — they ride along on the main goal\'s days', () => {
+      const days = assignAimsToDays(['Muscle gain'], 3, ['Mobility']);
+      expect(days.map(d => d.primary)).toEqual(['Muscle gain', 'Muscle gain', 'Muscle gain']);
+      expect(days.map(d => d.secondary)).toEqual(['Mobility', 'Mobility', 'Mobility']);
+    });
+
+    it('take the secondary slot instead of the next main goal when the client chose some', () => {
+      const days = assignAimsToDays(['Muscle gain', 'Endurance'], 4, ['Mobility']);
+      expect(days.map(d => d.primary)).toEqual(['Muscle gain', 'Endurance', 'Muscle gain', 'Endurance']);
+      expect(days.every(d => d.secondary === 'Mobility')).toBe(true);
+    });
+
+    it('rotate across the days when there are several', () => {
+      const days = assignAimsToDays(['Weight loss'], 4, ['Mobility', 'Muscle gain']);
+      expect(days.map(d => d.secondary)).toEqual(['Mobility', 'Muscle gain', 'Mobility', 'Muscle gain']);
+    });
+
+    it('ignore an aim that is already a main goal, and repeats', () => {
+      const days = assignAimsToDays(['Muscle gain'], 2, ['Muscle gain', 'Mobility', 'Mobility']);
+      expect(days.map(d => d.secondary)).toEqual(['Mobility', 'Mobility']);
+    });
+
+    it('change nothing when there are none', () => {
+      expect(assignAimsToDays(['Muscle gain', 'Mobility'], 3, [])).toEqual(
+        assignAimsToDays(['Muscle gain', 'Mobility'], 3)
+      );
+    });
+
+    it('add the secondary aim\'s essential work to every day, under its own prescription', () => {
+      const bp = buildCombinedBlueprint(['Muscle gain'], 3, 60, ['Mobility']);
+      expect(bp.every(d => d.primaryAim === 'Muscle gain' && d.secondaryAim === 'Mobility')).toBe(true);
+      expect(bp.every(d => d.slots.some(sl => sl.aimTier === 'secondary'))).toBe(true);
+      const withoutSecondary = buildCombinedBlueprint(['Muscle gain'], 3, 60);
+      expect(bp[0].slots.length).toBeGreaterThan(withoutSecondary[0].slots.length);
+    });
+
+    it('do not turn a training day into a mobility day', () => {
+      const bp = buildCombinedBlueprint(['Muscle gain'], 3, 60, ['Mobility']);
+      expect(bp.map(d => d.name)).toEqual(buildCombinedBlueprint(['Muscle gain'], 3, 60).map(d => d.name));
+    });
   });
 
   // MIXAIM-3: the primary block takes its whole prescription from the primary

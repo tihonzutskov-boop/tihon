@@ -1063,6 +1063,9 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
     // builds those from goal + days/week alone, the same way for every user.
     let assignedPlan = false;
     const goals = answers.goals || [];
+    // Supporting aims from the client's secondary goals. They add work to the
+    // days the main goals own and never take a day of their own.
+    const secondaryGoals = Array.isArray(answers.secondaryGoals) ? answers.secondaryGoals : [];
     if (goals.length > 0) {
       // Admin templates are authored for one aim at a time, so matching one
       // only applies when the client picked exactly one. Picking several
@@ -1070,8 +1073,10 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
       // session (see buildCombinedBlueprint) — there is no single template
       // that could represent that combination, so it always goes straight
       // to the rules engine instead of trying to match one.
+      // Same for a client who also chose secondary goals: the template was
+      // authored for the one aim alone, not for that aim plus supporting work.
       let match = null;
-      if (goals.length === 1) {
+      if (goals.length === 1 && secondaryGoals.length === 0) {
         // Without an ORDER BY, Postgres doesn't guarantee row order — if more
         // than one template shares a goal, .find() below would pick whichever
         // one the scan happened to return first, not necessarily the one the
@@ -1128,7 +1133,7 @@ app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
         // multi-aim submission both go through the same call — only the
         // array differs.
         const blueprintDays = buildCombinedBlueprint(
-          match ? [match.goal] : goals, profile.daysPerWeek, profile.sessionMinutes
+          match ? [match.goal] : goals, profile.daysPerWeek, profile.sessionMinutes, secondaryGoals
         );
 
         const library = await loadLibraryForGeneration();
