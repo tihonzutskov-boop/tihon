@@ -40,3 +40,22 @@ export const weeklySessions = <D extends { id: string }>(days: D[], doneIds: Rea
     status: doneIds.has(day.id) ? 'done' : dayIndex === nextIndex ? 'next' : 'todo',
   }));
 };
+
+/**
+ * When each plan day was last completed, counting only completions since
+ * `since`. Logs may arrive in any order; a day done twice reports the later.
+ */
+export const latestCompletionByDay = (
+  logs: { planDayId?: string | null; completedAt: string }[],
+  since: Date,
+): Map<string, string> => {
+  const latest = new Map<string, string>();
+  for (const log of logs) {
+    if (!log.planDayId) continue;
+    const at = new Date(log.completedAt).getTime();
+    if (Number.isNaN(at) || at < since.getTime()) continue;
+    const seen = latest.get(log.planDayId);
+    if (!seen || at > new Date(seen).getTime()) latest.set(log.planDayId, log.completedAt);
+  }
+  return latest;
+};

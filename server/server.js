@@ -275,11 +275,13 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
 app.post('/api/workouts', requireAuth, async (req, res) => {
   const { dayName, exerciseCount, planDayId } = req.body;
   try {
-    await pool.query(
-      'INSERT INTO workout_logs (user_id, day_name, exercise_count, plan_day_id) VALUES ($1, $2, $3, $4)',
+    // The completion time is stamped here, never sent by the client, and
+    // handed back so the client can show exactly the time that was recorded.
+    const inserted = await pool.query(
+      'INSERT INTO workout_logs (user_id, day_name, exercise_count, plan_day_id) VALUES ($1, $2, $3, $4) RETURNING completed_at',
       [req.user.id, dayName || 'Workout', exerciseCount || 0, planDayId || null]
     );
-    res.json({ success: true });
+    res.json({ success: true, completedAt: inserted.rows[0].completed_at });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error logging workout' });

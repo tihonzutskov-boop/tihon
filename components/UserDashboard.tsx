@@ -7,7 +7,8 @@ import GymMap from './GymMap';
 import TrainingQuestionnaire from './TrainingQuestionnaire';
 import WorkoutHistory from './WorkoutHistory';
 import { api } from '../services/api';
-import { hasGeneratedPlan, startOfWeek, weeklySessions } from '../utils/planSchedule';
+import { hasGeneratedPlan, startOfWeek, weeklySessions, latestCompletionByDay } from '../utils/planSchedule';
+import { describeCompleted } from '../utils/whenDone';
 
 interface UserDashboardProps {
   user: User;
@@ -25,6 +26,9 @@ interface UserDashboardProps {
   // H-1: the beginner rules are evidenced to 12 weeks. Past that the engine
   // stops adapting rather than extrapolating, and says so.
   planNeedsReview?: boolean;
+  // Changes each time a session is recorded, so the log reloads and the week
+  // reflects the session that was just finished.
+  logsVersion?: number;
   lang: Language;
 }
 
@@ -37,7 +41,7 @@ interface WorkoutLogEntry {
   planDayId?: string | null;
 }
 
-const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, workoutPlan, onLogout, onEnterGym, canOpenGymMap, onStartWorkout, questionnaire, onSubmitQuestionnaire, onOpenTutorials, planNeedsReview, lang }) => {
+const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, workoutPlan, onLogout, onEnterGym, canOpenGymMap, onStartWorkout, questionnaire, onSubmitQuestionnaire, onOpenTutorials, planNeedsReview, logsVersion = 0, lang }) => {
   const t = translations[lang];
 
   const [stats, setStats] = useState(user.stats || { workoutsCompleted: 0, totalMinutes: 0, streakDays: 0 });
@@ -59,12 +63,12 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, 
       setStats(stats);
       setLoadingLogs(false);
     });
-  }, []);
+  }, [logsVersion]);
 
   const weekStart = startOfWeek(new Date());
-  const doneThisWeekIds = new Set<string>(
-    logs.filter(l => l.planDayId && new Date(l.completedAt) >= weekStart).map(l => l.planDayId as string)
-  );
+  const completedAtById = latestCompletionByDay(logs, weekStart);
+  const doneThisWeekIds = new Set<string>(completedAtById.keys());
+  const now = new Date();
 
   const hasPlan = hasGeneratedPlan(workoutPlan.days);
   const sessions = weeklySessions<WorkoutDay>(workoutPlan.days, doneThisWeekIds);
@@ -287,6 +291,11 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, 
                     <span className="text-[10px] font-semibold text-slate-400 leading-tight min-h-[26px] flex items-center">
                       {translateDayName(day.name, dayIndex, lang)}
                     </span>
+                    {status === 'done' && (
+                      <span className="text-[10px] font-bold text-lime-400/90 leading-tight">
+                        {describeCompleted(completedAtById.get(day.id), now)?.day}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -305,7 +314,12 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, 
                     {selected.status === 'done' ? t.completed : selected.status === 'next' ? 'Up next' : 'To do'}
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 mb-4">{selected.day.exercises.length} {t.items}</p>
+                <p className="text-xs text-slate-500 mb-4">
+                  {selected.day.exercises.length} {t.items}
+                  {selected.status === 'done' && describeCompleted(completedAtById.get(selected.day.id), now) && (
+                    <span className="text-lime-400"> &middot; Completed {describeCompleted(completedAtById.get(selected.day.id), now)!.full}</span>
+                  )}
+                </p>
                 <div className="space-y-0">
                   {selected.day.exercises.map((ex, i) => (
                     <div key={ex.id} className={`flex items-center justify-between py-2.5 ${i > 0 ? 'border-t border-slate-800/80' : ''}`}>

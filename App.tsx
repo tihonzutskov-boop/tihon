@@ -115,6 +115,13 @@ const App: React.FC = () => {
   // middle one, and the pre-session check-in has to be able to end the session
   // before it starts (ILLNESS-4).
   const [sessionPhase, setSessionPhase] = useState<'idle' | 'pre' | 'training' | 'post'>('idle');
+  // When the server recorded the session that was just finished, for the
+  // "Session complete" screen. Null until the recording comes back — and if it
+  // fails, nothing is shown rather than a time that was never stored.
+  const [finishedAt, setFinishedAt] = useState<string | null>(null);
+  // Bumped each time a session is recorded, so the dashboard behind the session
+  // screens reloads its log instead of showing the week as it was before.
+  const [logsVersion, setLogsVersion] = useState(0);
   const [savingCheckIn, setSavingCheckIn] = useState(false);
   // H-1: past week 12 the beginner rules are no longer evidenced, so the engine
   // stops adapting and asks for a decision rather than extrapolating.
@@ -307,10 +314,15 @@ const App: React.FC = () => {
     // Deliberately specific about what was and wasn't lost: the sets are
     // already stored by this point (logExercises writes them, and reports its
     // own failures), so only the dashboard's tally missed this session.
-    if (!result.ok) setSaveNotice({
-      title: 'This session wasn’t counted',
-      detail: `${asSentence(result.error)} Everything you lifted was saved — only the workout count, streak and hours on your dashboard missed it.`,
-    });
+    if (result.ok) {
+      setFinishedAt(result.completedAt ?? null);
+      setLogsVersion(v => v + 1);
+    } else {
+      setSaveNotice({
+        title: 'This session wasn’t counted',
+        detail: `${asSentence(result.error)} Everything you lifted was saved — only the workout count, streak and hours on your dashboard missed it.`,
+      });
+    }
     return result;
   };
 
@@ -385,6 +397,7 @@ const App: React.FC = () => {
            activeGymId={activeGymId}
            workoutPlan={workoutPlan}
            planNeedsReview={planNeedsReview}
+           logsVersion={logsVersion}
            onLogout={handleLogout}
            onEnterGym={handleGymSelect}
            canOpenGymMap={canOpenGymMap}
@@ -432,6 +445,7 @@ const App: React.FC = () => {
              onClose={() => setSessionPhase('idle')}
              onFinish={() => {
                const d = workoutPlan.days[activeDayIndex];
+               setFinishedAt(null);
                recordCompletedWorkout(d.name, d.exercises.length, d.id);
                setSessionPhase('post');
              }}
@@ -442,6 +456,7 @@ const App: React.FC = () => {
              phase="post"
              dayName={workoutPlan.days[activeDayIndex].name}
              planDayId={workoutPlan.days[activeDayIndex].id}
+             completedAt={finishedAt}
              saving={savingCheckIn}
              onCancel={() => setSessionPhase('idle')}
              onSubmitPost={async (checkIn) => {

@@ -250,7 +250,7 @@ export const api = {
     dayName: string,
     exerciseCount: number,
     planDayId?: string,
-  ): Promise<{ ok: boolean; error?: string }> {
+  ): Promise<{ ok: boolean; error?: string; completedAt?: string }> {
     try {
       const response = await fetch(`${API_BASE}/workouts`, {
         method: 'POST',
@@ -261,7 +261,8 @@ export const api = {
         const body = await response.json().catch(() => ({}));
         return { ok: false, error: body.error || `Server responded with ${response.status}` };
       }
-      return { ok: true };
+      const body = await response.json().catch(() => ({}));
+      return { ok: true, completedAt: typeof body.completedAt === 'string' ? body.completedAt : undefined };
     } catch (err: any) {
       return { ok: false, error: err?.message || 'Could not reach the server' };
     }

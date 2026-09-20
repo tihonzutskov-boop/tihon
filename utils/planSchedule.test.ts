@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hasGeneratedPlan, startOfWeek, weeklySessions } from './planSchedule';
+import { hasGeneratedPlan, startOfWeek, weeklySessions, latestCompletionByDay } from './planSchedule';
 
 const day = (id: string, exercises = 1) => ({ id, exercises: Array.from({ length: exercises }, () => ({})) });
 
@@ -62,5 +62,39 @@ describe('where each session stands this week', () => {
 
   it('keeps each session\'s place in the plan, so starting it opens the right one', () => {
     expect(weeklySessions(days, new Set()).map(s => s.dayIndex)).toEqual([0, 1, 2]);
+  });
+});
+
+describe('when each session was last completed this week', () => {
+  const since = new Date('2026-09-21T00:00:00');
+
+  it('reports the completion time of each session done since the week began', () => {
+    const map = latestCompletionByDay([
+      { planDayId: 'a', completedAt: '2026-09-22T18:00:00' },
+      { planDayId: 'b', completedAt: '2026-09-23T07:30:00' },
+    ], since);
+    expect([...map.entries()]).toEqual([['a', '2026-09-22T18:00:00'], ['b', '2026-09-23T07:30:00']]);
+  });
+
+  it('reports the later time for a session done twice, whatever order the logs come in', () => {
+    const logs = [
+      { planDayId: 'a', completedAt: '2026-09-24T10:00:00' },
+      { planDayId: 'a', completedAt: '2026-09-22T10:00:00' },
+    ];
+    expect(latestCompletionByDay(logs, since).get('a')).toBe('2026-09-24T10:00:00');
+    expect(latestCompletionByDay([...logs].reverse(), since).get('a')).toBe('2026-09-24T10:00:00');
+  });
+
+  it('leaves out sessions from before this week', () => {
+    expect(latestCompletionByDay([{ planDayId: 'a', completedAt: '2026-09-20T23:59:00' }], since).size).toBe(0);
+  });
+
+  it('leaves out logs that are not tied to a plan day, or have a bad time', () => {
+    const map = latestCompletionByDay([
+      { planDayId: null, completedAt: '2026-09-22T10:00:00' },
+      { completedAt: '2026-09-22T10:00:00' },
+      { planDayId: 'a', completedAt: 'garbage' },
+    ], since);
+    expect(map.size).toBe(0);
   });
 });

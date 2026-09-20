@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Loader2, ShieldAlert, Sunrise } from 'lucide-react';
+import { Clock, Loader2, ShieldAlert, Sunrise } from 'lucide-react';
+import { describeCompleted } from '../utils/whenDone';
 import {
   verdictForCheckIn,
   type IllnessState, type SleepQuality, type Soreness,
@@ -11,6 +12,8 @@ interface Props {
   phase: 'pre' | 'post';
   dayName: string;
   planDayId?: string | null;
+  /** Post-session only: when the server recorded the session as finished. */
+  completedAt?: string | null;
   /** Post-session only: what the session logged, shown back before asking. */
   summary?: { exercises: number; sets: number; tonnageKg: number };
   /** Pre-session: called with the verdict once the client chooses to proceed. */
@@ -69,7 +72,7 @@ const Shell: React.FC<{ dayName: string; badge: string; children: React.ReactNod
 );
 
 const SessionCheckIn: React.FC<Props> = ({
-  phase, dayName, planDayId, summary, onProceed, onSubmitPost, onCancel, saving,
+  phase, dayName, planDayId, completedAt, summary, onProceed, onSubmitPost, onCancel, saving,
 }) => {
   // Pre-session. Defaults sit at the middle of each scale so a client with
   // nothing to report never has to answer anything — they just start.
@@ -98,10 +101,17 @@ const SessionCheckIn: React.FC<Props> = ({
   // --- post ---------------------------------------------------------------
 
   if (phase === 'post') {
+    const finished = describeCompleted(completedAt);
     return (
       <Shell dayName={dayName} badge="Done">
         <p className="text-[9.5px] font-extrabold uppercase tracking-[0.13em] text-lime-400 mb-1.5">Session complete</p>
         <h2 className="text-xl font-extrabold text-white mb-1">Nice work.</h2>
+        {finished && (
+          <p className="flex items-center gap-1.5 text-xs font-bold text-lime-300 mb-1">
+            <Clock className="w-3.5 h-3.5" />
+            Finished {finished.full}
+          </p>
+        )}
         <p className="text-xs text-slate-500 mb-4">Two taps and you're done.</p>
 
         {summary && (
