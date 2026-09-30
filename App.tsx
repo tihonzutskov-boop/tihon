@@ -15,6 +15,7 @@ import ExerciseTutorials from './components/ExerciseTutorials';
 import { GymZone, WorkoutPlan, Exercise, Gym, GymMachine, User, Language, WorkoutDay, EquipmentItem, LibraryExercise, QuestionnaireAnswers } from './types';
 import { DEFAULT_GYM } from './constants';
 import { api, DEFAULT_EQUIPMENT } from './services/api';
+import { rememberTimeZone } from './utils/timezone';
 import { getExerciseLocations } from './utils/exerciseMatcher';
 import { translations, getGymTranslation } from './translations';
 import { ChevronDown, MapPin, Loader2, ClipboardList, BookOpen, Globe, Search, X, Settings } from 'lucide-react';
@@ -36,22 +37,28 @@ const App: React.FC = () => {
   const [activeGymId, setActiveGymId] = useState<string>('default-gym');
   const [questionnaire, setQuestionnaire] = useState<QuestionnaireAnswers | null>(null);
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const fetchedGyms = await api.fetchGyms();
-        setGyms(fetchedGyms);
-        if (!fetchedGyms.find(g => g.id === activeGymId)) {
-          setActiveGymId(fetchedGyms[0]?.id || 'default-gym');
-        }
-        const fetchedEquipment = await api.fetchEquipment();
-        setEquipmentList(fetchedEquipment);
-        const fetchedExercises = await api.fetchExercises();
-        setLibraryExercises(fetchedExercises);
-      } catch (e) {
-        console.error("Failed to load gyms", e);
+  // The gym layouts, equipment and exercise library need a signed-in user, so
+  // this runs once a session exists — after restoring one on page load, or after
+  // signing in — rather than on every visit, where a visitor would only be
+  // refused.
+  const loadLibrary = async () => {
+    try {
+      const fetchedGyms = await api.fetchGyms();
+      setGyms(fetchedGyms);
+      if (!fetchedGyms.find(g => g.id === activeGymId)) {
+        setActiveGymId(fetchedGyms[0]?.id || 'default-gym');
       }
-    };
+      const fetchedEquipment = await api.fetchEquipment();
+      setEquipmentList(fetchedEquipment);
+      const fetchedExercises = await api.fetchExercises();
+      setLibraryExercises(fetchedExercises);
+    } catch (e) {
+      console.error("Failed to load gyms", e);
+    }
+  };
+
+  useEffect(() => {
+    rememberTimeZone();
 
     // Restore an existing session (httpOnly cookie) on page load/refresh.
     const restoreSession = async () => {
@@ -59,17 +66,16 @@ const App: React.FC = () => {
       if (existingUser) {
         setUser(existingUser);
         setCurrentView(existingUser.role === 'admin' ? 'admin' : 'dashboard');
-        await Promise.all([loadMyPlan(), loadMyQuestionnaire()]);
+        await Promise.all([loadLibrary(), loadMyPlan(), loadMyQuestionnaire()]);
       }
     };
 
-    // Both must finish before the loading gate lifts — otherwise the
-    // gym-data fetch (usually faster) clears isLoading first and briefly
-    // renders the landing page before the session check flips currentView
-    // to dashboard/admin, showing a flash of the marketing page to a
+    // The loading gate lifts only once the session check has finished —
+    // otherwise the landing page would flash for a moment before the check
+    // flips currentView to dashboard/admin, showing the marketing page to a
     // user who is actually already logged in.
     setIsLoading(true);
-    Promise.all([loadData(), restoreSession()]).finally(() => setIsLoading(false));
+    restoreSession().finally(() => setIsLoading(false));
   }, []);
 
   const loadMyQuestionnaire = async () => {
@@ -334,7 +340,10 @@ const App: React.FC = () => {
     setShowAuthModal(true);
   };
   
-  const handleAuthSuccess = (u: User) => {
+  const handleAuthSuccess = async (u: User) => {
+    // The library is loaded before the dashboard appears, so it never mounts
+    // with no gyms in it and picks a gym that is not there.
+    await loadLibrary();
     setUser(u);
     if (u.role === 'admin') {
       setCurrentView('admin');
@@ -411,9 +420,14 @@ const App: React.FC = () => {
            }}
            questionnaire={questionnaire}
            onSubmitQuestionnaire={async (answers) => {
-             const { assignedPlan } = await api.saveQuestionnaire(answers);
+             const result = await api.saveQuestionnaire(answers);
+             // Only what the server actually stored counts as saved. Marking it
+             // saved regardless told a client whose save failed that their
+             // plan was on its way, and it never was.
+             if (!result.ok) return { ok: false, error: result.error };
              setQuestionnaire(answers);
-             if (assignedPlan) await loadMyPlan();
+             if (result.assignedPlan) await loadMyPlan();
+             return { ok: true };
            }}
            onOpenTutorials={() => setTutorialsOpen(true)}
            lang={lang}

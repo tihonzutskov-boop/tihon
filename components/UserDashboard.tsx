@@ -21,7 +21,7 @@ interface UserDashboardProps {
   canOpenGymMap?: boolean;
   onStartWorkout: (dayIndex: number, gymId: string) => void;
   questionnaire: QuestionnaireAnswers | null;
-  onSubmitQuestionnaire: (answers: QuestionnaireAnswers) => void;
+  onSubmitQuestionnaire: (answers: QuestionnaireAnswers) => Promise<{ ok: boolean; error?: string }>;
   onOpenTutorials: () => void;
   // H-1: the beginner rules are evidenced to 12 weeks. Past that the engine
   // stops adapting rather than extrapolating, and says so.

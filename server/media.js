@@ -20,7 +20,7 @@ export const sendDataUri = (res, dataUri) => {
   const buffer = Buffer.from(match[2], 'base64');
   res.set('Content-Type', match[1]);
   res.set('Content-Length', String(buffer.length));
-  res.set('Cache-Control', 'public, max-age=31536000, immutable');
+  res.set('Cache-Control', 'private, max-age=31536000, immutable');
   return res.end(buffer);
 };
 
@@ -156,7 +156,7 @@ export const serveVideo = (pool, table, dataColumn, typeColumn, sizeColumn, fall
 
     res.set('Content-Type', meta.rows[0].mime || 'application/octet-stream');
     res.set('Accept-Ranges', 'bytes');
-    res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    res.set('Cache-Control', 'private, max-age=31536000, immutable');
 
     const range = parseRange(req.headers?.range, chunkedSize);
     if (range?.unsatisfiable) {
@@ -211,7 +211,7 @@ export const serveBinaryColumn = (pool, table, dataColumn, typeColumn, fallbackT
     const contentType = meta.rows[0].mime || 'application/octet-stream';
     res.set('Content-Type', contentType);
     res.set('Accept-Ranges', 'bytes');
-    res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    res.set('Cache-Control', 'private, max-age=31536000, immutable');
 
     const range = parseRange(req.headers?.range, size);
     if (range?.unsatisfiable) {

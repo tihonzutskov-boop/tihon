@@ -469,18 +469,25 @@ export const api = {
     }
   },
 
-  async saveQuestionnaire(answers: QuestionnaireAnswers): Promise<{ assignedPlan: boolean }> {
+  // `ok` is whether the answers were stored at all. `assignedPlan` is a
+  // separate question: answers can be saved and the plan still not generated
+  // (no gym, nothing eligible), which reaches an admin through the issues queue
+  // and is not something the client did wrong.
+  async saveQuestionnaire(answers: QuestionnaireAnswers): Promise<{ ok: boolean; assignedPlan: boolean; error?: string }> {
     try {
       const response = await fetch(`${API_BASE}/questionnaire/me`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ answers }),
       });
-      if (!response.ok) return { assignedPlan: false };
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        return { ok: false, assignedPlan: false, error: body.error || `The server responded with ${response.status}.` };
+      }
       const data = await response.json();
-      return { assignedPlan: !!data.assignedPlan };
-    } catch {
-      return { assignedPlan: false };
+      return { ok: true, assignedPlan: !!data.assignedPlan };
+    } catch (err: any) {
+      return { ok: false, assignedPlan: false, error: err?.message || 'Could not reach the server.' };
     }
   },
 

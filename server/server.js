@@ -7,13 +7,18 @@ import cookieParser from 'cookie-parser';
 import { Pool } from 'pg';
 import {
   verifyGoogleToken,
-  signSession,
+  resolveGoogleAccount,
   setSessionCookie,
   clearSessionCookie,
-  requireAuth,
-  createRequireAdmin,
+  createAuth,
   isAdminEmail,
 } from './auth.js';
+import {
+  validateQuestionnaire, validatePlanPayload, validateExerciseLogs,
+  validateCompletedWorkout, validateCheckinText,
+} from './validate.js';
+import { createRateLimiter, createJsonBodyParser, byUserOrIp } from './limits.js';
+import { computeStreak, timeZoneFromRequest, todayIn } from './stats.js';
 import { mediaUrl, sendDataUri, serveMediaColumn, serveVideo, blobWrite } from './media.js';
 import * as r2 from './r2.js';
 // Compiled from utils/planGeneration.ts by `npm run build:engine` — the same
@@ -52,7 +57,7 @@ const pool = new Pool({
   // forever, so a leak degrades the pool over minutes instead of permanently.
   idleTimeoutMillis: 30_000,
 });
-const requireAdmin = createRequireAdmin(pool);
+const { requireAuth, requireAdmin, startSession, endSession } = createAuth(pool);
 
 // node-postgres emits 'error' on the pool when an *idle* connection dies —
 // a database restart, an idle timeout, a network blip. On an EventEmitter an
@@ -136,52 +141,84 @@ const initDb = async (attempt = 1) => {
 };
 initDb();
 
+// Behind Render's proxy the address a request arrives from is the proxy's, so
+// per-caller limits would count everyone as one person. One hop is trusted.
+app.set('trust proxy', 1);
 app.use(cookieParser());
-// Sized against the 512MB instance, not against how long a video an admin
-// might want. Express buffers the raw body, then the UTF-16 string, then the
-// parsed object, so a body of N MB costs roughly 5N MB of heap at peak: 60mb
-// alone could exhaust the instance and get it OOM-killed (exit 137). 12mb of
-// base64 is about a 9MB source file — enough for a short demo clip.
-// Raising this only becomes safe on a larger instance; the real fix for long
-// videos is uploading to object storage instead of embedding base64 in JSON.
-app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '12mb' }));
+
+// Sized against the 512MB instance. Express buffers the raw body, then the
+// UTF-16 string, then the parsed object, so a body of N MB costs roughly 5N MB
+// of heap at peak. Everyone gets a small limit; the larger one (a base64 image
+// or clip in the admin screens) is only read for a signed-in admin — see
+// createJsonBodyParser. The real fix for long videos is object storage.
+app.use(createJsonBodyParser({
+  smallLimit: process.env.JSON_BODY_LIMIT_SMALL || '1mb',
+  bigLimit: process.env.JSON_BODY_LIMIT || '12mb',
+  bigPaths: /^\/api\/(equipment|exercises|gyms|plan-templates)(\/|$)/,
+  requireAdmin,
+}));
+
+// Generous on purpose: a gym's members share one Wi-Fi address, and a busy
+// morning can put a few dozen genuine sign-ins from it inside a quarter hour.
+const authLimiter = createRateLimiter({
+  windowMs: 15 * 60_000, max: 120,
+  message: 'Too many sign-in attempts. Please wait a few minutes and try again.',
+});
+const questionnaireLimiter = createRateLimiter({
+  windowMs: 60 * 60_000, max: 12, key: byUserOrIp,
+  message: 'You have updated your answers many times in a short while. Please try again later.',
+});
+// A ceiling on how fast anyone can write, well above any real use of the app.
+// Not applied to the admin-only areas: an admin saving a few hundred tagged
+// exercises in one go sends a request for each, and those routes already require
+// a signed-in admin.
+const writeLimiter = createRateLimiter({
+  windowMs: 60_000, max: 240,
+  message: 'Too many requests. Please slow down and try again in a moment.',
+});
+const ADMIN_ONLY_PATHS = /^\/api\/(equipment|exercises|gyms|plan-templates|coaching|storage)(\/|$)/;
+app.use('/api', (req, res, next) => (
+  ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && !ADMIN_ONLY_PATHS.test(req.originalUrl.split('?')[0])
+    ? writeLimiter(req, res, next)
+    : next()
+));
 
 // --- Auth Routes ---
 
-const computeStats = async (client, userId) => {
-  const result = await client.query(
+const computeStats = async (client, userId, tz = 'UTC') => {
+  // Days are grouped in the client's own zone, as text so nothing depends on
+  // the server's zone when they are read back.
+  const query = (zone) => client.query(
     `SELECT COUNT(*)::int AS count,
             COALESCE(SUM(duration_minutes), 0)::int AS total_minutes,
-            ARRAY_AGG(DISTINCT completed_at::date ORDER BY completed_at::date DESC) AS days
+            ARRAY_AGG(DISTINCT to_char(completed_at AT TIME ZONE $2, 'YYYY-MM-DD')
+                      ORDER BY to_char(completed_at AT TIME ZONE $2, 'YYYY-MM-DD') DESC) AS days
      FROM workout_logs WHERE user_id = $1`,
-    [userId]
+    [userId, zone]
   );
-  const { count, total_minutes, days } = result.rows[0];
-
-  let streakDays = 0;
-  if (days && days.length > 0) {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    let cursor = today;
-    for (const d of days) {
-      const day = new Date(d); day.setHours(0, 0, 0, 0);
-      const diff = Math.round((cursor - day) / 86400000);
-      if (diff === 0 || diff === 1) {
-        streakDays++;
-        cursor = day;
-      } else {
-        break;
-      }
-    }
+  let result;
+  try {
+    result = await query(tz);
+  } catch (err) {
+    // A zone name the browser knows and Postgres does not. Counting in UTC is
+    // better than failing to load the dashboard.
+    if (tz === 'UTC') throw err;
+    result = await query('UTC');
+    tz = 'UTC';
   }
-
-  return { workoutsCompleted: count, totalMinutes: total_minutes, streakDays };
+  const { count, total_minutes, days } = result.rows[0];
+  return {
+    workoutsCompleted: count,
+    totalMinutes: total_minutes,
+    streakDays: computeStreak(days, todayIn(tz)),
+  };
 };
 
 // Sign in with Google — verifies the ID token, finds or creates the user,
 // and issues our own httpOnly session cookie. Admin role is granted only to
 // emails listed in ADMIN_EMAILS — never client-controlled.
-app.post('/api/auth/google', async (req, res) => {
-  const { idToken } = req.body;
+app.post('/api/auth/google', authLimiter, async (req, res) => {
+  const { idToken } = req.body || {};
   let client;
 
   // Token verification and the database work are separated on purpose. They
@@ -209,7 +246,19 @@ app.post('/api/auth/google', async (req, res) => {
     const { email, name, sub: googleId, picture } = payload;
 
     client = await pool.connect();
-    const existing = await client.query('SELECT * FROM users WHERE email = $1', [email]);
+    // Matched on Google's account id first, email second — see
+    // resolveGoogleAccount for why email alone is not an identity.
+    const byGoogleId = (await client.query('SELECT * FROM users WHERE google_id = $1', [googleId])).rows[0];
+    const byEmail = byGoogleId
+      ? undefined
+      : (await client.query('SELECT * FROM users WHERE LOWER(email) = LOWER($1)', [email])).rows[0];
+    const account = resolveGoogleAccount({ byGoogleId, byEmail, sub: googleId });
+
+    if (account.action === 'reject') {
+      return res.status(403).json({
+        error: 'This email address is already linked to a different Google account.',
+      });
+    }
 
     // ADMIN_EMAILS is the sole source of truth for admin access, re-derived
     // on every login — this makes removing an email from it actually revoke
@@ -217,24 +266,24 @@ app.post('/api/auth/google', async (req, res) => {
     const role = isAdminEmail(email) ? 'admin' : 'user';
     let user;
 
-    if (existing.rows.length > 0) {
-      const updated = await client.query(
-        'UPDATE users SET name=$1, google_id=$2, avatar_url=$3, role=$4 WHERE email=$5 RETURNING *',
-        [name, googleId, picture, role, email]
-      );
-      user = updated.rows[0];
-    } else {
+    if (account.action === 'create') {
       const created = await client.query(
         'INSERT INTO users (name, email, role, google_id, avatar_url) VALUES ($1, $2, $3, $4, $5) RETURNING *',
         [name, email, role, googleId, picture]
       );
       user = created.rows[0];
+    } else {
+      const updated = await client.query(
+        'UPDATE users SET name=$1, google_id=$2, avatar_url=$3, role=$4 WHERE id=$5 RETURNING *',
+        [name, googleId, picture, role, account.user.id]
+      );
+      user = updated.rows[0];
     }
 
     const { password_hash, ...userProfile } = user;
-    userProfile.stats = await computeStats(client, user.id);
+    userProfile.stats = await computeStats(client, user.id, timeZoneFromRequest(req));
 
-    setSessionCookie(res, signSession(user));
+    setSessionCookie(res, await startSession(client, user));
     res.json({ user: userProfile });
   } catch (err) {
     // Google already vouched for this person by the time we get here, so this
@@ -246,7 +295,17 @@ app.post('/api/auth/google', async (req, res) => {
   }
 });
 
-app.post('/api/auth/logout', (req, res) => {
+app.post('/api/auth/logout', async (req, res) => {
+  // Ending the session on the server is what makes signing out mean something:
+  // deleting the cookie only removes the browser's copy of a token that would
+  // otherwise stay valid for its full 30 days.
+  try {
+    await endSession(req);
+  } catch (err) {
+    console.error('Could not end session:', err.message);
+    clearSessionCookie(res);
+    return res.status(500).json({ error: 'Signed out here, but the server could not end the session.' });
+  }
   clearSessionCookie(res);
   res.json({ success: true });
 });
@@ -260,7 +319,7 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
       return res.status(401).json({ error: 'User not found' });
     }
     const { password_hash, ...userProfile } = result.rows[0];
-    userProfile.stats = await computeStats(client, req.user.id);
+    userProfile.stats = await computeStats(client, req.user.id, timeZoneFromRequest(req));
     res.json({ user: userProfile });
   } catch (err) {
     console.error(err);
@@ -273,13 +332,15 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
 // --- Workout Tracking Routes ---
 
 app.post('/api/workouts', requireAuth, async (req, res) => {
-  const { dayName, exerciseCount, planDayId } = req.body;
+  const checked = validateCompletedWorkout(req.body);
+  if (!checked.ok) return res.status(400).json({ error: checked.error });
+  const { dayName, exerciseCount, planDayId } = checked.value;
   try {
     // The completion time is stamped here, never sent by the client, and
     // handed back so the client can show exactly the time that was recorded.
     const inserted = await pool.query(
       'INSERT INTO workout_logs (user_id, day_name, exercise_count, plan_day_id) VALUES ($1, $2, $3, $4) RETURNING completed_at',
-      [req.user.id, dayName || 'Workout', exerciseCount || 0, planDayId || null]
+      [req.user.id, dayName, exerciseCount, planDayId]
     );
     res.json({ success: true, completedAt: inserted.rows[0].completed_at });
   } catch (err) {
@@ -296,7 +357,7 @@ app.get('/api/workouts/me', requireAuth, async (req, res) => {
       'SELECT * FROM workout_logs WHERE user_id = $1 ORDER BY completed_at DESC LIMIT 20',
       [req.user.id]
     );
-    const stats = await computeStats(client, req.user.id);
+    const stats = await computeStats(client, req.user.id, timeZoneFromRequest(req));
     res.json({
       logs: logsRes.rows.map(row => ({
         id: row.id,
@@ -334,15 +395,9 @@ const roundLoad = (kg) => Math.round(kg * 2) / 2;
 // and the engine going blind.
 
 app.post('/api/exercise-logs', requireAuth, async (req, res) => {
-  const entries = Array.isArray(req.body) ? req.body : [req.body];
-  if (entries.length === 0) return res.status(400).json({ error: 'Nothing to log' });
-
-  const invalid = entries.find(e =>
-    !e || typeof e.exerciseId !== 'string' || !e.exerciseId ||
-    !Array.isArray(e.sets) ||
-    (e.effort != null && !(Number.isInteger(e.effort) && e.effort >= 1 && e.effort <= 5))
-  );
-  if (invalid) return res.status(400).json({ error: 'Each entry needs an exerciseId, a sets array, and effort 1-5 if given' });
+  const checked = validateExerciseLogs(req.body);
+  if (!checked.ok) return res.status(400).json({ error: checked.error });
+  const entries = checked.value;
 
   let client;
   try {
@@ -362,11 +417,11 @@ app.post('/api/exercise-logs', requireAuth, async (req, res) => {
           req.user.id,
           e.exerciseId,
           e.planDayId || null,
-          e.weight ?? null,
-          e.weightUnit || 'kg',
-          JSON.stringify(e.sets || []),
-          e.effort ?? null,
-          e.pain === true,
+          e.weight,
+          e.weightUnit,
+          JSON.stringify(e.sets),
+          e.effort,
+          e.pain,
           e.painArea || null,
           e.painNote || null,
         ]
@@ -377,7 +432,7 @@ app.post('/api/exercise-logs', requireAuth, async (req, res) => {
       // the next session is read. Once a movement is pulled the client stops
       // logging it, so the pain that justified it stops appearing — a derived
       // withdrawal would erase itself. PAIN-5/6/7.
-      if (e.pain === true) {
+      if (e.pain) {
         const priorRes = await client.query(
           'SELECT COUNT(*)::int AS n FROM exercise_withdrawals WHERE user_id = $1 AND exercise_id = $2',
           [req.user.id, e.exerciseId]
@@ -454,6 +509,8 @@ const inEnum = (value, allowed) => value == null || allowed.includes(value);
 
 app.post('/api/session-checkins', requireAuth, async (req, res) => {
   const c = req.body || {};
+  const text = validateCheckinText(c);
+  if (!text.ok) return res.status(400).json({ error: text.error });
   if (!CHECKIN_ENUMS.phase.includes(c.phase)) {
     return res.status(400).json({ error: 'A check-in needs a phase of pre or post' });
   }
@@ -480,7 +537,7 @@ app.post('/api/session-checkins', requireAuth, async (req, res) => {
        RETURNING id, recorded_at`,
       [
         req.user.id,
-        c.planDayId || null,
+        text.value.planDayId,
         c.phase,
         c.readiness ?? null,
         c.sleep || null,
@@ -492,7 +549,7 @@ app.post('/api/session-checkins', requireAuth, async (req, res) => {
         // DELOAD-6 depends on this being absent when the session was finished
         // in full — a stale reason on a complete session would read as fatigue.
         c.completedFully === false ? c.cutShortReason || null : null,
-        c.note || null,
+        text.value.note,
       ]
     );
     return res.json({ success: true, id: result.rows[0].id, recordedAt: result.rows[0].recorded_at });
@@ -905,7 +962,9 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
 });
 
 app.put('/api/plans/me', requireAuth, async (req, res) => {
-  const { name, days } = req.body;
+  const checked = validatePlanPayload(req.body);
+  if (!checked.ok) return res.status(400).json({ error: checked.error });
+  const { name, days } = checked.value;
   try {
     await pool.query(
       // started_at is set on the first insert and deliberately left out of the
@@ -916,7 +975,7 @@ app.put('/api/plans/me', requireAuth, async (req, res) => {
        VALUES ($1, $2, $3, now(), now())
        ON CONFLICT (user_id) DO UPDATE SET
          name=$2, days=$3, updated_at=now()`,
-      [req.user.id, name || 'My Training Plan', JSON.stringify(days || [])]
+      [req.user.id, name, JSON.stringify(days)]
     );
     res.json({ success: true });
   } catch (err) {
@@ -1014,8 +1073,13 @@ const recordGenerationFailure = async (userId, templateId, gymId, reason, detail
   );
 };
 
-app.put('/api/questionnaire/me', requireAuth, async (req, res) => {
-  const { answers } = req.body;
+app.put('/api/questionnaire/me', requireAuth, questionnaireLimiter, async (req, res) => {
+  // Everything downstream — how many days the generator builds, which aims it
+  // combines — is driven by these answers, so they are checked and cleaned
+  // before anything is stored or acted on. What is stored is the cleaned copy.
+  const checked = validateQuestionnaire(req.body?.answers);
+  if (!checked.ok) return res.status(400).json({ error: checked.error });
+  const answers = checked.value;
   try {
     await pool.query(
       `INSERT INTO training_questionnaires (user_id, answers, submitted_at)
@@ -1459,7 +1523,7 @@ app.delete('/api/plan-templates/:id', requireAdmin, async (req, res) => {
 // --- Gym Routes ---
 
 // GET All Gyms (with nested zones/annexes)
-app.get('/api/gyms', async (req, res) => {
+app.get('/api/gyms', requireAuth, async (req, res) => {
   let client;
   try {
     client = await pool.connect();
@@ -1619,7 +1683,7 @@ app.delete('/api/gyms/:id', requireAdmin, async (req, res) => {
 // --- Equipment Library Routes ---
 
 // GET All Equipment
-app.get('/api/equipment', async (req, res) => {
+app.get('/api/equipment', requireAuth, async (req, res) => {
   let client;
   try {
     client = await pool.connect();
@@ -1709,12 +1773,12 @@ app.delete('/api/equipment/:id', requireAdmin, async (req, res) => {
   }
 });
 
-app.get('/api/equipment/:id/image', serveMediaColumn(pool, 'equipment', 'image_url'));
+app.get('/api/equipment/:id/image', requireAuth, serveMediaColumn(pool, 'equipment', 'image_url'));
 
 // --- Exercise Library Routes ---
 
 // GET All Exercises
-app.get('/api/exercises', async (req, res) => {
+app.get('/api/exercises', requireAuth, async (req, res) => {
   let client;
   try {
     client = await pool.connect();
@@ -1799,9 +1863,10 @@ app.get('/api/exercises', async (req, res) => {
   }
 });
 
-app.get('/api/exercises/:id/image', serveMediaColumn(pool, 'exercises', 'image_url'));
+app.get('/api/exercises/:id/image', requireAuth, serveMediaColumn(pool, 'exercises', 'image_url'));
 app.get(
   '/api/exercises/:id/tutorial-video',
+  requireAuth,
   serveVideo(pool, 'exercises', 'tutorial_video', 'tutorial_video_type', 'tutorial_video_size', 'tutorial_video_url')
 );
 

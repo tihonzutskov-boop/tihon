@@ -381,3 +381,22 @@ ALTER TABLE exercises ADD COLUMN IF NOT EXISTS cooldown_note TEXT;
 -- equipment_ids: the guess would put it straight back, which is how a group
 -- class studio kept receiving floor exercises with no way to stop it.
 ALTER TABLE zones ADD COLUMN IF NOT EXISTS floor_space BOOLEAN;
+
+-- Every dashboard load and sign-in counts one user's completed sessions; without
+-- this each of those reads the whole table.
+CREATE INDEX IF NOT EXISTS idx_workout_logs_user_completed
+  ON workout_logs (user_id, completed_at DESC);
+
+-- Sign-in looks accounts up by Google's account id before falling back to email.
+CREATE INDEX IF NOT EXISTS idx_users_google_id ON users (google_id);
+
+-- A signed session is only valid while its row exists, which is what lets
+-- signing out end it on the server rather than just in the browser.
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions (user_id);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_expiry ON user_sessions (expires_at);

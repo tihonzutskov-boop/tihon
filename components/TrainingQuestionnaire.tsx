@@ -12,7 +12,9 @@ interface TrainingQuestionnaireProps {
   existing: QuestionnaireAnswers | null;
   userName: string;
   gyms?: { id: string; name: string }[];
-  onSubmit: (answers: QuestionnaireAnswers) => void;
+  // Resolves once the answers have been saved (or not). The questionnaire stays
+  // open until then, so a failure can be shown here with everything still filled in.
+  onSubmit: (answers: QuestionnaireAnswers) => Promise<{ ok: boolean; error?: string }>;
 }
 
 type Mode = 'prompt' | 'form';
@@ -144,6 +146,8 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
   const [step, setStep] = useState(0);
   const [maxReached, setMaxReached] = useState(0);
   const [form, setForm] = useState<FormState>(() => toFormState(existing));
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm(prev => ({ ...prev, [key]: value }));
   const toggleMulti = (key: 'injuryAreas', value: string) => {
@@ -192,9 +196,9 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
     return true;
   };
 
-  const goNext = () => {
+  const goNext = async () => {
     const key = STEP_KEYS[step];
-    if (!isStepValid(key)) return;
+    if (!isStepValid(key) || submitting) return;
     if (step === STEP_KEYS.length - 1) {
       const payload: QuestionnaireAnswers = {
         age: Number(form.age),
@@ -214,8 +218,17 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
         medicalClearance: hasHealthInfo ? form.medicalClearance : undefined,
         consent: hasHealthInfo ? form.consent : undefined,
       };
-      onSubmit(payload);
-      setMode('prompt');
+      setSubmitting(true);
+      setSubmitError(null);
+      try {
+        const result = await onSubmit(payload);
+        if (result.ok) setMode('prompt');
+        else setSubmitError(result.error || 'Your answers could not be saved. Please try again.');
+      } catch (err: any) {
+        setSubmitError(err?.message || 'Your answers could not be saved. Please try again.');
+      } finally {
+        setSubmitting(false);
+      }
       return;
     }
     const next = step + 1;
@@ -223,6 +236,7 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
     if (next > maxReached) setMaxReached(next);
   };
   const goBack = () => {
+    setSubmitError(null);
     if (step === 0) { cancel(); return; }
     setStep(step - 1);
   };
@@ -473,19 +487,26 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
         </div>
       )}
 
+      {submitError && (
+        <div role="alert" className="mt-6 p-3 rounded-xl bg-red-500/10 border border-red-500/40">
+          <p className="text-xs font-bold text-red-300">Your answers were not saved.</p>
+          <p className="text-[11.5px] text-slate-400 mt-1 leading-relaxed">{submitError} Nothing you entered has been lost — try again.</p>
+        </div>
+      )}
       <div className="flex gap-2.5 mt-7 pt-5 border-t border-slate-800">
         <button
           onClick={goBack}
+          disabled={submitting}
           className="flex-shrink-0 px-5 py-3 rounded-xl text-xs font-extrabold bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition-colors"
         >
           {step === 0 ? 'Cancel' : '← Back'}
         </button>
         <button
           onClick={goNext}
-          disabled={!valid}
+          disabled={!valid || submitting}
           className="flex-1 py-3 rounded-xl text-xs font-extrabold bg-lime-500 hover:bg-lime-400 disabled:opacity-40 disabled:cursor-default text-slate-950 transition-colors"
         >
-          {isLast ? 'Submit questionnaire' : 'Next →'}
+          {isLast ? (submitting ? 'Saving…' : 'Submit questionnaire') : 'Next →'}
         </button>
       </div>
     </div>
