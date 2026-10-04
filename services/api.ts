@@ -1,5 +1,6 @@
 
 import { Gym, User, LibraryExercise, EquipmentItem, GymZone, GymMachine, EquipmentType, WorkoutDay, QuestionnaireAnswers, PlanTemplate, CoachingClient, GenerationFailureRecord, ExerciseLog } from '../types';
+import type { GymUsage } from '../utils/equipmentUsage';
 import { DEFAULT_GYM } from '../constants';
 import type { ClientHistory, LoggedExercise } from '../utils/workoutHistory';
 import type { SessionCheckIn } from '../utils/sessionCheckIn';
@@ -539,6 +540,21 @@ export const api = {
       return data.failures;
     } catch {
       return [];
+    }
+  },
+
+  // How much a gym's zones and machines actually get used — admin-only, for
+  // the usage heatmap. `days` narrows to a recent window; omitted means all time.
+  async fetchGymEquipmentUsage(gymId: string, days?: number): Promise<GymUsage> {
+    const empty: GymUsage = { byZone: [], byMachine: [] };
+    try {
+      const query = days ? `?days=${days}` : '';
+      const response = await fetch(`${API_BASE}/coaching/gyms/${gymId}/equipment-usage${query}`);
+      if (!response.ok) return empty;
+      const data = await response.json();
+      return { byZone: data.byZone || [], byMachine: data.byMachine || [] };
+    } catch {
+      return empty;
     }
   },
 

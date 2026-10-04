@@ -571,6 +571,11 @@ export interface ExerciseLog {
   id?: number;
   exerciseId: string;
   planDayId?: string;
+  // Where this was actually done, from the same routing the session showed
+  // the client — null together whenever the exercise had nowhere to route to.
+  gymId?: string | null;
+  zoneId?: string | null;
+  machineId?: string | null;
   weight?: number | null;      // null for bodyweight movements
   weightUnit?: 'kg' | 'lb';
   sets: LoggedSet[];

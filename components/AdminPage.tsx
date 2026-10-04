@@ -8,10 +8,11 @@ import ExerciseTutorials from './ExerciseTutorials';
 import EquipmentLibrary, { getEquipmentIconComponent } from './EquipmentLibrary';
 import AdminCoaching from './AdminCoaching';
 import { QuickAddEquipmentModal } from './QuickAddEquipmentModal';
+import UsageHeatmap from './UsageHeatmap';
 import { api, DEFAULT_EQUIPMENT } from '../services/api';
 import { evaluateZoneExercises, getZoneEquipmentIds, floorSpaceIsAssumed } from '../utils/equipmentMatcher';
 import { getExerciseLocations } from '../utils/exerciseMatcher';
-import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Eraser, Eye, EyeOff, Footprints, MapPin, LayoutTemplate, DoorOpen, Lock, Bath, Droplets, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle, Copy, ClipboardPaste, Dumbbell, Activity, Zap, Target, Layers, Box, Wind, RotateCcw, ArrowUpRight, ArrowUpLeft, ArrowDownRight, ArrowDownLeft, ArrowRight, ArrowUp, ArrowDown, MoveDown, Circle, Waves, Timer, Sparkles, Search, Video, Play, Film, Filter, X, ExternalLink, Compass, SlidersHorizontal, ChevronRight, Bookmark, BookmarkCheck, Camera, Users } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Eraser, Eye, EyeOff, Footprints, MapPin, LayoutTemplate, DoorOpen, Lock, Bath, Droplets, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle, Copy, ClipboardPaste, Dumbbell, Activity, Zap, Target, Layers, Box, Wind, RotateCcw, ArrowUpRight, ArrowUpLeft, ArrowDownRight, ArrowDownLeft, ArrowRight, ArrowUp, ArrowDown, MoveDown, Circle, Waves, Timer, Sparkles, Search, Video, Play, Film, Filter, X, ExternalLink, Compass, SlidersHorizontal, ChevronRight, Bookmark, BookmarkCheck, Camera, Users, Flame } from 'lucide-react';
 import { MACHINE_ICONS_LIST as MACHINE_ICONS, ICON_GROUPS } from '../utils/equipmentIcons';
 import { snapWallEndpoint } from '../utils/wallSnapping';
 
@@ -157,7 +158,7 @@ const GymDashboard: React.FC<{
   );
 };
 
-type AdminSection = 'gyms' | 'layout' | 'equipment' | 'exercises' | 'coaching';
+type AdminSection = 'gyms' | 'layout' | 'equipment' | 'exercises' | 'coaching' | 'usage';
 
 interface GymLayoutEditorProps {
   initialGym: Gym;
@@ -1371,6 +1372,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onS
     { key: 'layout', label: 'Floor Plan', icon: LayoutTemplate },
     { key: 'equipment', label: 'Equipment Library', icon: Layers, iconClassName: 'text-lime-400' },
     { key: 'exercises', label: 'Exercise Library', icon: Dumbbell, iconClassName: 'text-blue-400' },
+    { key: 'usage', label: 'Usage Heatmap', icon: Flame, iconClassName: 'text-amber-400' },
     { key: 'coaching', label: 'Coaching', icon: Users, iconClassName: 'text-lime-400' },
   ];
   const activeSectionMeta = SECTIONS.find(s => s.key === activeTab)!;
@@ -2700,6 +2702,8 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onS
           )}
         </div>
         </>
+        ) : activeTab === 'usage' ? (
+          <UsageHeatmap gym={gym} equipmentList={equipmentList} />
         ) : activeTab === 'equipment' ? (
           <EquipmentLibrary
             gym={gym}

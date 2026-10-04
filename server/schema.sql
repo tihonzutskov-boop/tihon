@@ -400,3 +400,17 @@ CREATE TABLE IF NOT EXISTS user_sessions (
 );
 CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions (user_id);
 CREATE INDEX IF NOT EXISTS idx_user_sessions_expiry ON user_sessions (expires_at);
+
+-- Which physical zone/machine a logged exercise actually happened at, so an
+-- admin can see which equipment gets used the most. Captured from the same
+-- routing the guided session already shows the client (see planSessionRoute),
+-- not re-derived — the session chose a specific copy of a machine when there
+-- were several, and that choice is what actually happened, not a guess made
+-- after the fact. All three are null for a log from before this existed, and
+-- machine_id is null whenever the exercise routed to a zone (open floor) with
+-- no specific machine in it.
+ALTER TABLE exercise_logs ADD COLUMN IF NOT EXISTS gym_id VARCHAR(100);
+ALTER TABLE exercise_logs ADD COLUMN IF NOT EXISTS zone_id VARCHAR(100);
+ALTER TABLE exercise_logs ADD COLUMN IF NOT EXISTS machine_id VARCHAR(100);
+CREATE INDEX IF NOT EXISTS idx_exercise_logs_gym_usage
+  ON exercise_logs (gym_id, zone_id) WHERE gym_id IS NOT NULL;

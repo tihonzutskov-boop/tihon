@@ -176,6 +176,12 @@ export const validateExerciseLogs = (raw) => {
     if (e.weightUnit != null && !['kg', 'lb'].includes(e.weightUnit)) return fail('Weight unit must be kg or lb.');
     const planDayId = optionalString(e.planDayId, 'Plan day', 100);
     if (!planDayId.ok) return planDayId;
+    const gymId = optionalString(e.gymId, 'Gym', 100);
+    if (!gymId.ok) return gymId;
+    const zoneId = optionalString(e.zoneId, 'Zone', 100);
+    if (!zoneId.ok) return zoneId;
+    const machineId = optionalString(e.machineId, 'Machine', 100);
+    if (!machineId.ok) return machineId;
     const painArea = optionalString(e.painArea, 'Pain area', 40);
     if (!painArea.ok) return painArea;
     const painNote = optionalString(e.painNote, 'Pain note', 500);
@@ -184,6 +190,12 @@ export const validateExerciseLogs = (raw) => {
     cleaned.push({
       exerciseId: e.exerciseId,
       planDayId: planDayId.value,
+      // A machine without its zone, or a zone without its gym, cannot be
+      // placed on any map — dropped together rather than stored as a
+      // dangling id that would just be ignored when read back.
+      gymId: gymId.value && zoneId.value ? gymId.value : undefined,
+      zoneId: gymId.value && zoneId.value ? zoneId.value : undefined,
+      machineId: gymId.value && zoneId.value ? machineId.value : undefined,
       weight: e.weight ?? null,
       weightUnit: e.weightUnit || 'kg',
       sets,

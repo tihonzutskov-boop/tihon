@@ -375,9 +375,15 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
       const weightText = completed.find(({ r }) => r.weight.trim() !== '')?.r.weight;
       const weight = weightText != null ? parseFloat(weightText) : NaN;
 
+      // The same stop the session routed this exercise to and showed the
+      // client — what actually happened, not a guess made after the fact.
+      const stop = route.find(r => r.exerciseId === ex.id);
       logs.push({
         exerciseId: ex.libraryExerciseId,
         planDayId: day.id,
+        gymId: stop?.zone ? gym.id : null,
+        zoneId: stop?.zone?.id ?? null,
+        machineId: stop?.machine?.id ?? null,
         weight: Number.isFinite(weight) ? weight : null,
         sets: completed.map(({ r, idx }) => ({
           reps: parseInt(r.reps, 10) || 0,

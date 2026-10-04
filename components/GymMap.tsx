@@ -4,6 +4,7 @@ import { translations, getGymTranslation } from '../translations';
 import { isExerciseAvailableInZone } from '../utils/exerciseMatcher';
 import { ZoomOut, Settings, Dumbbell, Activity, Zap, Target, Cpu, Layers, Box, Wind, RotateCcw, ArrowUpRight, MoveDown, Circle, Waves, Timer, ZoomIn, Minus, Plus, Maximize2, Search, X, MapPin, Play, Sparkles, Filter, ChevronRight, ChevronLeft, DoorOpen, Lock, Bath, Droplets, ShieldCheck, Sprout, Anchor, Repeat, ChevronsRight } from 'lucide-react';
 import { ICON_MAP, getEquipmentIcon, getTaxonomyColor, isBeginnerFriendly, isAmenityZone, getAmenityStyleConfig, getZoneVisualCategory, VISUAL_CATEGORY_STYLES, ZoneVisualCategory, getZoneThemeStyle } from '../utils/equipmentIcons';
+import { heatColor, type HeatEntry } from '../utils/equipmentUsage';
 
 function renderStaircase(x1: number, y1: number, x2: number, y2: number, thickness: number, strokeColor: string) {
   const dx = x2 - x1;
@@ -162,6 +163,12 @@ interface GymMapProps {
   // where to go, the other is somewhere to stop on the way.
   pickupZoneId?: string | null;
   pickupMachineId?: string | null;
+  // Admin usage heatmap: how busy each zone/machine is, keyed by id. Colors
+  // the zone fill and the individual machines (shown once a zone is focused,
+  // same as everywhere else in this component) instead of their usual theme
+  // color. Absent everywhere else in the app — only the heatmap screen passes it.
+  zoneHeat?: Record<string, HeatEntry> | null;
+  machineHeat?: Record<string, HeatEntry> | null;
   
   isEditable?: boolean;
   editMode?: 'layout' | 'room' | 'machine'; 
@@ -294,6 +301,8 @@ const GymMap: React.FC<GymMapProps> = ({
   highlightedZoneId = null,
   pickupZoneId = null,
   pickupMachineId = null,
+  zoneHeat = null,
+  machineHeat = null,
   
   isEditable = false,
   editMode = 'layout',
@@ -1455,6 +1464,7 @@ const GymMap: React.FC<GymMapProps> = ({
                 const isPickupZone = !isThumbnail && !!pickupZoneId && pickupZoneId === zone.id && !isTargetZone;
                 const isAmenity = isAmenityZone(zone);
                 const isMatch = matchingZoneIds.has(zone.id);
+                const zoneHeatEntry = !isThumbnail && zoneHeat ? zoneHeat[zone.id] : undefined;
                 const hasActiveSearch = matchingZoneIds.size > 0 || mapSearchQuery.trim().length > 0 || selectedMuscleFilter !== 'All';
                 const zoneOpacity = focusedZoneId
                   ? (isFocused ? 1 : 0.6)
@@ -1567,6 +1577,23 @@ const GymMap: React.FC<GymMapProps> = ({
                         className="pointer-events-none transition-opacity duration-300 ease-in-out"
                         style={{ opacity: zoneOpacity }}
                       />
+                    )}
+                    {zoneHeatEntry && (
+                      <>
+                        <rect
+                          x={zone.x} y={zone.y} width={zone.width} height={zone.height}
+                          fill={heatColor(zoneHeatEntry.intensity)} fillOpacity={0.55} rx="8"
+                          className="pointer-events-none transition-colors duration-300"
+                        />
+                        {zone.height >= 44 && (
+                          <g transform={`translate(${zone.x + 8}, ${zone.y + 8})`} className="pointer-events-none">
+                            <rect width={zoneHeatEntry.uses >= 100 ? 40 : 32} height="18" rx="5" fill="#0f172a" fillOpacity="0.85" />
+                            <text x={(zoneHeatEntry.uses >= 100 ? 40 : 32) / 2} y="13" textAnchor="middle" fontSize="10" fontWeight="800" fill="#ffffff">
+                              {zoneHeatEntry.uses}
+                            </text>
+                          </g>
+                        )}
+                      </>
                     )}
 
                     {/* Tint the zone itself, so the whole area reads as the
@@ -1706,6 +1733,7 @@ const GymMap: React.FC<GymMapProps> = ({
                           const isPickup = !isEditable && !!pickupMachineId && pickupMachineId === machine.id && !isMachineSelected;
                           const showUserGlow = !isEditable && (isMachineSelected || isHovered);
                           const isDimmed = zoneHasTarget && !isMachineSelected && !isHovered;
+                          const machineHeatEntry = machineHeat ? machineHeat[machine.id] : undefined;
                           const MachineIcon = getEquipmentIcon(machine.icon, machine.name, zone.type);
 
                           return (
@@ -1760,7 +1788,8 @@ const GymMap: React.FC<GymMapProps> = ({
                               )}
                               <rect
                                 width={machine.width} height={machine.height}
-                                fill={zoneStyle.stroke} fillOpacity={isUserTarget ? 1 : isDimmed ? 0.5 : 0.85}
+                                fill={machineHeatEntry ? heatColor(machineHeatEntry.intensity) : zoneStyle.stroke}
+                                fillOpacity={isUserTarget ? 1 : isDimmed ? 0.5 : 0.85}
                                 stroke={showAdminSelected ? "#3b82f6" : isUserTarget ? "#a3e635" : isPickup ? "#38bdf8" : "#ffffff"}
                                 strokeWidth={(showAdminSelected || showUserGlow) ? 2 : 1}
                                 rx="4"
@@ -1794,7 +1823,7 @@ const GymMap: React.FC<GymMapProps> = ({
                                       <g transform={`translate(${-tipWidth / 2}, ${-20})`}>
                                         <rect width={tipWidth} height="20" rx="6" fill="#131f38" stroke="#1e293b" />
                                         <text x={tipWidth / 2} y="14" textAnchor="middle" fontSize="10" fontWeight="700" fill="#ffffff">
-                                          {label}
+                                          {machineHeatEntry ? `${label} · ${machineHeatEntry.uses} uses` : label}
                                         </text>
                                       </g>
                                     );

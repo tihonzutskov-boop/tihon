@@ -127,6 +127,8 @@ describe('plan saves', () => {
 
 const logEntry = (over = {}) => ({ exerciseId: 'ex1', planDayId: 'd1', weight: 40, sets: [{ reps: 10, targetReps: 10 }], effort: 3, pain: false, ...over });
 
+const GYM_LOC = { gymId: 'g1', zoneId: 'z1', machineId: 'm1' };
+
 describe('training logs', () => {
   it('accepts one entry or a batch, and cleans them', () => {
     expect(validateExerciseLogs(logEntry()).value).toHaveLength(1);
@@ -157,6 +159,37 @@ describe('training logs', () => {
   it('treats pain as a strict yes', () => {
     expect(validateExerciseLogs(logEntry({ pain: 'true' })).value[0].pain).toBe(false);
     expect(validateExerciseLogs(logEntry({ pain: true })).value[0].pain).toBe(true);
+  });
+});
+
+describe('where a logged exercise actually happened', () => {
+  it('stores the gym, zone and machine when all three are given', () => {
+    const r = validateExerciseLogs(logEntry(GYM_LOC));
+    expect(r.value[0]).toMatchObject(GYM_LOC);
+  });
+
+  it('is fine with none of them — most exercises still have nowhere to route to', () => {
+    const r = validateExerciseLogs(logEntry());
+    expect(r.value[0].gymId).toBeUndefined();
+    expect(r.value[0].zoneId).toBeUndefined();
+    expect(r.value[0].machineId).toBeUndefined();
+  });
+
+  it('is fine with a zone but no specific machine — open floor has no one machine', () => {
+    const r = validateExerciseLogs(logEntry({ gymId: 'g1', zoneId: 'z1' }));
+    expect(r.value[0]).toMatchObject({ gymId: 'g1', zoneId: 'z1' });
+    expect(r.value[0].machineId).toBeUndefined();
+  });
+
+  it('drops a machine or gym id with no zone to place it in, rather than storing a dangling reference', () => {
+    expect(validateExerciseLogs(logEntry({ gymId: 'g1', machineId: 'm1' })).value[0].gymId).toBeUndefined();
+    expect(validateExerciseLogs(logEntry({ zoneId: 'z1' })).value[0].zoneId).toBeUndefined();
+  });
+
+  it('refuses an oversized gym, zone or machine id', () => {
+    expect(validateExerciseLogs(logEntry({ gymId: 'x'.repeat(101), zoneId: 'z1' })).ok).toBe(false);
+    expect(validateExerciseLogs(logEntry({ gymId: 'g1', zoneId: 'x'.repeat(101) })).ok).toBe(false);
+    expect(validateExerciseLogs(logEntry({ gymId: 'g1', zoneId: 'z1', machineId: 'x'.repeat(101) })).ok).toBe(false);
   });
 });
 

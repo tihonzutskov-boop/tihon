@@ -410,8 +410,9 @@ app.post('/api/exercise-logs', requireAuth, async (req, res) => {
     for (const e of entries) {
       const result = await client.query(
         `INSERT INTO exercise_logs
-           (user_id, exercise_id, plan_day_id, weight, weight_unit, sets, effort, pain, pain_area, pain_note)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+           (user_id, exercise_id, plan_day_id, weight, weight_unit, sets, effort, pain, pain_area, pain_note,
+            gym_id, zone_id, machine_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          RETURNING id, logged_at`,
         [
           req.user.id,
@@ -424,6 +425,9 @@ app.post('/api/exercise-logs', requireAuth, async (req, res) => {
           e.pain,
           e.painArea || null,
           e.painNote || null,
+          e.gymId || null,
+          e.zoneId || null,
+          e.machineId || null,
         ]
       );
       saved.push({ id: result.rows[0].id, loggedAt: result.rows[0].logged_at });
@@ -1278,6 +1282,41 @@ app.put('/api/coaching/generation-failures/:id/resolve', requireAdmin, async (re
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error resolving generation failure' });
+  }
+});
+
+// How much a gym's zones and machines actually get used, for the admin
+// heatmap. Two separate GROUP BYs rather than one: a zone's trainee count
+// needs every row in that zone counted once each, which a GROUP BY zone_id,
+// machine_id cannot give directly — a trainee who used two machines in the
+// same zone would count twice in a client-side merge of the per-machine rows.
+// Querying the zone total on its own keeps that count exact.
+app.get('/api/coaching/gyms/:gymId/equipment-usage', requireAdmin, async (req, res) => {
+  const days = parseInt(req.query.days, 10);
+  const since = Number.isInteger(days) && days > 0 ? `now() - interval '${days} days'` : null;
+  try {
+    const byZone = await pool.query(
+      `SELECT zone_id, COUNT(*)::int AS uses, COUNT(DISTINCT user_id)::int AS trainees, MAX(logged_at) AS last_used_at
+       FROM exercise_logs
+       WHERE gym_id = $1 AND zone_id IS NOT NULL ${since ? `AND logged_at >= ${since}` : ''}
+       GROUP BY zone_id`,
+      [req.params.gymId]
+    );
+    const byMachine = await pool.query(
+      `SELECT zone_id, machine_id, COUNT(*)::int AS uses, COUNT(DISTINCT user_id)::int AS trainees, MAX(logged_at) AS last_used_at
+       FROM exercise_logs
+       WHERE gym_id = $1 AND machine_id IS NOT NULL ${since ? `AND logged_at >= ${since}` : ''}
+       GROUP BY zone_id, machine_id`,
+      [req.params.gymId]
+    );
+    const toRow = r => ({
+      zoneId: r.zone_id, machineId: r.machine_id ?? null,
+      uses: r.uses, trainees: r.trainees, lastUsedAt: r.last_used_at,
+    });
+    res.json({ byZone: byZone.rows.map(toRow), byMachine: byMachine.rows.map(toRow) });
+  } catch (err) {
+    console.error('Failed to load equipment usage:', err.message);
+    res.status(500).json({ error: 'Database error loading equipment usage' });
   }
 });
 
