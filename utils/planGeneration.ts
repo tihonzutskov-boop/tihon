@@ -9,7 +9,7 @@ import type {
 // A real import, not type-only: the session's length decides its whole shape,
 // so these run at generation time. Compiled alongside planGeneration into the
 // engine build the server uses.
-import { shapeFor, bookendsFor, maxBookendMinutes, zone2MinutesFor, regionsOfPatterns, BOOKEND_MINUTES } from './sessionShape.js';
+import { shapeFor, bookendsFor, maxBookendMinutes, zone2MinutesFor, regionsOfPatterns, BOOKEND_MINUTES, maxExercisesFor } from './sessionShape.js';
 import type { SessionShape, SessionBookend } from './sessionShape.js';
 
 // ---------------------------------------------------------------------------
@@ -137,8 +137,8 @@ export const selectSplit = (daysPerWeek: number): { split: SplitName; dayNames: 
 // offered but still builds plans for clients who chose it earlier.
 const GOAL_PRESCRIPTION: Record<string, { compound: Omit<ExerciseSlot, 'id' | 'movementPattern' | 'priority'>; isolation: Omit<ExerciseSlot, 'id' | 'movementPattern' | 'priority'> }> = {
   'Muscle gain': {
-    compound: { setsMin: 3, setsMax: 4, repsMin: 8, repsMax: 10, restSeconds: 90, exerciseCategory: 'compound' },
-    isolation: { setsMin: 2, setsMax: 3, repsMin: 10, repsMax: 12, restSeconds: 90, exerciseCategory: 'isolation' },
+    compound: { setsMin: 3, setsMax: 4, repsMin: 8, repsMax: 10, restSeconds: 120, exerciseCategory: 'compound' },
+    isolation: { setsMin: 2, setsMax: 3, repsMin: 10, repsMax: 12, restSeconds: 120, exerciseCategory: 'isolation' },
   },
   'Weight loss': {
     compound: { setsMin: 3, setsMax: 3, repsMin: 15, repsMax: 20, restSeconds: 45, exerciseCategory: 'compound' },
@@ -173,6 +173,8 @@ type SlotSpec = {
   sets?: number;
   /** See ExerciseSlot.preferVideo. */
   preferVideo?: boolean;
+  /** See ExerciseSlot.dropLast. */
+  dropLast?: boolean;
 };
 
 // One session structure regardless of day count: unlike a strength split,
@@ -205,7 +207,7 @@ const FULL_BODY: SlotSpec[] = [
   { pattern: 'hinge', kind: 'compound', optional: true },
   { pattern: 'vertical_push', kind: 'compound', optional: true, sets: 2 },
   { pattern: 'elbow_extension', kind: 'isolation', optional: true },
-  { pattern: 'core', kind: 'isolation', optional: true, preferVideo: true },
+  { pattern: 'core', kind: 'isolation', optional: true, preferVideo: true, dropLast: true },
 ];
 
 const UPPER: SlotSpec[] = [
@@ -447,6 +449,7 @@ const slotsForGoal = (goal: string, dayName: string, shape: SessionShape, focusA
     // A slot with its own set count keeps it whatever the goal prescribes.
     ...(spec.sets !== undefined ? { setsMin: spec.sets, setsMax: spec.sets } : {}),
     ...(spec.preferVideo ? { preferVideo: true } : {}),
+    ...(spec.dropLast ? { dropLast: true } : {}),
     id: `slot-${i}`, // placeholder — the caller (single- or combined-blueprint) assigns the real, namespaced id
     movementPattern: spec.pattern,
     priority: i + 1,
@@ -1182,15 +1185,19 @@ export const generatePlan = (
     // dropped; a day that still doesn't fit is DROP-2's case.
     const isSecondary = (sl: ExerciseSlot) => sl.aimTier === 'secondary';
     const isFocus = (sl: ExerciseSlot) => !!sl.focusArea && !isSecondary(sl);
+    // The abs are the exception: they hold their place through all of it and
+    // are the last optional exercise to go, after the focus areas too.
     const DROP_TIERS: ((sl: ExerciseSlot) => boolean)[] = [
       isSecondary,
-      sl => !isSecondary(sl) && !isFocus(sl) && roleOf(sl) === 'accessory',
-      sl => !isSecondary(sl) && !isFocus(sl) && roleOf(sl) === 'supporting',
+      sl => !isSecondary(sl) && !isFocus(sl) && !sl.dropLast && roleOf(sl) === 'accessory',
+      sl => !isSecondary(sl) && !isFocus(sl) && !sl.dropLast && roleOf(sl) === 'supporting',
       isFocus,
+      sl => !isSecondary(sl) && !!sl.dropLast,
     ];
 
-    const droppedIds: string[] = [];
-    while (measure() > availableForWeights()) {
+    // The next exercise to give up, by the tiers above, or -1 when only the
+    // main work is left.
+    const nextToDrop = (): number => {
       let dropIdx = -1;
       for (const inTier of DROP_TIERS) {
         let worstPriority = -Infinity;
@@ -1202,6 +1209,27 @@ export const generatePlan = (
         });
         if (dropIdx !== -1) break;
       }
+      return dropIdx;
+    };
+
+    const droppedIds: string[] = [];
+
+    // A session holds at most so many exercises, whatever is asked of it: 5 at
+    // 45 minutes, 6 at 60, 7 at 75. Two goals each bring a block of their own,
+    // and each focus area brings more; together they made thirteen. The same
+    // order decides what goes: the second goal's copies of the lifts first, then
+    // finishing work, then the day's other lifts, then the client's own focus
+    // areas, and the abs last.
+    const exerciseCap = maxExercisesFor(profile.sessionMinutes);
+    while (picked.length > exerciseCap) {
+      const idx = nextToDrop();
+      if (idx === -1) break;
+      droppedIds.push(picked[idx].slot.id);
+      picked.splice(idx, 1);
+    }
+
+    while (measure() > availableForWeights()) {
+      const dropIdx = nextToDrop();
       if (dropIdx === -1 && zoneMinutes > 0) {
         // Every optional lift is gone and the main lifts still do not fit
         // alongside the cardio. The cardio gives next: shorter, then not at all.

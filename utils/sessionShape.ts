@@ -70,13 +70,14 @@ const SHAPES: Record<SessionTier, Omit<SessionShape, 'tier' | 'band' | 'warmupMi
 
 // A longer session spends its extra time on the warm-up and cooldown, not on
 // more sets. The warm-up is always 10 minutes of easy cardio; at 60 minutes
-// dynamic stretching follows it (4 minutes), at 75 five minutes of activation:
-// mobility drills, core activation and light band work. The cooldown is an easy
-// walk and then stretching, growing the same way.
+// five minutes of dynamic stretching follows it, and at 75 five minutes of
+// activation: mobility drills, core activation and light band work. The
+// cooldown is an easy walk and then stretching: 5 minutes at 45, 5 and 5 at 60,
+// 3 and 9 at 75.
 export const BOOKEND_MINUTES: Record<BookendBand, { warmup: number; cooldown: number; cardio: number; walk: number }> = {
   short: { warmup: 6, cooldown: 4, cardio: 2, walk: 2 },
   base: { warmup: 10, cooldown: 5, cardio: 10, walk: 2 },
-  mid: { warmup: 14, cooldown: 10, cardio: 10, walk: 3 },
+  mid: { warmup: 15, cooldown: 10, cardio: 10, walk: 5 },
   long: { warmup: 15, cooldown: 12, cardio: 10, walk: 3 },
 };
 
@@ -91,6 +92,15 @@ export const tierFor = (sessionMinutes: number): SessionTier => {
   if (sessionMinutes > TIER_BOUNDS.longAbove) return 'long';
   return 'medium';
 };
+
+// The most exercises one session holds, whatever the goals and focus areas ask
+// for: 5 at 45 minutes, 6 at 60, 7 at 75 (the day's own seven: a squat, press,
+// pull, hinge, overhead press, triceps and abs). Warm-up, cool-down and zone-2
+// cardio are not counted. More than this is not a workout a beginner can get
+// through well at these rests, so what is asked for competes for these places
+// and the least important goes first.
+export const maxExercisesFor = (sessionMinutes: number): number =>
+  sessionMinutes <= TIER_BOUNDS.shortBelow ? 5 : sessionMinutes > TIER_BOUNDS.longAbove ? 7 : 6;
 
 // Minutes of zone-2 cardio a session can end with: 10 up to and including 45
 // minutes, 15 up to 70, 20 beyond. Sized to the session the way the warm-up is,
@@ -242,7 +252,7 @@ const pick = (table: Record<BodyRegion, string[]>, regions: BodyRegion[], count:
 // stretched for the whole body rather than for nothing.
 const WHOLE_BODY: BodyRegion[] = ['legs', 'push', 'pull'];
 
-const DYNAMIC_COUNT: Partial<Record<BookendBand, number>> = { mid: 4 };
+const DYNAMIC_COUNT: Partial<Record<BookendBand, number>> = { mid: 5 };
 
 // The long warm-up is activation rather than stretching: a couple of mobility
 // drills for what the day trains, the core, and light work with a band.
@@ -253,7 +263,7 @@ const BAND_MOVES: Record<BodyRegion, string[]> = {
   pull: ['Band pull-aparts, 10 reps'],
   core: [],
 };
-const STRETCH_COUNT: Partial<Record<BookendBand, number>> = { base: 3, mid: 6, long: 7 };
+const STRETCH_COUNT: Partial<Record<BookendBand, number>> = { base: 3, mid: 5, long: 7 };
 const STRETCH_HOLD: Partial<Record<BookendBand, string>> = {
   base: '20–30 seconds', mid: '30 seconds', long: '30 seconds',
 };
@@ -287,7 +297,6 @@ const cooldownExtra = (band: BookendBand, regions: BodyRegion[], byVideo: boolea
     lines.push(`Stretch what you trained, holding each ${STRETCH_HOLD[band]} a side, no bouncing:`);
     lines.push(...pick(STRETCHES, today, count));
   }
-  if (band === 'mid') lines.push('Finish with a minute of slow breathing: in for four, out for six');
   if (band === 'long') lines.push('Finish with two minutes of slow breathing: in for four, out for six');
   return lines;
 };
@@ -311,7 +320,7 @@ const COOLDOWNS: Record<BookendBand, string[]> = {
     'Stretch whatever worked hardest today, around 30 seconds each side',
   ],
   base: ['2 minutes easy walking until your breathing settles'],
-  mid: ['3 minutes easy walking or cycling until your breathing settles'],
+  mid: ['5 minutes easy walking or cycling until your breathing settles'],
   long: ['3 minutes easy walking or cycling, letting your heart rate come down gradually'],
 };
 

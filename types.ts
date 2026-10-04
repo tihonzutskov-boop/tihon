@@ -475,6 +475,9 @@ export interface ExerciseSlot {
   // Prefer a follow-along video for this slot when the library has one that
   // fits: the abs at the end of a strength session are a video, not sets.
   preferVideo?: boolean;
+  // The last of the optional work to give up when a session is trimmed, ahead
+  // of even the client's focus areas: the abs, which stay while anything else goes.
+  dropLast?: boolean;
   setsMin: number;
   setsMax: number;
   repsMin: number;
