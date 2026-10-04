@@ -926,6 +926,36 @@ const GymMap: React.FC<GymMapProps> = ({
               <stop offset="35%" stopColor="#ffffff" stopOpacity="0.03" />
               <stop offset="60%" stopColor="#ffffff" stopOpacity="0" />
             </linearGradient>
+
+            {/* Usage heatmap: a soft, blurred glow per zone rather than a flat
+                fill — the familiar density-map look (think a city traffic or
+                weather heatmap), so a busy zone reads as a hot spot bleeding
+                into its surroundings instead of a block of solid color. */}
+            {!isThumbnail && zoneHeat && (
+              <>
+                <filter id="heatGlow" x="-100%" y="-100%" width="300%" height="300%">
+                  <feGaussianBlur stdDeviation="18" />
+                </filter>
+                {/* Keeps a glow from a zone against the outer wall bleeding
+                    into the page outside the building, the way the overshoot
+                    otherwise would. */}
+                <clipPath id="heatFloorClip">
+                  <rect x={dimensions.x || 0} y={dimensions.y || 0} width={dimensions.width} height={dimensions.height} />
+                </clipPath>
+              </>
+            )}
+            {!isThumbnail && zoneHeat && zones.map(z => {
+              const entry = zoneHeat[z.id];
+              if (!entry) return null;
+              const color = heatColor(entry.intensity);
+              return (
+                <radialGradient key={`heatgrad-${z.id}`} id={`heatgrad-${z.id}`}>
+                  <stop offset="0%" stopColor={color} stopOpacity="0.95" />
+                  <stop offset="55%" stopColor={color} stopOpacity="0.55" />
+                  <stop offset="100%" stopColor={color} stopOpacity="0" />
+                </radialGradient>
+              );
+            })}
           </defs>
           
           {!isThumbnail && isEditable && (
@@ -1555,7 +1585,7 @@ const GymMap: React.FC<GymMapProps> = ({
                       y={zone.y}
                       width={zone.width}
                       height={zone.height}
-                      fill={zoneStyle.fill}
+                      fill={zoneHeatEntry ? '#0f172a' : zoneStyle.fill}
                       fillOpacity={isAmenity ? 1 : 0.42}
                       stroke={isTargetZone ? '#a3e635' : isSelected ? '#38bdf8' : zoneStyle.stroke}
                       strokeWidth={isThumbnail ? 2 : (isTargetZone ? 3 : isSelected || isFocused ? 2.5 : 1.5)}
@@ -1578,23 +1608,37 @@ const GymMap: React.FC<GymMapProps> = ({
                         style={{ opacity: zoneOpacity }}
                       />
                     )}
-                    {zoneHeatEntry && (
-                      <>
-                        <rect
-                          x={zone.x} y={zone.y} width={zone.width} height={zone.height}
-                          fill={heatColor(zoneHeatEntry.intensity)} fillOpacity={0.55} rx="8"
-                          className="pointer-events-none transition-colors duration-300"
-                        />
-                        {zone.height >= 44 && (
-                          <g transform={`translate(${zone.x + 8}, ${zone.y + 8})`} className="pointer-events-none">
-                            <rect width={zoneHeatEntry.uses >= 100 ? 40 : 32} height="18" rx="5" fill="#0f172a" fillOpacity="0.85" />
-                            <text x={(zoneHeatEntry.uses >= 100 ? 40 : 32) / 2} y="13" textAnchor="middle" fontSize="10" fontWeight="800" fill="#ffffff">
-                              {zoneHeatEntry.uses}
-                            </text>
-                          </g>
-                        )}
-                      </>
-                    )}
+                    {zoneHeatEntry && (() => {
+                      // Bigger and softer the busier it is — a quiet zone is a
+                      // small glow near its own bounds, a packed one spills
+                      // outward and bleeds into its neighbours, which is what
+                      // makes two hot zones next to each other read as one hot
+                      // corner of the gym rather than two separate boxes.
+                      const grow = 0.15 + zoneHeatEntry.intensity * 0.4;
+                      const gw = zone.width * (1 + grow);
+                      const gh = zone.height * (1 + grow);
+                      return (
+                        <>
+                          <ellipse
+                            cx={zone.x + zone.width / 2} cy={zone.y + zone.height / 2}
+                            rx={gw / 2} ry={gh / 2}
+                            fill={`url(#heatgrad-${zone.id})`}
+                            filter="url(#heatGlow)"
+                            clipPath="url(#heatFloorClip)"
+                            style={{ mixBlendMode: 'screen', opacity: zoneOpacity }}
+                            className="pointer-events-none transition-opacity duration-300"
+                          />
+                          {zone.height >= 44 && (
+                            <g transform={`translate(${zone.x + 8}, ${zone.y + 8})`} className="pointer-events-none">
+                              <rect width={zoneHeatEntry.uses >= 100 ? 40 : 32} height="18" rx="5" fill="#0f172a" fillOpacity="0.85" />
+                              <text x={(zoneHeatEntry.uses >= 100 ? 40 : 32) / 2} y="13" textAnchor="middle" fontSize="10" fontWeight="800" fill="#ffffff">
+                                {zoneHeatEntry.uses}
+                              </text>
+                            </g>
+                          )}
+                        </>
+                      );
+                    })()}
 
                     {/* Tint the zone itself, so the whole area reads as the
                         destination and not just its edge. */}

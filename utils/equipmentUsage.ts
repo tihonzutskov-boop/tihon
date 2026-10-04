@@ -95,12 +95,16 @@ export const topZonesByUsage = (
     .sort((a, b) => b.uses - a.uses || a.name.localeCompare(b.name));
 };
 
-// Cool (barely used) to hot (busiest) — slate through amber to red, the same
-// warm-alert register the app already uses for "pay attention to this".
+// The familiar density-map ramp — blue (sparse) through cyan and green to
+// yellow and red (the busiest spot) — rather than this app's usual slate/amber
+// register, because the whole point of this scale is to be instantly readable
+// against a map the way a weather or traffic heatmap is.
 const HEAT_STOPS: [number, [number, number, number]][] = [
-  [0, [51, 65, 85]],    // slate-700 — effectively unused
-  [0.5, [217, 119, 6]], // amber-600
-  [1, [220, 38, 38]],   // red-600
+  [0, [37, 99, 235]],    // blue-600
+  [0.25, [34, 211, 238]],// cyan-400
+  [0.5, [34, 197, 94]],  // green-500
+  [0.75, [234, 179, 8]], // yellow-500
+  [1, [220, 38, 38]],    // red-600 — the busiest
 ];
 
 /** Interpolated along HEAT_STOPS; an intensity outside [0,1] clamps to an end. */

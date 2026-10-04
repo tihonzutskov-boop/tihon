@@ -104,15 +104,27 @@ describe('ranking zones by usage', () => {
 });
 
 describe('the heat color scale', () => {
-  it('is the cold color at 0 and the hot color at 1', () => {
-    expect(heatColor(0)).toBe('rgb(51, 65, 85)');
+  it('runs blue at 0 through to red at 1, the familiar density-map ramp', () => {
+    expect(heatColor(0)).toBe('rgb(37, 99, 235)');
     expect(heatColor(1)).toBe('rgb(220, 38, 38)');
   });
 
-  it('moves smoothly in between, warmer as intensity rises', () => {
-    const toR = (c: string) => Number(c.match(/\d+/)![0]);
-    expect(toR(heatColor(0.1))).toBeLessThan(toR(heatColor(0.5)));
-    expect(toR(heatColor(0.5))).toBeLessThan(toR(heatColor(0.9)));
+  it('passes through cyan, green and yellow on the way', () => {
+    expect(heatColor(0.25)).toBe('rgb(34, 211, 238)');
+    expect(heatColor(0.5)).toBe('rgb(34, 197, 94)');
+    expect(heatColor(0.75)).toBe('rgb(234, 179, 8)');
+  });
+
+  it('moves between named stops smoothly rather than jumping', () => {
+    const rgb = (c: string) => c.match(/\d+/g)!.map(Number);
+    const mid = rgb(heatColor(0.125)); // halfway between blue and cyan
+    const blue = rgb(heatColor(0));
+    const cyan = rgb(heatColor(0.25));
+    mid.forEach((v, i) => {
+      const lo = Math.min(blue[i], cyan[i]), hi = Math.max(blue[i], cyan[i]);
+      expect(v).toBeGreaterThanOrEqual(lo);
+      expect(v).toBeLessThanOrEqual(hi);
+    });
   });
 
   it('clamps anything outside the 0-1 range instead of extrapolating', () => {
