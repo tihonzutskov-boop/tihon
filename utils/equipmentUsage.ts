@@ -28,23 +28,50 @@ export interface HeatEntry {
   intensity: number;
 }
 
-/**
- * One HeatEntry per id, intensity scaled against the busiest row in the set —
- * the point of a heatmap is relative standing, not an absolute count a single
- * gym's volume would make meaningless on its own. Empty input, or every row
- * tied at zero, maps everything to intensity 0 rather than dividing by zero.
- */
-export const toHeatMap = (rows: UsageRow[], idOf: (r: UsageRow) => string): Record<string, HeatEntry> => {
-  const maxUses = rows.reduce((m, r) => Math.max(m, r.uses), 0);
-  const map: Record<string, HeatEntry> = {};
-  for (const r of rows) {
-    map[idOf(r)] = { uses: r.uses, trainees: r.trainees, lastUsedAt: r.lastUsedAt, intensity: maxUses > 0 ? r.uses / maxUses : 0 };
-  }
-  return map;
-};
+export interface MapHeat {
+  zoneHeat: Record<string, HeatEntry>;
+  machineHeat: Record<string, HeatEntry>;
+}
 
-export const zoneHeatMap = (usage: GymUsage): Record<string, HeatEntry> => toHeatMap(usage.byZone, r => r.zoneId);
-export const machineHeatMap = (usage: GymUsage): Record<string, HeatEntry> => toHeatMap(usage.byMachine, r => r.machineId!);
+// Relative standing, not an absolute count: a single gym's volume would make
+// raw numbers meaningless on their own. A maximum of zero maps to intensity 0
+// rather than dividing by zero.
+const entryFor = (r: UsageRow, maxUses: number): HeatEntry => ({
+  uses: r.uses, trainees: r.trainees, lastUsedAt: r.lastUsedAt,
+  intensity: maxUses > 0 ? r.uses / maxUses : 0,
+});
+
+/**
+ * Heat for the map, with zones and machines on one scale.
+ *
+ * A zone whose own machines carry usage shows it on those machines rather than
+ * as a zone glow — showing both says the same thing twice, and inconsistently
+ * whenever the zone's total differs from its hottest machine. What remains is
+ * scaled against the busiest thing actually drawn, so a color means the same
+ * number of uses on a zone as on a machine. Scaling each against its own
+ * busiest made a lightly used open-floor zone glow as red as the busiest
+ * machine in the gym. Rows for zones or machines no longer on the floor plan
+ * are dropped, so they can't set a maximum that nothing on the map reaches.
+ */
+export const mapHeat = (usage: GymUsage, gym: Gym): MapHeat => {
+  const zones = gym.zones || [];
+  const zoneIds = new Set(zones.map(z => z.id));
+  const machineIds = new Set(zones.flatMap(z => (z.machines || []).map(m => m.id)));
+
+  const machineRows = usage.byMachine.filter(r => !!r.machineId && machineIds.has(r.machineId));
+  const usedMachineIds = new Set(machineRows.map(r => r.machineId!));
+  const shownByMachines = new Set(
+    zones.filter(z => (z.machines || []).some(m => usedMachineIds.has(m.id))).map(z => z.id)
+  );
+  const zoneRows = usage.byZone.filter(r => zoneIds.has(r.zoneId) && !shownByMachines.has(r.zoneId));
+
+  const maxUses = [...zoneRows, ...machineRows].reduce((m, r) => Math.max(m, r.uses), 0);
+  const zoneHeat: Record<string, HeatEntry> = {};
+  for (const r of zoneRows) zoneHeat[r.zoneId] = entryFor(r, maxUses);
+  const machineHeat: Record<string, HeatEntry> = {};
+  for (const r of machineRows) machineHeat[r.machineId!] = entryFor(r, maxUses);
+  return { zoneHeat, machineHeat };
+};
 
 export interface EquipmentUsage {
   equipmentId: string;

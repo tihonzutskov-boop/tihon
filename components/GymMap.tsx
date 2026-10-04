@@ -8,6 +8,12 @@ import { heatColor, type HeatEntry } from '../utils/equipmentUsage';
 
 const NEUTRAL_ZONE_STYLE = { fill: '#334155', stroke: '#475569', dashStroke: '#475569', textColor: '#cbd5e1' };
 
+// A machine's heat is a round blob centred on it, sized from its footprint's
+// area rather than stretched to its outline: a long bench drawn as an ellipse
+// in its own proportions became a flat smear across half the room.
+const machineGlowRadius = (m: { width: number; height: number }, intensity: number): number =>
+  (Math.sqrt(m.width * m.height) / 2) * (1.5 + intensity * 0.9);
+
 function renderStaircase(x1: number, y1: number, x2: number, y2: number, thickness: number, strokeColor: string) {
   const dx = x2 - x1;
   const dy = y2 - y1;
@@ -933,10 +939,9 @@ const GymMap: React.FC<GymMapProps> = ({
                 fill — the familiar density-map look (think a city traffic or
                 weather heatmap), so a busy zone reads as a hot spot bleeding
                 into its surroundings instead of a block of solid color. */}
-            {!isThumbnail && zoneHeat && (
-              // Keeps a glow from a zone against the outer wall bleeding into
-              // the page outside the building, the way the overshoot otherwise
-              // would.
+            {!isThumbnail && (zoneHeat || machineHeat) && (
+              // Keeps a glow near the outer wall from bleeding into the page
+              // outside the building, the way the overshoot otherwise would.
               <clipPath id="heatFloorClip">
                 <rect x={dimensions.x || 0} y={dimensions.y || 0} width={dimensions.width} height={dimensions.height} />
               </clipPath>
@@ -968,7 +973,7 @@ const GymMap: React.FC<GymMapProps> = ({
               const entry = machineHeat[m.id];
               if (!entry) return null;
               const color = heatColor(entry.intensity);
-              const blurRadius = Math.max(2, Math.min(m.width, m.height) * 0.12);
+              const blurRadius = Math.max(2, machineGlowRadius(m, entry.intensity) * 0.1);
               return (
                 <React.Fragment key={`heatdefs-machine-${m.id}`}>
                   <filter id={`heatglow-machine-${m.id}`} x="-150%" y="-150%" width="400%" height="400%">
@@ -1520,15 +1525,9 @@ const GymMap: React.FC<GymMapProps> = ({
                 const isPickupZone = !isThumbnail && !!pickupZoneId && pickupZoneId === zone.id && !isTargetZone;
                 const isAmenity = isAmenityZone(zone);
                 const isMatch = matchingZoneIds.has(zone.id);
-                // A zone whose own machines carry usage data shows heat on
-                // those machines instead of itself — showing both would say
-                // the same thing twice and, worse, say it inconsistently
-                // whenever the zone's average differs from its hottest
-                // machine. A zone with no individually tagged machines (open
-                // floor, a turf area) has nothing finer to show, so it keeps
-                // the zone-level glow as the only signal available.
-                const zoneMachinesHaveHeat = !!machineHeat && (zone.machines || []).some(m => !!machineHeat[m.id]);
-                const zoneHeatEntry = !isThumbnail && zoneHeat && !zoneMachinesHaveHeat ? zoneHeat[zone.id] : undefined;
+                // Which zones glow at all (only those whose machines carry no
+                // usage of their own) is decided with the scale, in mapHeat.
+                const zoneHeatEntry = !isThumbnail && zoneHeat ? zoneHeat[zone.id] : undefined;
                 const hasActiveSearch = matchingZoneIds.size > 0 || mapSearchQuery.trim().length > 0 || selectedMuscleFilter !== 'All';
                 const zoneOpacity = focusedZoneId
                   ? (isFocused ? 1 : 0.6)
@@ -1809,6 +1808,28 @@ const GymMap: React.FC<GymMapProps> = ({
                         focus whenever machineHeat is passed in. */}
                     {((isFocused && !isAmenity && !isEditable) || (isMachineEdit && isFocused) || (!isEditable && !isThumbnail && !!machineHeat && !isAmenity)) && zone.machines && (
                       <g className="animate-in fade-in zoom-in duration-300">
+                        {/* Heat blobs first, under every machine in the zone, and
+                            in floor coordinates rather than inside each machine's
+                            own translated group — the floor clip is drawn in
+                            floor coordinates, so it only lines up with the walls
+                            out here. */}
+                        {machineHeat && zone.machines!.map(machine => {
+                          const entry = machineHeat[machine.id];
+                          if (!entry) return null;
+                          return (
+                            <circle
+                              key={`heatblob-${machine.id}`}
+                              cx={zone.x + machine.x + machine.width / 2}
+                              cy={zone.y + machine.y + machine.height / 2}
+                              r={machineGlowRadius(machine, entry.intensity)}
+                              fill={`url(#heatgrad-machine-${machine.id})`}
+                              filter={`url(#heatglow-machine-${machine.id})`}
+                              clipPath="url(#heatFloorClip)"
+                              style={{ mixBlendMode: 'screen' }}
+                              className="pointer-events-none"
+                            />
+                          );
+                        })}
                         {(() => {
                           // Spotlight mode: once a specific machine in this zone is the
                           // resolved match (selectedMachineId), every other machine dims
@@ -1875,19 +1896,6 @@ const GymMap: React.FC<GymMapProps> = ({
                                   </text>
                                 </>
                               )}
-                              {machineHeatEntry && (() => {
-                                const grow = 0.5 + machineHeatEntry.intensity * 0.9;
-                                return (
-                                  <ellipse
-                                    cx={machine.width / 2} cy={machine.height / 2}
-                                    rx={(machine.width * (1 + grow)) / 2} ry={(machine.height * (1 + grow)) / 2}
-                                    fill={`url(#heatgrad-machine-${machine.id})`}
-                                    filter={`url(#heatglow-machine-${machine.id})`}
-                                    style={{ mixBlendMode: 'screen' }}
-                                    className="pointer-events-none"
-                                  />
-                                );
-                              })()}
                               <rect
                                 width={machine.width} height={machine.height}
                                 fill={heatMode ? '#1e293b' : zoneStyle.stroke}

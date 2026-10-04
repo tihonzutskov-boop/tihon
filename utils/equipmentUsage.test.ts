@@ -1,47 +1,84 @@
 import { describe, it, expect } from 'vitest';
-import { toHeatMap, zoneHeatMap, machineHeatMap, topEquipmentByUsage, topZonesByUsage, heatColor } from './equipmentUsage';
-import type { UsageRow, GymUsage } from './equipmentUsage';
+import { mapHeat, topEquipmentByUsage, topZonesByUsage, heatColor } from './equipmentUsage';
+import type { UsageRow } from './equipmentUsage';
 import type { Gym, EquipmentItem } from '../types';
 
 const row = (over: Partial<UsageRow>): UsageRow => ({ zoneId: 'z1', machineId: null, uses: 0, trainees: 0, lastUsedAt: null, ...over });
-
-describe('scaling usage into a heat intensity', () => {
-  it('gives the busiest row intensity 1 and scales the rest against it', () => {
-    const map = toHeatMap([row({ zoneId: 'a', uses: 10 }), row({ zoneId: 'b', uses: 5 }), row({ zoneId: 'c', uses: 1 })], r => r.zoneId);
-    expect(map.a.intensity).toBe(1);
-    expect(map.b.intensity).toBe(0.5);
-    expect(map.c.intensity).toBe(0.1);
-  });
-
-  it('is zero intensity for everything when there is no usage at all, not a division error', () => {
-    const map = toHeatMap([row({ zoneId: 'a', uses: 0 }), row({ zoneId: 'b', uses: 0 })], r => r.zoneId);
-    expect(Object.values(map).every(e => e.intensity === 0)).toBe(true);
-  });
-
-  it('is empty for no rows', () => {
-    expect(toHeatMap([], r => r.zoneId)).toEqual({});
-  });
-
-  it('carries the raw counts through unchanged, for display alongside the color', () => {
-    const map = toHeatMap([row({ zoneId: 'a', uses: 7, trainees: 3, lastUsedAt: '2026-09-20' })], r => r.zoneId);
-    expect(map.a).toEqual({ uses: 7, trainees: 3, lastUsedAt: '2026-09-20', intensity: 1 });
-  });
-
-  it('builds zone and machine heat maps from the two halves of a GymUsage', () => {
-    const usage: GymUsage = {
-      byZone: [row({ zoneId: 'z1', uses: 4 })],
-      byMachine: [row({ zoneId: 'z1', machineId: 'm1', uses: 4 })],
-    };
-    expect(zoneHeatMap(usage).z1.uses).toBe(4);
-    expect(machineHeatMap(usage).m1.uses).toBe(4);
-  });
-});
 
 const machine = (id: string, equipmentId?: string) => ({ id, name: id, x: 0, y: 0, width: 10, height: 10, equipmentId });
 const zone = (id: string, name: string, machines: ReturnType<typeof machine>[] = []) =>
   ({ id, name, type: 'strength', x: 0, y: 0, width: 10, height: 10, color: '#fff', icon: 'x', machines } as any);
 const gym = (zones: ReturnType<typeof zone>[]): Gym => ({ id: 'g', name: 'G', dimensions: { width: 10, height: 10, x: 0, y: 0 }, zones } as Gym);
 const equipment = (id: string, name: string): EquipmentItem => ({ id, name, category: 'Machines' } as EquipmentItem);
+
+describe('heat for the map, zones and machines on one scale', () => {
+  // Free Weights has tagged machines; Turf is open floor with none.
+  const g = gym([
+    zone('free', 'Free Weights', [machine('rack', 'eq-rack'), machine('db', 'eq-dumbbells')]),
+    zone('turf', 'Turf'),
+  ]);
+
+  it('scales a zone and a machine against the same maximum', () => {
+    // Before, each was scaled against its own busiest, so a 4-use turf zone
+    // glowed as red as an 8-use rack.
+    const { zoneHeat, machineHeat } = mapHeat({
+      byZone: [row({ zoneId: 'free', uses: 12 }), row({ zoneId: 'turf', uses: 4 })],
+      byMachine: [row({ zoneId: 'free', machineId: 'rack', uses: 8 }), row({ zoneId: 'free', machineId: 'db', uses: 4 })],
+    }, g);
+    expect(machineHeat.rack.intensity).toBe(1);
+    expect(machineHeat.db.intensity).toBe(0.5);
+    expect(zoneHeat.turf.intensity).toBe(0.5);
+  });
+
+  it('leaves out a zone whose own machines carry usage, so it is shown once', () => {
+    const { zoneHeat } = mapHeat({
+      byZone: [row({ zoneId: 'free', uses: 12 })],
+      byMachine: [row({ zoneId: 'free', machineId: 'rack', uses: 8 })],
+    }, g);
+    expect(zoneHeat.free).toBeUndefined();
+  });
+
+  it('does not let a hidden zone total set the scale', () => {
+    // Free Weights' 12 uses are shown on its machines, not as a zone, so the
+    // busiest thing drawn is the 8-use rack.
+    const { machineHeat } = mapHeat({
+      byZone: [row({ zoneId: 'free', uses: 12 })],
+      byMachine: [row({ zoneId: 'free', machineId: 'rack', uses: 8 })],
+    }, g);
+    expect(machineHeat.rack.intensity).toBe(1);
+  });
+
+  it('keeps a zone glow where the machines have no usage of their own', () => {
+    const { zoneHeat } = mapHeat({ byZone: [row({ zoneId: 'free', uses: 3 })], byMachine: [] }, g);
+    expect(zoneHeat.free.intensity).toBe(1);
+  });
+
+  it('ignores zones and machines no longer on the floor plan', () => {
+    const { zoneHeat, machineHeat } = mapHeat({
+      byZone: [row({ zoneId: 'gone-zone', uses: 50 }), row({ zoneId: 'turf', uses: 5 })],
+      byMachine: [row({ zoneId: 'free', machineId: 'gone-machine', uses: 99 })],
+    }, g);
+    expect(zoneHeat['gone-zone']).toBeUndefined();
+    expect(machineHeat['gone-machine']).toBeUndefined();
+    expect(zoneHeat.turf.intensity).toBe(1);
+  });
+
+  it('is zero intensity rather than a division error when nothing was used', () => {
+    const { zoneHeat } = mapHeat({ byZone: [row({ zoneId: 'turf', uses: 0 })], byMachine: [] }, g);
+    expect(zoneHeat.turf.intensity).toBe(0);
+  });
+
+  it('is empty with no usage', () => {
+    expect(mapHeat({ byZone: [], byMachine: [] }, g)).toEqual({ zoneHeat: {}, machineHeat: {} });
+  });
+
+  it('carries the raw counts through for display', () => {
+    const { machineHeat } = mapHeat({
+      byZone: [], byMachine: [row({ zoneId: 'free', machineId: 'rack', uses: 7, trainees: 3, lastUsedAt: '2026-09-20' })],
+    }, g);
+    expect(machineHeat.rack).toEqual({ uses: 7, trainees: 3, lastUsedAt: '2026-09-20', intensity: 1 });
+  });
+});
 
 describe('rolling machine usage up to equipment types', () => {
   it('sums uses across every machine of the same equipment type', () => {

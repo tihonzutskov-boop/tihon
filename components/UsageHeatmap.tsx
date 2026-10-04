@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Flame, Loader2, TrendingUp, MapPin } from 'lucide-react';
 import { Gym, EquipmentItem } from '../types';
 import { api } from '../services/api';
-import { zoneHeatMap, machineHeatMap, topEquipmentByUsage, topZonesByUsage, heatColor, GymUsage } from '../utils/equipmentUsage';
+import { mapHeat, topEquipmentByUsage, topZonesByUsage, heatColor, GymUsage } from '../utils/equipmentUsage';
 import GymMap from './GymMap';
 
 interface UsageHeatmapProps {
@@ -53,8 +53,7 @@ const UsageHeatmap: React.FC<UsageHeatmapProps> = ({ gym, equipmentList }) => {
     return () => { cancelled = true; };
   }, [gym.id, range]);
 
-  const zoneHeat = usage ? zoneHeatMap(usage) : {};
-  const machineHeat = usage ? machineHeatMap(usage) : {};
+  const { zoneHeat, machineHeat } = usage ? mapHeat(usage, gym) : { zoneHeat: {}, machineHeat: {} };
   const topEquipment = usage ? topEquipmentByUsage(gym, equipmentList, usage.byMachine) : [];
   const topZones = usage ? topZonesByUsage(gym, usage.byZone) : [];
   const hasData = !!usage && usage.byZone.length > 0;
