@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapHeat, heatClipRects, topEquipmentByUsage, topZonesByUsage, heatColor } from './equipmentUsage';
+import { mapHeat, topEquipmentByUsage, topZonesByUsage, heatColor } from './equipmentUsage';
 import type { UsageRow } from './equipmentUsage';
 import type { Gym, EquipmentItem } from '../types';
 
@@ -162,37 +162,5 @@ describe('the heat color scale', () => {
   it('clamps anything outside the 0-1 range instead of extrapolating', () => {
     expect(heatColor(-5)).toBe(heatColor(0));
     expect(heatColor(5)).toBe(heatColor(1));
-  });
-});
-
-describe('where heat may be drawn', () => {
-  const room = { x: 0, y: 0, width: 100, height: 80 };
-  const inside = (rects: { x: number; y: number; width: number; height: number }[], px: number, py: number) =>
-    rects.some(r => px >= r.x && px <= r.x + r.width && py >= r.y && py <= r.y + r.height);
-
-  it('covers the main room', () => {
-    expect(inside(heatClipRects(room), 50, 40)).toBe(true);
-  });
-
-  it('covers every wing, not just the main room', () => {
-    // A zone in this wing had its glow clipped away entirely when the clip
-    // was the room alone.
-    const wing = { x: 0, y: 80, width: 60, height: 50 };
-    expect(inside(heatClipRects(room), 30, 110)).toBe(false);
-    expect(inside(heatClipRects(room, [wing]), 30, 110)).toBe(true);
-  });
-
-  it('covers a zone placed outside the drawn walls, so its heat is never lost', () => {
-    const strayZone = { x: 150, y: 10, width: 30, height: 30 };
-    expect(inside(heatClipRects(room, [], [strayZone]), 160, 20)).toBe(true);
-  });
-
-  it('still leaves the page outside everything uncovered', () => {
-    expect(inside(heatClipRects(room, [{ x: 0, y: 80, width: 60, height: 50 }]), 90, 120)).toBe(false);
-    expect(inside(heatClipRects(room), -20, 40)).toBe(false);
-  });
-
-  it('treats a room with no origin as starting at 0,0', () => {
-    expect(heatClipRects({ width: 10, height: 10 })[0]).toEqual({ x: 0, y: 0, width: 10, height: 10 });
   });
 });

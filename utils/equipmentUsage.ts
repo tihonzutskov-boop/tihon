@@ -73,25 +73,6 @@ export const mapHeat = (usage: GymUsage, gym: Gym): MapHeat => {
   return { zoneHeat, machineHeat };
 };
 
-export interface ClipRect { x: number; y: number; width: number; height: number }
-
-/**
- * Where heat may be drawn: the building, so a glow near an outer wall doesn't
- * bleed onto the page. The building is the main room plus every wing, not the
- * room alone — clipping to the room hid every glow in a wing completely. Each
- * zone's own rectangle is included too, so a zone placed outside the drawn walls
- * still shows its heat instead of losing it entirely.
- */
-export const heatClipRects = (
-  room: { x?: number; y?: number; width: number; height: number },
-  annexes: ClipRect[] = [],
-  zones: ClipRect[] = [],
-): ClipRect[] => [
-  { x: room.x || 0, y: room.y || 0, width: room.width, height: room.height },
-  ...annexes.map(a => ({ x: a.x, y: a.y, width: a.width, height: a.height })),
-  ...zones.map(z => ({ x: z.x, y: z.y, width: z.width, height: z.height })),
-];
-
 export interface EquipmentUsage {
   equipmentId: string;
   name: string;

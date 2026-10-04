@@ -4,15 +4,9 @@ import { translations, getGymTranslation } from '../translations';
 import { isExerciseAvailableInZone } from '../utils/exerciseMatcher';
 import { ZoomOut, Settings, Dumbbell, Activity, Zap, Target, Cpu, Layers, Box, Wind, RotateCcw, ArrowUpRight, MoveDown, Circle, Waves, Timer, ZoomIn, Minus, Plus, Maximize2, Search, X, MapPin, Play, Sparkles, Filter, ChevronRight, ChevronLeft, DoorOpen, Lock, Bath, Droplets, ShieldCheck, Sprout, Anchor, Repeat, ChevronsRight } from 'lucide-react';
 import { ICON_MAP, getEquipmentIcon, getTaxonomyColor, isBeginnerFriendly, isAmenityZone, getAmenityStyleConfig, getZoneVisualCategory, VISUAL_CATEGORY_STYLES, ZoneVisualCategory, getZoneThemeStyle } from '../utils/equipmentIcons';
-import { heatColor, heatClipRects, type HeatEntry } from '../utils/equipmentUsage';
+import { heatColor, type HeatEntry } from '../utils/equipmentUsage';
 
 const NEUTRAL_ZONE_STYLE = { fill: '#334155', stroke: '#475569', dashStroke: '#475569', textColor: '#cbd5e1' };
-
-// A machine's heat is a round blob centred on it, sized from its footprint's
-// area rather than stretched to its outline: a long bench drawn as an ellipse
-// in its own proportions became a flat smear across half the room.
-const machineGlowRadius = (m: { width: number; height: number }, intensity: number): number =>
-  (Math.sqrt(m.width * m.height) / 2) * (1.5 + intensity * 0.9);
 
 function renderStaircase(x1: number, y1: number, x2: number, y2: number, thickness: number, strokeColor: string) {
   const dx = x2 - x1;
@@ -935,58 +929,32 @@ const GymMap: React.FC<GymMapProps> = ({
               <stop offset="60%" stopColor="#ffffff" stopOpacity="0" />
             </linearGradient>
 
-            {/* Usage heatmap: a soft, blurred glow per zone rather than a flat
-                fill — the familiar density-map look (think a city traffic or
-                weather heatmap), so a busy zone reads as a hot spot bleeding
-                into its surroundings instead of a block of solid color. */}
-            {!isThumbnail && (zoneHeat || machineHeat) && (
-              // Keeps a glow near an outer wall from bleeding onto the page
-              // outside the building. Several shapes in one clipPath are a union.
-              <clipPath id="heatFloorClip">
-                {heatClipRects(dimensions, annexes, zones).map((r, i) => (
-                  <rect key={`heatclip-${i}`} x={r.x} y={r.y} width={r.width} height={r.height} />
-                ))}
-              </clipPath>
-            )}
+            {/* Usage heatmap: each zone and machine lights up inside its own
+                box, brightest at the centre, rather than glowing out past its
+                edges — a glow that spilled over read as heat on the floor
+                around a machine, and ran into neighbouring zones and walls. */}
             {!isThumbnail && zoneHeat && zones.map(z => {
               const entry = zoneHeat[z.id];
               if (!entry) return null;
               const color = heatColor(entry.intensity);
-              // The blur has to scale with this zone's own size, not a fixed
-              // pixel radius — an admin draws every gym at whatever coordinate
-              // scale their floor plan happens to use, and a radius tuned for
-              // one gym's zone sizes is either imperceptible or big enough to
-              // swallow the zone whole on another's.
-              const blurRadius = Math.max(3, Math.min(z.width, z.height) * 0.1);
               return (
-                <React.Fragment key={`heatdefs-${z.id}`}>
-                  <filter id={`heatglow-${z.id}`} x="-100%" y="-100%" width="300%" height="300%">
-                    <feGaussianBlur stdDeviation={blurRadius} />
-                  </filter>
-                  <radialGradient id={`heatgrad-${z.id}`}>
-                    <stop offset="0%" stopColor={color} stopOpacity="0.95" />
-                    <stop offset="55%" stopColor={color} stopOpacity="0.55" />
-                    <stop offset="100%" stopColor={color} stopOpacity="0" />
-                  </radialGradient>
-                </React.Fragment>
+                <radialGradient key={`heatgrad-${z.id}`} id={`heatgrad-${z.id}`}>
+                  <stop offset="0%" stopColor={color} stopOpacity="0.85" />
+                  <stop offset="60%" stopColor={color} stopOpacity="0.5" />
+                  <stop offset="100%" stopColor={color} stopOpacity="0.12" />
+                </radialGradient>
               );
             })}
             {!isThumbnail && machineHeat && zones.flatMap(z => (z.machines || []).map(m => {
               const entry = machineHeat[m.id];
               if (!entry) return null;
               const color = heatColor(entry.intensity);
-              const blurRadius = Math.max(2, machineGlowRadius(m, entry.intensity) * 0.1);
               return (
-                <React.Fragment key={`heatdefs-machine-${m.id}`}>
-                  <filter id={`heatglow-machine-${m.id}`} x="-150%" y="-150%" width="400%" height="400%">
-                    <feGaussianBlur stdDeviation={blurRadius} />
-                  </filter>
-                  <radialGradient id={`heatgrad-machine-${m.id}`}>
-                    <stop offset="0%" stopColor={color} stopOpacity="0.95" />
-                    <stop offset="55%" stopColor={color} stopOpacity="0.6" />
-                    <stop offset="100%" stopColor={color} stopOpacity="0" />
-                  </radialGradient>
-                </React.Fragment>
+                <radialGradient key={`heatgrad-machine-${m.id}`} id={`heatgrad-machine-${m.id}`}>
+                  <stop offset="0%" stopColor={color} stopOpacity="0.9" />
+                  <stop offset="60%" stopColor={color} stopOpacity="0.65" />
+                  <stop offset="100%" stopColor={color} stopOpacity="0.35" />
+                </radialGradient>
               );
             }))}
           </defs>
@@ -1650,37 +1618,24 @@ const GymMap: React.FC<GymMapProps> = ({
                         style={{ opacity: zoneOpacity }}
                       />
                     )}
-                    {zoneHeatEntry && (() => {
-                      // Bigger and softer the busier it is — a quiet zone is a
-                      // small glow near its own bounds, a packed one spills
-                      // outward and bleeds into its neighbours, which is what
-                      // makes two hot zones next to each other read as one hot
-                      // corner of the gym rather than two separate boxes.
-                      const grow = 0.15 + zoneHeatEntry.intensity * 0.4;
-                      const gw = zone.width * (1 + grow);
-                      const gh = zone.height * (1 + grow);
-                      return (
-                        <>
-                          <ellipse
-                            cx={zone.x + zone.width / 2} cy={zone.y + zone.height / 2}
-                            rx={gw / 2} ry={gh / 2}
-                            fill={`url(#heatgrad-${zone.id})`}
-                            filter={`url(#heatglow-${zone.id})`}
-                            clipPath="url(#heatFloorClip)"
-                            style={{ mixBlendMode: 'screen', opacity: zoneOpacity }}
-                            className="pointer-events-none transition-opacity duration-300"
-                          />
-                          {zone.height >= 44 && (
-                            <g transform={`translate(${zone.x + 8}, ${zone.y + 8})`} className="pointer-events-none">
-                              <rect width={zoneHeatEntry.uses >= 100 ? 40 : 32} height="18" rx="5" fill="#0f172a" fillOpacity="0.85" />
-                              <text x={(zoneHeatEntry.uses >= 100 ? 40 : 32) / 2} y="13" textAnchor="middle" fontSize="10" fontWeight="800" fill="#ffffff">
-                                {zoneHeatEntry.uses}
-                              </text>
-                            </g>
-                          )}
-                        </>
-                      );
-                    })()}
+                    {zoneHeatEntry && (
+                      <>
+                        <rect
+                          x={zone.x} y={zone.y} width={zone.width} height={zone.height} rx="8"
+                          fill={`url(#heatgrad-${zone.id})`}
+                          style={{ mixBlendMode: 'screen', opacity: zoneOpacity }}
+                          className="pointer-events-none transition-opacity duration-300"
+                        />
+                        {zone.height >= 44 && (
+                          <g transform={`translate(${zone.x + 8}, ${zone.y + 8})`} className="pointer-events-none">
+                            <rect width={zoneHeatEntry.uses >= 100 ? 40 : 32} height="18" rx="5" fill="#0f172a" fillOpacity="0.85" />
+                            <text x={(zoneHeatEntry.uses >= 100 ? 40 : 32) / 2} y="13" textAnchor="middle" fontSize="10" fontWeight="800" fill="#ffffff">
+                              {zoneHeatEntry.uses}
+                            </text>
+                          </g>
+                        )}
+                      </>
+                    )}
 
                     {/* Tint the zone itself, so the whole area reads as the
                         destination and not just its edge. */}
@@ -1810,28 +1765,6 @@ const GymMap: React.FC<GymMapProps> = ({
                         focus whenever machineHeat is passed in. */}
                     {((isFocused && !isAmenity && !isEditable) || (isMachineEdit && isFocused) || (!isEditable && !isThumbnail && !!machineHeat && !isAmenity)) && zone.machines && (
                       <g className="animate-in fade-in zoom-in duration-300">
-                        {/* Heat blobs first, under every machine in the zone, and
-                            in floor coordinates rather than inside each machine's
-                            own translated group — the floor clip is drawn in
-                            floor coordinates, so it only lines up with the walls
-                            out here. */}
-                        {machineHeat && zone.machines!.map(machine => {
-                          const entry = machineHeat[machine.id];
-                          if (!entry) return null;
-                          return (
-                            <circle
-                              key={`heatblob-${machine.id}`}
-                              cx={zone.x + machine.x + machine.width / 2}
-                              cy={zone.y + machine.y + machine.height / 2}
-                              r={machineGlowRadius(machine, entry.intensity)}
-                              fill={`url(#heatgrad-machine-${machine.id})`}
-                              filter={`url(#heatglow-machine-${machine.id})`}
-                              clipPath="url(#heatFloorClip)"
-                              style={{ mixBlendMode: 'screen' }}
-                              className="pointer-events-none"
-                            />
-                          );
-                        })}
                         {(() => {
                           // Spotlight mode: once a specific machine in this zone is the
                           // resolved match (selectedMachineId), every other machine dims
@@ -1907,6 +1840,16 @@ const GymMap: React.FC<GymMapProps> = ({
                                 rx="4"
                                 className={showAdminSelected ? 'machine-pulse' : isUserTarget ? 'machine-glow-lime' : (showUserGlow ? 'machine-glow-white' : '')}
                               />
+                              {machineHeatEntry && (
+                                // Heat fills the machine's own box and stops at its
+                                // edge; the icon is drawn after it, so it stays on top.
+                                <rect
+                                  width={machine.width} height={machine.height} rx="4"
+                                  fill={`url(#heatgrad-machine-${machine.id})`}
+                                  style={{ mixBlendMode: 'screen' }}
+                                  className="pointer-events-none"
+                                />
+                              )}
 
                               <g transform={`translate(${machine.width / 2}, ${machine.height / 2})`} className="pointer-events-none">
                                 {MachineIcon ? (
