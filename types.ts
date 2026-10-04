@@ -221,6 +221,9 @@ export interface SessionBookend {
   name: string;
   minutes: number;
   steps: string[];
+  // What follows the steps — dynamic stretching, stretches for the muscles the
+  // day trains. Absent on days generated before it existed.
+  extra?: string[];
 }
 
 export type SessionBlockType = 'single' | 'superset' | 'circuit' | 'warmup' | 'cooldown';

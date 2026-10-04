@@ -9,7 +9,7 @@ import type {
 // A real import, not type-only: the session's length decides its whole shape,
 // so these run at generation time. Compiled alongside planGeneration into the
 // engine build the server uses.
-import { shapeFor, bookendsFor, maxBookendMinutes, zone2MinutesFor } from './sessionShape.js';
+import { shapeFor, bookendsFor, maxBookendMinutes, zone2MinutesFor, regionsOfPatterns, BOOKEND_MINUTES } from './sessionShape.js';
 import type { SessionShape, SessionBookend } from './sessionShape.js';
 
 // ---------------------------------------------------------------------------
@@ -803,19 +803,19 @@ const buildExercise = (
 // overlaps (24) still lose to a single explicit bookend tag (30), so an admin's
 // tagging always outranks the day, and the day only breaks ties within the
 // group of exercises already marked for this end of the session.
-// A follow-along video tagged for this end of the session outranks any machine
-// or movement: the admin recorded it to be the warm-up or cooldown, which is
-// more deliberate than a bike happening to suit it. Large enough to beat the
-// most a machine can score (tag + cardio + several day muscles). A video that
-// is not tagged for this end gets none of it, so a cooldown video is never
-// preferred as a warm-up.
-const BOOKEND_SCORING = {
-  taggedForBookend: 30, mobility: 20, mobilityPattern: 15, cardio: 10, dayMuscleMatch: 8,
-  taggedVideo: 100,
-  // Several videos rotate through the week instead of one playing every day.
-  // Smaller than taggedVideo, so a repeat still beats a machine.
-  videoUsedEarlierInWeek: -45,
-};
+const BOOKEND_SCORING = { taggedForBookend: 30, mobility: 20, mobilityPattern: 15, cardio: 10, dayMuscleMatch: 8 };
+
+// Dynamic stretching and the cooldown stretches are follow-along videos from
+// the library, each its own exercise in the day. Chosen for the muscles the day
+// trains, and rotated through the week so one video does not play every day.
+const BOOKEND_VIDEO_SCORING = { tagged: 30, dayMuscleMatch: 8, usedEarlierInWeek: -45 };
+
+// A video whose length cannot be read still has to be fitted into a block, so
+// it is counted as this. Short enough that guessing wrong costs little.
+const DEFAULT_VIDEO_MINUTES = 3;
+// A set of videos may run this far past the time asked of it rather than leave
+// the block short by a video that is only a little too long.
+const VIDEO_OVERSHOOT_MINUTES = 2;
 
 /**
  * Minutes a video runs, read from the free-text length an admin typed
@@ -842,19 +842,76 @@ export const parseVideoMinutes = (label?: string | null): number | null => {
   return null;
 };
 
+export const videoMinutesOf = (ex: Pick<LibraryExercise, 'videoDurationLabel'>): number =>
+  parseVideoMinutes(ex.videoDurationLabel) ?? DEFAULT_VIDEO_MINUTES;
+
 const isTaggedVideo = (ex: LibraryExercise, kind: 'warmup' | 'cooldown'): boolean =>
   ex.exerciseType === 'video' && (!!ex.bookendRoles?.includes(kind) || ex.exerciseCategory === kind);
 
 /**
- * The warm-up or cooldown block for a day. A follow-along video sets the
- * block's length to its own and says to follow it; anything else keeps the
- * fixed block, whose steps are written for a machine or movement.
+ * The videos that make up the dynamic stretching (warm-up) or the stretches
+ * (cooldown), adding up to about `targetMinutes`. Only videos tagged for this
+ * end are considered. Best first — the day's muscles, then ones not used earlier
+ * in the week — taking each that still fits and passing over one that does not.
+ * Empty when there is no time to fill or nothing tagged fits, and the caller
+ * writes the stretching out instead.
  */
-export const bookendBlockFor = (block: SessionBookend, le: LibraryExercise | null): SessionBookend =>
-  le?.exerciseType === 'video'
-    ? { ...block, minutes: parseVideoMinutes(le.videoDurationLabel) ?? block.minutes, steps: ['Follow along with the video.'] }
-    : block;
+export const selectBookendVideos = (
+  kind: 'warmup' | 'cooldown',
+  pool: LibraryExercise[],
+  targetMinutes: number,
+  dayMuscles: Set<MuscleGroup> | MuscleGroup[] = [],
+  options: {
+    usedEarlierInWeek?: Set<string>;
+    /** The most these videos may add up to, whatever the target: the session's room for them. */
+    maxMinutes?: number;
+  } = {},
+): LibraryExercise[] => {
+  if (targetMinutes <= 0) return [];
+  const trained = dayMuscles instanceof Set ? dayMuscles : new Set(dayMuscles);
+  const limit = Math.min(targetMinutes + VIDEO_OVERSHOOT_MINUTES, options.maxMinutes ?? Infinity);
+  const ranked = pool
+    .filter(ex => ex.generationEnabled !== false && isTaggedVideo(ex, kind))
+    .map(ex => {
+      let score = BOOKEND_VIDEO_SCORING.tagged;
+      for (const m of ex.primaryMuscles || []) if (trained.has(m)) score += BOOKEND_VIDEO_SCORING.dayMuscleMatch;
+      if (options.usedEarlierInWeek?.has(ex.id)) score += BOOKEND_VIDEO_SCORING.usedEarlierInWeek;
+      return { ex, score, minutes: videoMinutesOf(ex) };
+    })
+    .sort((a, b) => (b.score - a.score) || a.ex.id.localeCompare(b.ex.id));
+  const chosen: LibraryExercise[] = [];
+  let total = 0;
+  for (const c of ranked) {
+    if (total >= targetMinutes) break;
+    if (total + c.minutes > limit) continue;
+    chosen.push(c.ex);
+    total += c.minutes;
+  }
+  return chosen;
+};
 
+/** A follow-along video as its own entry at one end of the session. */
+export const buildVideoBookendExercise = (
+  kind: 'warmup' | 'cooldown',
+  le: LibraryExercise,
+  idSuffix: string,
+): Exercise => ({
+  id: `gbk-${idSuffix}`,
+  name: le.name,
+  targetMuscle: le.targetMuscle || 'Full body',
+  sets: 0,
+  reps: '',
+  isCardio: true,
+  cardioMinutes: videoMinutesOf(le),
+  equipmentId: le.equipmentId || 'manual',
+  libraryExerciseId: le.id,
+  bookend: kind,
+  notes: 'Follow along with the video.',
+});
+
+// The machine or movement an end of the session is built around: the cardio
+// and the walk. Follow-along videos are never this — they are the stretching
+// that follows it, chosen by selectBookendVideos.
 export const selectBookendExercise = (
   kind: 'warmup' | 'cooldown',
   pool: LibraryExercise[],
@@ -864,20 +921,10 @@ export const selectBookendExercise = (
   // empty set simply scores nothing — every existing caller keeps its old
   // behaviour without passing it.
   dayMuscles: Set<MuscleGroup> | MuscleGroup[] = [],
-  options: {
-    /** Videos already used for this end earlier in the week, to rotate rather than repeat. */
-    usedEarlierInWeek?: Set<string>;
-    /** A video longer than this does not fit the session, so is not a candidate. */
-    maxVideoMinutes?: number;
-  } = {},
 ): LibraryExercise | null => {
   const trained = dayMuscles instanceof Set ? dayMuscles : new Set(dayMuscles);
   const scoreOne = (ex: LibraryExercise): number => {
     let score = 0;
-    if (isTaggedVideo(ex, kind)) {
-      score += BOOKEND_SCORING.taggedVideo;
-      if (options.usedEarlierInWeek?.has(ex.id)) score += BOOKEND_SCORING.videoUsedEarlierInWeek;
-    }
     // Counted per muscle rather than as a yes/no, so on a lower day a
     // stairmaster (quads + glutes) is picked over a treadmill (quads only).
     for (const m of ex.primaryMuscles || []) {
@@ -893,13 +940,8 @@ export const selectBookendExercise = (
     if (ex.exerciseCategory === 'cardio') score += BOOKEND_SCORING.cardio;
     return score;
   };
-  const fits = (ex: LibraryExercise): boolean => {
-    if (ex.exerciseType !== 'video' || options.maxVideoMinutes === undefined) return true;
-    const minutes = parseVideoMinutes(ex.videoDurationLabel);
-    return minutes === null || minutes <= options.maxVideoMinutes;
-  };
   const scored = pool
-    .filter(ex => ex.generationEnabled !== false && fits(ex) && scoreOne(ex) > 0)
+    .filter(ex => ex.generationEnabled !== false && ex.exerciseType !== 'video' && scoreOne(ex) > 0)
     .map(ex => ({ ex, score: scoreOne(ex) }))
     .sort((a, b) => (b.score - a.score) || a.ex.id.localeCompare(b.ex.id));
   return scored.length > 0 ? scored[0].ex : null;
@@ -1042,23 +1084,39 @@ export const generatePlan = (
     // left to warm up.
     const shape = shapeFor(profile.sessionMinutes);
     // The warm-up and cooldown are chosen before the weights are fitted, since
-    // a video sets its own length and that length comes off the training time.
-    // They are matched to the muscles the day was built to train, which is the
-    // same set whether or not an exercise is later dropped for time. A video
-    // too long to leave the other end its usual minutes within the session's
-    // bookend allowance is not offered.
-    const defaultBookends = bookendsFor(shape);
+    // the videos in them set their own length and that length comes off the
+    // training time. Each is the cardio (or walk) it is built around, then
+    // stretching: follow-along videos from the library when there are tagged
+    // ones that fit, written out when there are not. They are matched to the
+    // muscles the day was built to train, which is the same set whether or not
+    // an exercise is later dropped for time.
+    const regions = regionsOfPatterns(picked.map(p => p.slot.movementPattern));
+    const minutesFor = BOOKEND_MINUTES[shape.band];
+    const cardioMinutes = Math.min(minutesFor.cardio, shape.warmupMinutes);
+    const walkMinutes = Math.min(minutesFor.walk, shape.cooldownMinutes);
     const allowedBookendMinutes = maxBookendMinutes(profile.sessionMinutes);
-    const warmupLe = selectBookendExercise('warmup', pool, musclesInDay, {
-      usedEarlierInWeek: bookendVideosUsed.warmup,
-      maxVideoMinutes: allowedBookendMinutes - defaultBookends.cooldown.minutes,
-    });
-    const warmup = bookendBlockFor(defaultBookends.warmup, warmupLe);
-    const cooldownLe = selectBookendExercise('cooldown', pool, musclesInDay, {
-      usedEarlierInWeek: bookendVideosUsed.cooldown,
-      maxVideoMinutes: allowedBookendMinutes - warmup.minutes,
-    });
-    const cooldown = bookendBlockFor(defaultBookends.cooldown, cooldownLe);
+    const stretchable = shape.band !== 'short';
+    const warmupVideos = stretchable
+      ? selectBookendVideos('warmup', pool, shape.warmupMinutes - cardioMinutes, musclesInDay, {
+          usedEarlierInWeek: bookendVideosUsed.warmup,
+          maxMinutes: allowedBookendMinutes - cardioMinutes - shape.cooldownMinutes,
+        })
+      : [];
+    const warmupVideoMinutes = warmupVideos.reduce((sum, v) => sum + videoMinutesOf(v), 0);
+    const warmupTotal = warmupVideos.length > 0 ? cardioMinutes + warmupVideoMinutes : shape.warmupMinutes;
+    const cooldownVideos = stretchable
+      ? selectBookendVideos('cooldown', pool, shape.cooldownMinutes - walkMinutes, musclesInDay, {
+          usedEarlierInWeek: bookendVideosUsed.cooldown,
+          maxMinutes: allowedBookendMinutes - warmupTotal - walkMinutes,
+        })
+      : [];
+    const cooldownVideoMinutes = cooldownVideos.reduce((sum, v) => sum + videoMinutesOf(v), 0);
+    const cooldownTotal = cooldownVideos.length > 0 ? walkMinutes + cooldownVideoMinutes : shape.cooldownMinutes;
+    const blocks = bookendsFor(shape, regions, { warmup: warmupVideos.length > 0, cooldown: cooldownVideos.length > 0 });
+    const warmup = { ...blocks.warmup, minutes: warmupTotal };
+    const cooldown = { ...blocks.cooldown, minutes: cooldownTotal };
+    const warmupLe = selectBookendExercise('warmup', pool, musclesInDay);
+    const cooldownLe = selectBookendExercise('cooldown', pool, musclesInDay);
     const trainingBudget = Math.max(0, profile.sessionMinutes - warmup.minutes - cooldown.minutes);
     // The zone-2 block, for an aim that ends its session with one. Its minutes
     // come out of the training time, so the weights are fitted into what is
@@ -1196,10 +1254,13 @@ export const generatePlan = (
       // Bookends bracket the working exercises, in the order they're done; the
       // zone-2 block, when there is one, closes the weights before the cooldown.
       exercises: [
-        buildBookendExercise('warmup', warmup, warmupLe, `${d}-warmup`),
+        // The cardio shows only its own minutes when videos make up the rest.
+        buildBookendExercise('warmup', warmupVideos.length > 0 ? { ...warmup, minutes: cardioMinutes } : warmup, warmupLe, `${d}-warmup`),
+        ...warmupVideos.map((v, i) => buildVideoBookendExercise('warmup', v, `${d}-warmup-v${i}`)),
         ...picked.map((p, i) => buildExercise(p.le, p.slot, profile, `${d}-${i}`)),
         ...(zoneMinutes > 0 && zoneLibraryExercise ? [buildZone2Exercise(zoneLibraryExercise, zoneMinutes, `${d}`)] : []),
-        buildBookendExercise('cooldown', cooldown, cooldownLe, `${d}-cooldown`),
+        buildBookendExercise('cooldown', cooldownVideos.length > 0 ? { ...cooldown, minutes: walkMinutes } : cooldown, cooldownLe, `${d}-cooldown`),
+        ...cooldownVideos.map((v, i) => buildVideoBookendExercise('cooldown', v, `${d}-cooldown-v${i}`)),
       ],
       warmup,
       cooldown,
@@ -1211,8 +1272,8 @@ export const generatePlan = (
     // shouldn't cost itself a later day's variety.
     picked.forEach(p => usedEarlierInWeek.add(p.le.id));
     if (zoneMinutes > 0 && zoneLibraryExercise) usedEarlierInWeek.add(zoneLibraryExercise.id);
-    if (warmupLe) bookendVideosUsed.warmup.add(warmupLe.id);
-    if (cooldownLe) bookendVideosUsed.cooldown.add(cooldownLe.id);
+    warmupVideos.forEach(v => bookendVideosUsed.warmup.add(v.id));
+    cooldownVideos.forEach(v => bookendVideosUsed.cooldown.add(v.id));
   }
 
   // Every day failed, so there is no plan to deliver — that is a week-level

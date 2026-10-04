@@ -4,7 +4,7 @@ import {
   selectForSlot, estimateDayMinutes, generatePlan, validatePlan, buildDefaultBlueprint,
   buildCombinedBlueprint, assignAimsToDays, aimProfile, GenerationProfile, EligibilityContext,
   buildBookendExercise, selectBookendExercise, isBookendExercise,
-  roundRestSeconds, parseVideoMinutes, bookendBlockFor,
+  roundRestSeconds, parseVideoMinutes, selectBookendVideos, videoMinutesOf,
 } from './planGeneration';
 import { zone2MinutesFor } from './sessionShape';
 import type { GenerationFailure } from './planGeneration';
@@ -1961,23 +1961,25 @@ describe('zone-2 cardio', () => {
   });
 });
 
-// --- warm-up and cool-down videos ------------------------------------------
+// --- warm-up and cool-down: cardio, then stretching from videos --------------
 
-describe('video warm-ups and cooldowns', () => {
+describe('warm-up and cool-down built from videos', () => {
   const video = (over: Partial<LibraryExercise> & { id: string }) => exercise({
     name: over.id, exerciseType: 'video', movementPattern: undefined, exerciseCategory: 'mobility',
-    bookendRoles: ['warmup'], videoUrl: 'https://youtu.be/x', videoDurationLabel: '8 min', targetMuscle: 'Full body',
+    bookendRoles: ['warmup'], videoUrl: 'https://youtu.be/x', videoDurationLabel: '2 min', targetMuscle: 'Full body',
     ...over,
   } as any);
   const bike = exercise({
     id: 'bike', name: 'Gym Bike', exerciseCategory: 'cardio', movementPattern: 'conditioning',
-    equipmentId: 'zone-cardio', bookendRoles: ['warmup', 'cooldown'], primaryMuscles: ['Quads', 'Glutes', 'Hamstrings'],
+    equipmentId: 'zone-cardio', bookendRoles: ['warmup', 'cooldown'],
   });
   const lifts = [
     exercise({ id: 'squat', name: 'Squat', movementPattern: 'squat', primaryMuscles: ['Quads', 'Glutes'] }),
     exercise({ id: 'push', name: 'Push-up', movementPattern: 'horizontal_push' }),
     exercise({ id: 'row', name: 'Row', movementPattern: 'horizontal_pull' }),
   ];
+  const warmVid = (n: number, minutes = '2 min', over: any = {}) => video({ id: `w${n}`, videoDurationLabel: minutes, ...over });
+  const coolVid = (n: number, minutes = '3 min', over: any = {}) => video({ id: `c${n}`, bookendRoles: ['cooldown'], videoDurationLabel: minutes, ...over });
 
   describe('reading a length', () => {
     it('reads minutes however they are written', () => {
@@ -1996,66 +1998,70 @@ describe('video warm-ups and cooldowns', () => {
         expect(parseVideoMinutes(l as any), String(l)).toBeNull();
       }
     });
-  });
 
-  describe('choosing one', () => {
-    it('prefers a video tagged for the warm-up over a machine that suits the day better', () => {
-      const w = video({ id: 'warm-vid' });
-      const pick = selectBookendExercise('warmup', [bike, w], new Set(['Quads', 'Glutes', 'Hamstrings'] as any));
-      expect(pick?.id).toBe('warm-vid');
-    });
-
-    it('prefers a video tagged for the cooldown over a machine', () => {
-      const c = video({ id: 'cool-vid', bookendRoles: ['cooldown'] });
-      expect(selectBookendExercise('cooldown', [bike, c])?.id).toBe('cool-vid');
-    });
-
-    it('does not prefer a video tagged for the other end', () => {
-      const coolOnly = video({ id: 'cool-vid', bookendRoles: ['cooldown'] });
-      expect(selectBookendExercise('warmup', [bike, coolOnly])?.id).toBe('bike');
-    });
-
-    it('does not prefer an untagged video', () => {
-      const untagged = video({ id: 'plain-vid', bookendRoles: [] });
-      expect(selectBookendExercise('warmup', [bike, untagged])?.id).toBe('bike');
-    });
-
-    it('rotates between videos instead of repeating one', () => {
-      const a = video({ id: 'a-vid' }), b = video({ id: 'b-vid' });
-      expect(selectBookendExercise('warmup', [a, b])?.id).toBe('a-vid');
-      expect(selectBookendExercise('warmup', [a, b], [], { usedEarlierInWeek: new Set(['a-vid']) })?.id).toBe('b-vid');
-      // A video that is the only one still beats a machine, used or not.
-      expect(selectBookendExercise('warmup', [a, bike], [], { usedEarlierInWeek: new Set(['a-vid']) })?.id).toBe('a-vid');
-    });
-
-    it('skips a video too long for the session', () => {
-      const long = video({ id: 'long-vid', videoDurationLabel: '30 min' });
-      expect(selectBookendExercise('warmup', [bike, long], [], { maxVideoMinutes: 10 })?.id).toBe('bike');
-      expect(selectBookendExercise('warmup', [bike, long], [], { maxVideoMinutes: 30 })?.id).toBe('long-vid');
-    });
-
-    it('keeps a video with no readable length as a candidate', () => {
-      const unknown = video({ id: 'v', videoDurationLabel: 'Follow-along video' });
-      expect(selectBookendExercise('warmup', [bike, unknown], [], { maxVideoMinutes: 5 })?.id).toBe('v');
+    it('counts an unreadable length as three minutes', () => {
+      expect(videoMinutesOf({ videoDurationLabel: 'Follow-along video' })).toBe(3);
+      expect(videoMinutesOf({ videoDurationLabel: '5 min' })).toBe(5);
     });
   });
 
-  describe('the block it makes', () => {
-    const block = { kind: 'warmup' as const, name: 'Warm-up', minutes: 9, steps: ['5 minutes easy cardio'] };
-
-    it('takes the video length and tells the client to follow it', () => {
-      expect(bookendBlockFor(block, video({ id: 'v', videoDurationLabel: '10 min' }))).toEqual({
-        kind: 'warmup', name: 'Warm-up', minutes: 10, steps: ['Follow along with the video.'],
-      });
+  describe('choosing the videos', () => {
+    it('takes tagged videos until the time is filled', () => {
+      const pool = [warmVid(1, '2 min'), warmVid(2, '2 min'), warmVid(3, '2 min')];
+      expect(selectBookendVideos('warmup', pool, 4).map(v => v.id)).toEqual(['w1', 'w2']);
     });
 
-    it('keeps the fixed length when the video has no readable one', () => {
-      expect(bookendBlockFor(block, video({ id: 'v', videoDurationLabel: '' })).minutes).toBe(9);
+    it('lets a set run a little past the time rather than stop short', () => {
+      expect(selectBookendVideos('warmup', [warmVid(1, '5 min')], 4).map(v => v.id)).toEqual(['w1']);
+      // But not by much: 7 minutes against 4 asked is too far.
+      expect(selectBookendVideos('warmup', [warmVid(1, '7 min')], 4)).toEqual([]);
     });
 
-    it('leaves a machine warm-up exactly as it was', () => {
-      expect(bookendBlockFor(block, bike)).toBe(block);
-      expect(bookendBlockFor(block, null)).toBe(block);
+    it('passes over a video that does not fit and takes one that does', () => {
+      const pool = [warmVid(1, '9 min'), warmVid(2, '3 min')];
+      expect(selectBookendVideos('warmup', pool, 4).map(v => v.id)).toEqual(['w2']);
+    });
+
+    it('chooses for this end only: a cooldown video is never a warm-up video', () => {
+      expect(selectBookendVideos('warmup', [coolVid(1)], 4)).toEqual([]);
+      expect(selectBookendVideos('cooldown', [coolVid(1)], 3).map(v => v.id)).toEqual(['c1']);
+    });
+
+    it('ignores a video with no tag for the end, and one not enabled for generation', () => {
+      const pool = [video({ id: 'plain', bookendRoles: [] }), warmVid(2, '2 min', { generationEnabled: false })];
+      expect(selectBookendVideos('warmup', pool, 4)).toEqual([]);
+    });
+
+    it('prefers videos for the muscles the day trains', () => {
+      const legs = warmVid(1, '2 min', { primaryMuscles: ['Quads'] });
+      const arms = warmVid(0, '2 min', { primaryMuscles: ['Biceps'] });
+      // w0 sorts first by id, so only the muscle match can put w1 ahead.
+      expect(selectBookendVideos('warmup', [arms, legs], 2, new Set(['Quads'] as any)).map(v => v.id)).toEqual(['w1']);
+    });
+
+    it('rotates rather than repeating a video it used earlier in the week', () => {
+      const pool = [warmVid(1), warmVid(2)];
+      expect(selectBookendVideos('warmup', pool, 2).map(v => v.id)).toEqual(['w1']);
+      expect(selectBookendVideos('warmup', pool, 2, [], { usedEarlierInWeek: new Set(['w1']) }).map(v => v.id)).toEqual(['w2']);
+    });
+
+    it('never goes past the room the session has for them', () => {
+      expect(selectBookendVideos('warmup', [warmVid(1, '5 min')], 6, [], { maxMinutes: 4 })).toEqual([]);
+    });
+
+    it('asks for nothing when there is no time to fill', () => {
+      expect(selectBookendVideos('warmup', [warmVid(1)], 0)).toEqual([]);
+    });
+  });
+
+  describe('the cardio at each end is never a video', () => {
+    it('is picked from what is not a video, however well a video is tagged', () => {
+      const w = warmVid(1, '2 min', { primaryMuscles: ['Quads', 'Glutes', 'Hamstrings'] });
+      expect(selectBookendExercise('warmup', [bike, w], new Set(['Quads', 'Glutes', 'Hamstrings'] as any))?.id).toBe('bike');
+    });
+
+    it('finds nothing when the library holds only videos', () => {
+      expect(selectBookendExercise('warmup', [warmVid(1)])).toBeNull();
     });
   });
 
@@ -2070,81 +2076,117 @@ describe('video warm-ups and cooldowns', () => {
       if (!r.ok) throw new Error('plan failed');
       return { days: r.days, p };
     };
+    const ends = (day: { exercises: Exercise[] }, kind: 'warmup' | 'cooldown') => day.exercises.filter(e => e.bookend === kind);
 
-    it('opens and closes the session with the tagged videos, at their own length', () => {
-      const lib = [...lifts, bike, video({ id: 'warm-vid', videoDurationLabel: '10 min' }),
-        video({ id: 'cool-vid', bookendRoles: ['cooldown'], videoDurationLabel: '4 min' })];
-      const { days } = run(lib, 60);
-      const day = days[0];
-      const first = day.exercises[0], last = day.exercises[day.exercises.length - 1];
-      expect(first).toMatchObject({ bookend: 'warmup', libraryExerciseId: 'warm-vid', cardioMinutes: 10 });
-      expect(last).toMatchObject({ bookend: 'cooldown', libraryExerciseId: 'cool-vid', cardioMinutes: 4 });
+    it('is just 10 minutes of cardio at 45 minutes, whatever videos exist', () => {
+      const lib = [...lifts, bike, warmVid(1), warmVid(2), warmVid(3)];
+      const day = run(lib, 45).days[0];
+      expect(ends(day, 'warmup')).toHaveLength(1);
+      expect(ends(day, 'warmup')[0]).toMatchObject({ libraryExerciseId: 'bike', cardioMinutes: 10 });
       expect(day.warmup!.minutes).toBe(10);
-      expect(day.cooldown!.minutes).toBe(4);
     });
 
-    it('fits the weights around the real length of the videos', () => {
+    it('adds dynamic stretching videos after the cardio at 60 minutes', () => {
+      const lib = [...lifts, bike, warmVid(1), warmVid(2), warmVid(3)];
+      const day = run(lib, 60).days[0];
+      const warm = ends(day, 'warmup');
+      expect(warm.map(e => e.libraryExerciseId)).toEqual(['bike', 'w1', 'w2']);
+      expect(warm[0].cardioMinutes).toBe(10);
+      expect(warm.slice(1).map(e => e.cardioMinutes)).toEqual([2, 2]);
+      expect(day.warmup!.minutes).toBe(14);
+      // The cardio opens the day and the videos follow it before any lifting.
+      expect(day.exercises.slice(0, 3).map(e => e.bookend)).toEqual(['warmup', 'warmup', 'warmup']);
+    });
+
+    it('adds about ten minutes of them at 90 minutes', () => {
+      const lib = [...lifts, bike, ...[1, 2, 3, 4, 5, 6].map(n => warmVid(n, '2 min'))];
+      const day = run(lib, 90).days[0];
+      const videos = ends(day, 'warmup').slice(1);
+      expect(videos.reduce((n, e) => n + (e.cardioMinutes || 0), 0)).toBe(10);
+      expect(day.warmup!.minutes).toBe(20);
+    });
+
+    it('closes with a walk and then stretching videos', () => {
+      const lib = [...lifts, bike, coolVid(1, '4 min'), coolVid(2, '4 min'), coolVid(3, '4 min')];
+      const day = run(lib, 60).days[0];
+      const cool = ends(day, 'cooldown');
+      expect(cool.map(e => e.libraryExerciseId)).toEqual(['bike', 'c1', 'c2']);
+      expect(cool[0].cardioMinutes).toBe(3);
+      expect(day.cooldown!.minutes).toBe(11);
+      expect(day.exercises[day.exercises.length - 1].bookend).toBe('cooldown');
+    });
+
+    it('counts the real length of the videos when fitting the weights', () => {
       const six = [
         ...lifts,
         exercise({ id: 'hinge', name: 'Deadlift', movementPattern: 'hinge' }),
         exercise({ id: 'press', name: 'Press', movementPattern: 'vertical_push' }),
         exercise({ id: 'plank', name: 'Plank', movementPattern: 'core', exerciseCategory: 'isolation' }),
+        bike,
       ];
-      // Long rests make each lift take 6 min, so six lifts need about 34 min.
-      const heavy = buildCombinedBlueprint(['Muscle gain'], 1, 45).map(d => ({
+      // Long rests make each lift six minutes, so the day needs about 34 minutes.
+      // At 56 minutes, 2-minute videos leave room for all six; 5-minute ones do not.
+      const heavy = buildCombinedBlueprint(['Muscle gain'], 1, 56).map(d => ({
         ...d, slots: d.slots.map(sl => ({ ...sl, restSeconds: 120 })),
       }));
-      const lifted = (videoMinutes: string) => {
-        const lib = [...six, video({ id: 'warm-vid', videoDurationLabel: videoMinutes })];
+      const lifted = (videoLength: string) => {
+        const lib = [...six, warmVid(1, videoLength), warmVid(2, videoLength), coolVid(1, videoLength), coolVid(2, videoLength)];
         const r = generatePlan(
-          { id: 't', name: 'T', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 45, days: [], blueprintDays: heavy },
-          lib, gym([]), profile({ sessionMinutes: 45 }),
+          { id: 't', name: 'T', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 56, days: [], blueprintDays: heavy },
+          lib, gym([]), profile({ sessionMinutes: 56 }),
         );
         if (!r.ok) throw new Error('plan failed');
         return working(r.days[0]).length;
       };
-      // 45 min: a 4-minute video leaves 36 for the weights, a 10-minute one 30.
-      expect(lifted('4 min')).toBe(6);
-      expect(lifted('10 min')).toBe(5);
+      expect(lifted('2 min')).toBe(6);
+      expect(lifted('5 min')).toBe(5);
     });
 
-    it('leaves a video that does not fit the session out of the plan', () => {
-      const lib = [...lifts, bike, video({ id: 'huge', videoDurationLabel: '40 min' })];
+    it('rotates the stretching videos across the week', () => {
+      const lib = [...lifts, bike, ...[1, 2, 3, 4, 5, 6].map(n => warmVid(n, '2 min'))];
       const { days } = run(lib, 60);
-      expect(days[0].exercises[0].libraryExerciseId).toBe('bike');
+      const first = days.map(d => ends(d, 'warmup')[1].libraryExerciseId);
+      expect(new Set(first).size).toBe(3);
     });
 
-    it('rotates several warm-up videos across the week', () => {
-      const lib = [...lifts, video({ id: 'a-vid' }), video({ id: 'b-vid' }), video({ id: 'c-vid' })];
-      const { days } = run(lib, 60);
-      expect(days.map(d => d.exercises[0].libraryExerciseId)).toEqual(['a-vid', 'b-vid', 'c-vid']);
+    it('writes the stretching out when there are no videos, for the muscles the day trains', () => {
+      const day = run([...lifts, bike], 60).days[0];
+      expect(ends(day, 'warmup')).toHaveLength(1);
+      expect(day.warmup!.minutes).toBe(14);
+      const extra = day.warmup!.extra!.join(' ');
+      expect(extra).toMatch(/Dynamic stretching, about 4 minutes/);
+      expect(extra).toMatch(/squats/i);   // the day squats
+      expect(extra).toMatch(/arm circles|push-ups/i); // and pushes
+      expect(day.cooldown!.extra!.join(' ')).toMatch(/Stretch what you trained, holding each 30 seconds/);
     });
 
-    it('counts the real length when checking the plan against the session', () => {
-      const lib = [...lifts, video({ id: 'warm-vid', videoDurationLabel: '10 min' })];
-      const { days, p } = run(lib, 45);
-      expect(validatePlan(days, lib, gym([]), p).valid).toBe(true);
-      // The day is 30 min: a 10-minute video, 5 of cooldown and 15 of lifts. It fits
-      // a 30-minute session, and is over a 25-minute one only once the video counts.
-      expect(validatePlan(days, lib, gym([]), profile({ daysPerWeek: 3, sessionMinutes: 30 })).errors).toEqual([]);
-      const shorter = profile({ daysPerWeek: 3, sessionMinutes: 25 });
-      expect(validatePlan(days, lib, gym([]), shorter).errors.some(e => /over the 25 min target/.test(e))).toBe(true);
+    it('leaves the written steps for a part that has no video when the other end does', () => {
+      const day = run([...lifts, bike, warmVid(1), warmVid(2)], 60).days[0];
+      // Warm-up is videos now; the cooldown has none tagged, so it is written out.
+      expect(day.warmup!.extra!.join(' ')).not.toMatch(/Dynamic stretching/);
+      expect(day.cooldown!.extra!.join(' ')).toMatch(/Stretch what you trained/);
     });
 
-    it('does not charge a short video the fixed warm-up length', () => {
-      // A 3-minute video makes the day 23 min; the fixed 9-minute warm-up would
-      // make it 29 and wrongly reject it against a 25-minute session.
-      const lib = [...lifts, video({ id: 'warm-vid', videoDurationLabel: '3 min' })];
-      const { days } = run(lib, 45);
-      expect(days[0].warmup!.minutes).toBe(3);
-      expect(validatePlan(days, lib, gym([]), profile({ daysPerWeek: 3, sessionMinutes: 25 })).errors).toEqual([]);
+    it('still builds the warm-up when the gym has videos but no cardio', () => {
+      // The lifts carry no muscle tags here: a lift whose muscles match the day would
+      // otherwise score as a warm-up, as it always could.
+      const bare = lifts.map(l => ({ ...l, primaryMuscles: undefined }));
+      const day = run([...bare, warmVid(1), warmVid(2)], 60).days[0];
+      const warm = ends(day, 'warmup');
+      expect(warm[0].libraryExerciseId).toBeUndefined();
+      expect(warm.slice(1).map(e => e.libraryExerciseId)).toEqual(['w1', 'w2']);
     });
 
-    it('is unchanged for a library with no videos', () => {
-      const { days } = run([...lifts, bike], 60);
-      expect(days[0].exercises[0]).toMatchObject({ bookend: 'warmup', libraryExerciseId: 'bike' });
-      expect(days[0].warmup!.minutes).toBe(9);
-      expect(days[0].cooldown!.minutes).toBe(5);
+    it('leaves out a video too long for the session', () => {
+      const day = run([...lifts, bike, warmVid(1, '40 min')], 60).days[0];
+      expect(ends(day, 'warmup')).toHaveLength(1);
+      expect(day.warmup!.minutes).toBe(14);
+    });
+
+    it('passes validation, counting the videos toward the session length', () => {
+      const lib = [...lifts, bike, warmVid(1), warmVid(2), coolVid(1), coolVid(2)];
+      const { days, p } = run(lib, 60);
+      expect(validatePlan(days, lib, gym([]), p)).toMatchObject({ valid: true, errors: [] });
     });
   });
 });

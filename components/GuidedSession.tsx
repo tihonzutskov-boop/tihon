@@ -897,6 +897,26 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                     ))}
                   </ul>
                 )}
+                {/* What follows the cardio or the walk that is not a video of its
+                    own: stretching written out for the muscles this day trains.
+                    An exercise's own note replaces the steps above but not this,
+                    and a follow-along video never carries it. A line ending in a
+                    colon introduces the ones after it. */}
+                {!hasFollowAlongVideo && (() => {
+                  const extra = (exercise.bookend === 'warmup' ? day.warmup : day.cooldown)?.extra;
+                  return extra && extra.length > 0 ? (
+                    <ul className="space-y-1.5 mt-4">
+                      {extra.map((line, i) => line.endsWith(':') ? (
+                        <li key={i} className="text-sm font-bold text-slate-300 leading-relaxed pt-1">{line}</li>
+                      ) : (
+                        <li key={i} className="text-sm text-slate-400 leading-relaxed flex gap-2.5">
+                          <span className="text-slate-600 shrink-0">&bull;</span>
+                          <span>{line}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null;
+                })()}
               </>
             )}
 
