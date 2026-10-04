@@ -6,6 +6,8 @@ import { ZoomOut, Settings, Dumbbell, Activity, Zap, Target, Cpu, Layers, Box, W
 import { ICON_MAP, getEquipmentIcon, getTaxonomyColor, isBeginnerFriendly, isAmenityZone, getAmenityStyleConfig, getZoneVisualCategory, VISUAL_CATEGORY_STYLES, ZoneVisualCategory, getZoneThemeStyle } from '../utils/equipmentIcons';
 import { heatColor, type HeatEntry } from '../utils/equipmentUsage';
 
+const NEUTRAL_ZONE_STYLE = { fill: '#334155', stroke: '#475569', dashStroke: '#475569', textColor: '#cbd5e1' };
+
 function renderStaircase(x1: number, y1: number, x2: number, y2: number, thickness: number, strokeColor: string) {
   const dx = x2 - x1;
   const dy = y2 - y1;
@@ -1543,7 +1545,14 @@ const GymMap: React.FC<GymMapProps> = ({
                 const labelOpacity = focusedZoneId ? (isFocused ? 1 : 0.92) : zoneOpacity;
 
                 // Zone style matching screenshot
-                const zoneStyle = getZoneThemeStyle(zone);
+                // On the usage heatmap every zone and machine drops its own
+                // category color, so the heat is the only color on the map —
+                // otherwise a purple Crossfit zone or an amber free-weights
+                // area reads as "hot" when it is only its type. Only the
+                // heatmap passes zoneHeat/machineHeat, so every other map in
+                // the app keeps its normal colors.
+                const heatMode = !isThumbnail && (!!zoneHeat || !!machineHeat);
+                const zoneStyle = heatMode ? NEUTRAL_ZONE_STYLE : getZoneThemeStyle(zone);
                 const zoneLabel = getGymTranslation(zone.name, lang);
                 const hasZoneLabel = !!zoneLabel.trim();
                 const showZoneIcon = !isThumbnail && zone.height >= 70 && (!zone.machines || zone.machines.length === 0 || isAmenity);
@@ -1617,7 +1626,7 @@ const GymMap: React.FC<GymMapProps> = ({
                       y={zone.y}
                       width={zone.width}
                       height={zone.height}
-                      fill={zoneHeatEntry ? '#0f172a' : zoneStyle.fill}
+                      fill={zoneStyle.fill}
                       fillOpacity={isAmenity ? 1 : 0.42}
                       stroke={isTargetZone ? '#a3e635' : isSelected ? '#38bdf8' : zoneStyle.stroke}
                       strokeWidth={isThumbnail ? 2 : (isTargetZone ? 3 : isSelected || isFocused ? 2.5 : 1.5)}
@@ -1881,9 +1890,9 @@ const GymMap: React.FC<GymMapProps> = ({
                               })()}
                               <rect
                                 width={machine.width} height={machine.height}
-                                fill={machineHeatEntry ? '#0f172a' : zoneStyle.stroke}
+                                fill={heatMode ? '#1e293b' : zoneStyle.stroke}
                                 fillOpacity={isUserTarget ? 1 : isDimmed ? 0.5 : 0.85}
-                                stroke={showAdminSelected ? "#3b82f6" : isUserTarget ? "#a3e635" : isPickup ? "#38bdf8" : machineHeatEntry ? heatColor(machineHeatEntry.intensity) : "#ffffff"}
+                                stroke={showAdminSelected ? "#3b82f6" : isUserTarget ? "#a3e635" : isPickup ? "#38bdf8" : machineHeatEntry ? heatColor(machineHeatEntry.intensity) : heatMode ? "#64748b" : "#ffffff"}
                                 strokeWidth={(showAdminSelected || showUserGlow) ? 2 : machineHeatEntry ? 1.5 : 1}
                                 rx="4"
                                 className={showAdminSelected ? 'machine-pulse' : isUserTarget ? 'machine-glow-lime' : (showUserGlow ? 'machine-glow-white' : '')}
