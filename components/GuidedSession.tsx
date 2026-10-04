@@ -107,7 +107,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
     const entry = ex.libraryExerciseId
       ? libraryExercises.find(l => l.id === ex.libraryExerciseId)
       : ex.bookend
-        ? selectBookendExercise(ex.bookend, libraryExercises, musclesTrainedToday as Set<any>)
+        ? selectBookendExercise(ex.bookend, libraryExercises, musclesTrainedToday as Set<any>, { cardioFirst: true })
         : undefined;
     return entry
       ? { ...ex, requiredEquipmentIds: getExerciseRequiredEquipmentIds(entry, equipmentList) }
@@ -225,7 +225,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   const bookendExercise = useMemo(
     () => (exercise?.bookend
       ? libraryExercise
-        || selectBookendExercise(exercise.bookend, libraryExercises, musclesTrainedToday as Set<any>)
+        || selectBookendExercise(exercise.bookend, libraryExercises, musclesTrainedToday as Set<any>, { cardioFirst: true })
         || undefined
       : undefined),
     [exercise, libraryExercise, libraryExercises, musclesTrainedToday]
@@ -492,7 +492,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
     if (ex.bookend) {
       const resolved = ex.libraryExerciseId
         ? libraryExercises.find(le => le.id === ex.libraryExerciseId)
-        : selectBookendExercise(ex.bookend, libraryExercises, musclesTrainedToday as Set<any>);
+        : selectBookendExercise(ex.bookend, libraryExercises, musclesTrainedToday as Set<any>, { cardioFirst: true });
       return resolved?.name || ex.name;
     }
     const le = ex.libraryExerciseId ? libraryExercises.find(l => l.id === ex.libraryExerciseId) : undefined;

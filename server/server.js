@@ -945,9 +945,9 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
         warmup,
         cooldown,
         exercises: [
-          buildBookendExercise('warmup', warmup, selectBookendExercise('warmup', substitutionPool), `${dayIdx}-warmup`),
+          buildBookendExercise('warmup', warmup, selectBookendExercise('warmup', substitutionPool, [], { cardioFirst: true }), `${dayIdx}-warmup`),
           ...exercises,
-          buildBookendExercise('cooldown', cooldown, selectBookendExercise('cooldown', substitutionPool), `${dayIdx}-cooldown`),
+          buildBookendExercise('cooldown', cooldown, selectBookendExercise('cooldown', substitutionPool, [], { cardioFirst: true }), `${dayIdx}-cooldown`),
         ],
       };
     });

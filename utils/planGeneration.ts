@@ -954,6 +954,12 @@ export const buildVideoBookendExercise = (
 // The machine or movement an end of the session is built around: the cardio
 // and the walk. Follow-along videos are never this — they are the stretching
 // that follows it, chosen by selectBookendVideos.
+//
+// With `cardioFirst` (how every plan is built) it is a cardio machine: a
+// treadmill or bike if the gym has one, otherwise any cardio machine, and only
+// with no cardio at all does it fall back to the best-tagged exercise. Without
+// it a mobility exercise tagged for the end could outscore every machine, and the
+// ten minutes of cardio a session opens with became a stretching routine.
 export const selectBookendExercise = (
   kind: 'warmup' | 'cooldown',
   pool: LibraryExercise[],
@@ -963,7 +969,16 @@ export const selectBookendExercise = (
   // empty set simply scores nothing — every existing caller keeps its old
   // behaviour without passing it.
   dayMuscles: Set<MuscleGroup> | MuscleGroup[] = [],
+  options: { cardioFirst?: boolean } = {},
 ): LibraryExercise | null => {
+  if (options.cardioFirst) {
+    const cardio = pool.filter(ex => ex.exerciseCategory === 'cardio');
+    const tiers = [cardio.filter(ex => isTreadmillExercise(ex) || isBikeExercise(ex)), cardio];
+    for (const tier of tiers) {
+      const found = tier.length > 0 ? selectBookendExercise(kind, tier, dayMuscles) : null;
+      if (found) return found;
+    }
+  }
   const trained = dayMuscles instanceof Set ? dayMuscles : new Set(dayMuscles);
   const scoreOne = (ex: LibraryExercise): number => {
     let score = 0;
@@ -1022,9 +1037,19 @@ export const buildBookendExercise = (
     || block.steps.join(' · '),
 });
 
-// Zone 2 is steady cardio at a pace where you can still hold a conversation.
-// Any cardio exercise the gym can offer will do; one not done earlier in the
-// week is preferred, so a client is not on the same machine every session.
+// Whether an exercise is done on a treadmill, or on a bike — the machines the
+// cardio at each end of a session is meant to be on. Read from the equipment it
+// needs, or failing that from its name, since a library entry may be tagged with
+// either.
+const usesEquipment = (ex: LibraryExercise, id: RegExp): boolean =>
+  (ex.requiredEquipmentIds || []).some(e => id.test(e)) || id.test(ex.name || '');
+export const isTreadmillExercise = (ex: LibraryExercise): boolean => usesEquipment(ex, /treadmill/i);
+export const isBikeExercise = (ex: LibraryExercise): boolean => usesEquipment(ex, /bike|cycl/i);
+
+// Zone 2 is steady cardio at a pace where you can still hold a conversation,
+// and it is done on the treadmill. A gym with no treadmill gets whatever other
+// cardio it has; among equal choices one not done earlier in the week is
+// preferred, so a client is not on the same machine every session.
 export const selectZone2Exercise = (
   pool: LibraryExercise[],
   usedEarlierInWeek: Set<string> = new Set(),
@@ -1032,7 +1057,9 @@ export const selectZone2Exercise = (
   const candidates = pool.filter(ex => ex.generationEnabled !== false && ex.exerciseCategory === 'cardio');
   if (candidates.length === 0) return null;
   return [...candidates].sort((a, b) =>
-    (Number(usedEarlierInWeek.has(a.id)) - Number(usedEarlierInWeek.has(b.id))) || a.id.localeCompare(b.id)
+    (Number(isTreadmillExercise(b)) - Number(isTreadmillExercise(a)))
+    || (Number(usedEarlierInWeek.has(a.id)) - Number(usedEarlierInWeek.has(b.id)))
+    || a.id.localeCompare(b.id)
   )[0];
 };
 
@@ -1157,8 +1184,8 @@ export const generatePlan = (
     const blocks = bookendsFor(shape, regions, { warmup: warmupVideos.length > 0, cooldown: cooldownVideos.length > 0 });
     const warmup = { ...blocks.warmup, minutes: warmupTotal };
     const cooldown = { ...blocks.cooldown, minutes: cooldownTotal };
-    const warmupLe = selectBookendExercise('warmup', pool, musclesInDay);
-    const cooldownLe = selectBookendExercise('cooldown', pool, musclesInDay);
+    const warmupLe = selectBookendExercise('warmup', pool, musclesInDay, { cardioFirst: true });
+    const cooldownLe = selectBookendExercise('cooldown', pool, musclesInDay, { cardioFirst: true });
     const trainingBudget = Math.max(0, profile.sessionMinutes - warmup.minutes - cooldown.minutes);
     // The zone-2 block, for an aim that ends its session with one. Its minutes
     // come out of the training time, so the weights are fitted into what is
@@ -1322,12 +1349,13 @@ export const generatePlan = (
       // Bookends bracket the working exercises, in the order they're done; the
       // zone-2 block, when there is one, closes the weights before the cooldown.
       exercises: [
-        // The cardio shows only its own minutes when videos make up the rest.
-        buildBookendExercise('warmup', warmupVideos.length > 0 ? { ...warmup, minutes: cardioMinutes } : warmup, warmupLe, `${d}-warmup`),
+        // The cardio shows its own minutes, 10, whether the rest of the warm-up
+        // is videos after it or the written stretching listed beneath it.
+        buildBookendExercise('warmup', { ...warmup, minutes: cardioMinutes }, warmupLe, `${d}-warmup`),
         ...warmupVideos.map((v, i) => buildVideoBookendExercise('warmup', v, `${d}-warmup-v${i}`)),
         ...picked.map((p, i) => buildExercise(p.le, p.slot, profile, `${d}-${i}`)),
         ...(zoneMinutes > 0 && zoneLibraryExercise ? [buildZone2Exercise(zoneLibraryExercise, zoneMinutes, `${d}`)] : []),
-        buildBookendExercise('cooldown', cooldownVideos.length > 0 ? { ...cooldown, minutes: walkMinutes } : cooldown, cooldownLe, `${d}-cooldown`),
+        buildBookendExercise('cooldown', { ...cooldown, minutes: walkMinutes }, cooldownLe, `${d}-cooldown`),
         ...cooldownVideos.map((v, i) => buildVideoBookendExercise('cooldown', v, `${d}-cooldown-v${i}`)),
       ],
       warmup,

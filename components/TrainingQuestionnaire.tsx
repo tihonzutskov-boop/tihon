@@ -30,8 +30,12 @@ const STEP_LABELS: Record<StepKey, string> = {
   health: 'Health & safety',
 };
 
-const LEVELS = ['Beginner', 'Intermediate', 'Advanced'];
-const LEVELS_ENABLED = ['Beginner'];
+// Plans are built for beginners only for now, so there is one level to show
+// and it is already chosen: asking the question with a single answer would only
+// make someone tap it. The server still accepts all three levels (validate.js),
+// so offering more later is a change to this list and the default below.
+const LEVELS = ['Beginner'];
+const DEFAULT_LEVEL = LEVELS[0];
 const DAYS = ['1', '2', '3', '4'];
 const SEXES = ['Male', 'Female', 'Prefer not to say'];
 const EQUIPMENT_OPTIONS = ['Machines only', 'Comfortable with free weights', 'Anything'];
@@ -52,7 +56,7 @@ interface FormState {
 
 const blankForm = (): FormState => ({
   age: '', heightCm: '', weightKg: '', sex: '',
-  trainingType: '', goals: [], focusAreas: [], level: '',
+  trainingType: '', goals: [], focusAreas: [], level: DEFAULT_LEVEL,
   daysPerWeek: '', minutesPerSession: '',
   gymId: '',
   equipment: '', avoidExercises: '',
@@ -68,7 +72,7 @@ const toFormState = (existing: QuestionnaireAnswers | null): FormState => {
     weightKg: String(existing.weightKg ?? ''),
     sex: existing.sex || '',
     ...goalsFromAnswers(existing),
-    level: existing.level || '',
+    level: LEVELS.includes(existing.level) ? existing.level : DEFAULT_LEVEL,
     daysPerWeek: existing.daysPerWeek || '',
     // A length that is no longer offered (30 min) is left blank, so it is
     // picked again rather than saved back unchanged.
@@ -341,20 +345,13 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
           <div>
             <FieldLabel required>Training experience</FieldLabel>
             <div className="flex flex-wrap gap-2">
-              {LEVELS.map(opt => {
-                const enabled = LEVELS_ENABLED.includes(opt);
-                return (
-                  <Pill
-                    key={opt}
-                    label={opt}
-                    selected={form.level === opt}
-                    disabled={!enabled}
-                    tag={!enabled ? 'Soon' : undefined}
-                    onClick={enabled ? () => set('level', opt) : undefined}
-                  />
-                );
-              })}
+              {LEVELS.map(opt => (
+                <Pill key={opt} label={opt} selected={form.level === opt} onClick={() => set('level', opt)} />
+              ))}
             </div>
+            <p className="text-[10.5px] text-slate-500 mt-2 leading-relaxed">
+              Your plan is built for people starting out.
+            </p>
           </div>
         </div>
       )}

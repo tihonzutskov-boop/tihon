@@ -4,7 +4,7 @@ import {
   selectForSlot, estimateDayMinutes, generatePlan, validatePlan, buildDefaultBlueprint,
   buildCombinedBlueprint, assignAimsToDays, aimProfile, GenerationProfile, EligibilityContext,
   buildBookendExercise, selectBookendExercise, isBookendExercise,
-  roundRestSeconds, parseVideoMinutes, selectBookendVideos, videoMinutesOf,
+  roundRestSeconds, parseVideoMinutes, selectBookendVideos, videoMinutesOf, isTreadmillExercise, isBikeExercise, selectZone2Exercise,
 } from './planGeneration';
 import { zone2MinutesFor, maxExercisesFor } from './sessionShape';
 import type { GenerationFailure } from './planGeneration';
@@ -2504,5 +2504,150 @@ describe('a session holds at most seven exercises', () => {
   it('records what was dropped', () => {
     const { decisions } = build(['Muscle gain', 'Weight loss'], 75, ['Arms', 'Shoulders']);
     expect(decisions.filter(d => d.dropped).length).toBeGreaterThanOrEqual(6);
+  });
+});
+
+// --- the cardio at each end, and zone 2, are on a treadmill or bike ------------
+
+describe('cardio machines', () => {
+  const machine = (id: string, name: string, equip: string, over: Partial<LibraryExercise> = {}) => exercise({
+    id, name, exerciseCategory: 'cardio', movementPattern: 'conditioning', equipmentId: 'zone-cardio',
+    requiredEquipmentIds: [equip], ...over,
+  });
+  const treadmill = machine('treadmill', 'Treadmill Walk', 'eq-treadmill');
+  const bike = machine('bike', 'Stationary Bike', 'eq-bike');
+  const rower = machine('air-rower', 'Air Rower', 'eq-rower');
+  // The library entry from the screenshot: a mobility warm-up tagged for both ends,
+  // which outscores every machine because it is tagged and a machine has only the cardio bonus.
+  const warmMobility = exercise({
+    id: 'warm-mobility', name: 'Warm up + Mobility', targetMuscle: 'Warm up', exerciseCategory: 'warmup',
+    movementPattern: 'mobility', bookendRoles: ['warmup', 'cooldown'],
+  });
+
+  describe('recognising them', () => {
+    it('reads a treadmill from its equipment or its name', () => {
+      expect(isTreadmillExercise(treadmill)).toBe(true);
+      expect(isTreadmillExercise(exercise({ id: 'x', name: 'Incline Treadmill', requiredEquipmentIds: [] }))).toBe(true);
+      expect(isTreadmillExercise(exercise({ id: 'y', name: 'Zone work', requiredEquipmentIds: ['eq-treadmill'] }))).toBe(true);
+      expect(isTreadmillExercise(rower)).toBe(false);
+      expect(isTreadmillExercise(bike)).toBe(false);
+    });
+
+    it('reads a bike from its equipment or its name', () => {
+      expect(isBikeExercise(bike)).toBe(true);
+      expect(isBikeExercise(exercise({ id: 'x', name: 'Cycling', requiredEquipmentIds: [] }))).toBe(true);
+      expect(isBikeExercise(treadmill)).toBe(false);
+    });
+  });
+
+  describe('the cardio a session opens and closes with', () => {
+    const pick = (pool: LibraryExercise[], kind: 'warmup' | 'cooldown' = 'warmup') =>
+      selectBookendExercise(kind, pool, [], { cardioFirst: true })?.id;
+
+    it('is a cardio machine even when a tagged mobility exercise would score higher', () => {
+      expect(selectBookendExercise('warmup', [warmMobility, treadmill])?.id).toBe('warm-mobility'); // without it
+      expect(pick([warmMobility, treadmill])).toBe('treadmill');
+      expect(pick([warmMobility, treadmill], 'cooldown')).toBe('treadmill');
+    });
+
+    it('is a treadmill or bike before any other machine', () => {
+      expect(pick([rower, treadmill])).toBe('treadmill');
+      expect(pick([rower, bike])).toBe('bike');
+      // The rower's id sorts first, so only the preference puts the treadmill ahead.
+      expect(pick([rower, bike, treadmill])).toBe('bike');
+    });
+
+    it('is any other cardio machine when the gym has no treadmill or bike', () => {
+      expect(pick([warmMobility, rower])).toBe('air-rower');
+    });
+
+    it('is the best-tagged exercise only when the gym has no cardio at all', () => {
+      expect(pick([warmMobility])).toBe('warm-mobility');
+    });
+
+    it('needs no tag: an untagged treadmill still opens the session', () => {
+      expect(treadmill.bookendRoles).toBeUndefined();
+      expect(pick([warmMobility, treadmill])).toBe('treadmill');
+    });
+
+    it('is never a video', () => {
+      const video = exercise({ id: 'cardio-video', name: 'Treadmill video', exerciseType: 'video', exerciseCategory: 'cardio', movementPattern: 'conditioning', requiredEquipmentIds: ['eq-treadmill'] });
+      expect(pick([video, warmMobility])).toBe('warm-mobility');
+    });
+  });
+
+  describe('zone 2', () => {
+    it('is on the treadmill when the gym has one', () => {
+      expect(selectZone2Exercise([rower, bike, treadmill])?.id).toBe('treadmill');
+    });
+
+    it('is on whatever other cardio there is when it has no treadmill', () => {
+      expect(selectZone2Exercise([rower, bike])?.id).toBe('air-rower');
+      expect(selectZone2Exercise([rower])?.id).toBe('air-rower');
+    });
+
+    it('rotates between treadmills, and still beats other machines', () => {
+      const incline = machine('treadmill-incline', 'Incline Treadmill Walk', 'eq-treadmill');
+      expect(selectZone2Exercise([rower, treadmill, incline])?.id).toBe('treadmill');
+      expect(selectZone2Exercise([rower, treadmill, incline], new Set(['treadmill']))?.id).toBe('treadmill-incline');
+      expect(selectZone2Exercise([rower, treadmill], new Set(['treadmill']))?.id).toBe('treadmill');
+    });
+  });
+
+  describe('in a generated plan', () => {
+    const lifts = [
+      exercise({ id: 'squat', name: 'Squat', movementPattern: 'squat' }),
+      exercise({ id: 'push', name: 'Push-up', movementPattern: 'horizontal_push' }),
+      exercise({ id: 'pull', name: 'Pulldown', movementPattern: 'vertical_pull' }),
+    ];
+    // A machine is only offered by a gym that has it.
+    const run = (library: LibraryExercise[], goal: string, equipment = ['eq-treadmill', 'eq-rower', 'eq-bike'], minutes = 60) => {
+      const blueprintDays = buildCombinedBlueprint([goal], 3, minutes);
+      const r = generatePlan(
+        { id: 't', name: 'T', goal, daysPerWeek: '3', durationMin: minutes, days: [], blueprintDays },
+        library, gym(equipment), profile({ goal, daysPerWeek: 3, sessionMinutes: minutes }),
+      );
+      if (!r.ok) throw new Error('plan failed');
+      return r.days;
+    };
+
+    it('opens with 10 minutes on the treadmill, not the mobility exercise', () => {
+      const day = run([...lifts, warmMobility, treadmill, rower], 'Muscle gain')[0];
+      expect(day.exercises[0]).toMatchObject({ bookend: 'warmup', libraryExerciseId: 'treadmill', cardioMinutes: 10 });
+    });
+
+    it('closes with the walk on the treadmill too', () => {
+      const day = run([...lifts, warmMobility, treadmill, rower], 'Muscle gain')[0];
+      const last = day.exercises[day.exercises.length - 1];
+      expect(last).toMatchObject({ bookend: 'cooldown', libraryExerciseId: 'treadmill' });
+      expect(last.cardioMinutes).toBe(5);
+    });
+
+    it('shows 10 minutes of cardio with the written stretching beneath it, not one 15 minute entry', () => {
+      const day = run([...lifts, warmMobility, treadmill], 'Muscle gain')[0];
+      const warm = day.exercises.filter(e => e.bookend === 'warmup');
+      expect(warm).toHaveLength(1);
+      expect(warm[0].cardioMinutes).toBe(10);
+      // The warm-up as a whole is 15, and the other five minutes are listed under the cardio.
+      expect(day.warmup!.minutes).toBe(15);
+      expect(day.warmup!.extra!.join(' ')).toMatch(/Dynamic stretching, about 5 minutes/);
+      const cool = day.exercises.filter(e => e.bookend === 'cooldown');
+      expect(cool[0].cardioMinutes).toBe(5);
+      expect(day.cooldown!.minutes).toBe(10);
+      expect(day.cooldown!.extra!.join(' ')).toMatch(/Stretch what you trained/);
+    });
+
+    it('does zone 2 on the treadmill, not the rower', () => {
+      const day = run([...lifts, warmMobility, treadmill, rower], 'Weight loss')[0];
+      const zone = day.exercises.find(e => e.finisher === 'zone2')!;
+      expect(zone.libraryExerciseId).toBe('treadmill');
+      expect(zone.name).toBe('Treadmill Walk');
+    });
+
+    it('still has a warm-up and zone 2 when the gym has no treadmill', () => {
+      const day = run([...lifts, warmMobility, treadmill, rower], 'Weight loss', ['eq-rower'])[0];
+      expect(day.exercises.find(e => e.finisher === 'zone2')!.libraryExerciseId).toBe('air-rower');
+      expect(day.exercises[0]).toMatchObject({ bookend: 'warmup', libraryExerciseId: 'air-rower' });
+    });
   });
 });
