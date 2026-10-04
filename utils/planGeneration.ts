@@ -131,19 +131,19 @@ export const selectSplit = (daysPerWeek: number): { split: SplitName; dayNames: 
 // differently within the same goal, which is why this is keyed by both.
 const GOAL_PRESCRIPTION: Record<string, { compound: Omit<ExerciseSlot, 'id' | 'movementPattern' | 'priority'>; isolation: Omit<ExerciseSlot, 'id' | 'movementPattern' | 'priority'> }> = {
   'Muscle gain': {
-    compound: { setsMin: 3, setsMax: 4, repsMin: 8, repsMax: 12, restSeconds: 120, exerciseCategory: 'compound' },
-    isolation: { setsMin: 2, setsMax: 3, repsMin: 10, repsMax: 15, restSeconds: 60, exerciseCategory: 'isolation' },
+    compound: { setsMin: 3, setsMax: 4, repsMin: 8, repsMax: 12, restSeconds: 90, exerciseCategory: 'compound' },
+    isolation: { setsMin: 2, setsMax: 3, repsMin: 10, repsMax: 15, restSeconds: 90, exerciseCategory: 'isolation' },
   },
   'Weight loss': {
-    compound: { setsMin: 3, setsMax: 3, repsMin: 12, repsMax: 15, restSeconds: 60, exerciseCategory: 'compound' },
-    isolation: { setsMin: 2, setsMax: 3, repsMin: 12, repsMax: 15, restSeconds: 45, exerciseCategory: 'isolation' },
+    compound: { setsMin: 3, setsMax: 3, repsMin: 12, repsMax: 15, restSeconds: 45, exerciseCategory: 'compound' },
+    isolation: { setsMin: 2, setsMax: 3, repsMin: 12, repsMax: 15, restSeconds: 30, exerciseCategory: 'isolation' },
   },
   'General fitness': {
     compound: { setsMin: 3, setsMax: 3, repsMin: 10, repsMax: 12, restSeconds: 90, exerciseCategory: 'compound' },
     isolation: { setsMin: 2, setsMax: 3, repsMin: 10, repsMax: 15, restSeconds: 60, exerciseCategory: 'isolation' },
   },
   'Endurance': {
-    compound: { setsMin: 2, setsMax: 3, repsMin: 15, repsMax: 20, restSeconds: 45, exerciseCategory: 'compound' },
+    compound: { setsMin: 2, setsMax: 3, repsMin: 15, repsMax: 20, restSeconds: 30, exerciseCategory: 'compound' },
     isolation: { setsMin: 2, setsMax: 2, repsMin: 15, repsMax: 20, restSeconds: 30, exerciseCategory: 'isolation' },
   },
   // Not fatigue work, so the usual set/rep logic barely applies: fewer
@@ -604,19 +604,10 @@ export const estimateDayMinutes = (
 // Prescription
 // ---------------------------------------------------------------------------
 
-// Weight is deliberately absent: with no logged history there's no honest
-// basis for a number, and inventing one is the riskiest thing this engine
-// could do. Reps carry the prescription instead.
-// Rest is read off a clock, not measured. Scaling a base rest by the session
-// multiplier lands on values like 69 or 103 seconds — numbers nobody sets a
-// timer to, and which imply a precision the prescription does not have. Ten
-// second steps are what every value in the base table but the 45s already
-// sits on, and every one of them is an even number.
-//
-// Short rests lose a gradation to this: 20s scaled for a medium session is
-// 23s, which rounds back to 20. That is the honest outcome — three seconds
-// was never a real difference in a conditioning finisher.
-const REST_STEP_SECONDS = 10;
+// Rest values come straight from the goal table above, so rounding only has to
+// keep them on steps a timer can show. Five-second steps under a minute leave
+// every value in that table exactly as written, 45 s included.
+const REST_STEP_SECONDS = 5;
 // Past a minute the unit people actually use changes. Nobody counts 140
 // seconds; they wait two minutes. Half-minute steps above the boundary keep
 // every long rest expressible as "1 min", "1:30 min", "2 min".
@@ -631,10 +622,9 @@ export const roundRestSeconds = (seconds: number): number => {
 const prescriptionFor = (slot: ExerciseSlot, profile: GenerationProfile) => {
   const sets = profile.experience === 'Beginner' ? slot.setsMin : slot.setsMax;
   const reps = Math.round((slot.repsMin + slot.repsMax) / 2);
-  // Time available buys longer rest, which is the cheapest quality upgrade
-  // there is: better performance on later sets, no extra recovery cost.
-  const shape = shapeFor(profile.sessionMinutes);
-  const restSeconds = roundRestSeconds(slot.restSeconds * shape.restMultiplier);
+  // Rest is the same whatever the session length; a longer session spends its
+  // extra time on warm-up, ramp-up sets and accessories instead.
+  const restSeconds = roundRestSeconds(slot.restSeconds);
   return { sets, reps, restSeconds };
 };
 

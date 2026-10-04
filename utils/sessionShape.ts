@@ -7,8 +7,8 @@
 // one, since nothing ever needed dropping.
 //
 // The rule this module encodes instead: extra time buys *quality*, not volume.
-// A longer session gets a fuller warm-up, ramp-up sets before the working sets,
-// and rest at the top of the prescribed range rather than the bottom. Working
+// A longer session gets a fuller warm-up and ramp-up sets before the working
+// sets; rest stays what the client's goal prescribes, whatever the length. Working
 // sets rise only modestly and stay under the same weekly ceiling, because the
 // beginner limits in the rulebook are about recovery, not about how long
 // someone happens to be free.
@@ -19,8 +19,6 @@ export interface SessionShape {
   tier: SessionTier;
   warmupMinutes: number;
   cooldownMinutes: number;
-  /** Multiplies the slot's prescribed rest. Time available buys longer rest. */
-  restMultiplier: number;
   /** Ramp-up sets before the first working set of a compound. Almost no fatigue cost. */
   warmupSetsPerCompound: number;
   /** Whether optional accessory work is built in at all, rather than added then trimmed. */
@@ -38,12 +36,11 @@ export interface SessionShape {
 export const TIER_BOUNDS = { shortBelow: 45, longAbove: 70 };
 
 const SHAPES: Record<SessionTier, Omit<SessionShape, 'tier'>> = {
-  // Efficient and focused: the mandatory compounds, enough rest to perform them
-  // properly, and nothing else competing for the time.
+  // Efficient and focused: the mandatory compounds and nothing else competing
+  // for the time.
   short: {
     warmupMinutes: 6,
     cooldownMinutes: 4,
-    restMultiplier: 1.0,
     warmupSetsPerCompound: 0,
     includeAccessories: false,
     maxWorkingSets: 12,
@@ -52,17 +49,15 @@ const SHAPES: Record<SessionTier, Omit<SessionShape, 'tier'>> = {
   medium: {
     warmupMinutes: 9,
     cooldownMinutes: 5,
-    restMultiplier: 1.15,
     warmupSetsPerCompound: 1,
     includeAccessories: true,
     maxWorkingSets: 16,
   },
-  // The extra time goes into preparation, ramp-up sets and full rest — the
-  // things that make the same work better rather than making it bigger.
+  // The extra time goes into preparation and ramp-up sets — the things that
+  // make the same work better rather than making it bigger.
   long: {
     warmupMinutes: 12,
     cooldownMinutes: 8,
-    restMultiplier: 1.35,
     warmupSetsPerCompound: 2,
     includeAccessories: true,
     maxWorkingSets: 20,

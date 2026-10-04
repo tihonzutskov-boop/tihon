@@ -20,7 +20,6 @@ describe('shapeFor — longer sessions buy quality, not volume', () => {
   it('gives 60 and 90 minutes materially different shapes', () => {
     expect(long).not.toEqual({ ...medium, tier: 'long' });
     expect(long.warmupMinutes).toBeGreaterThan(medium.warmupMinutes);
-    expect(long.restMultiplier).toBeGreaterThan(medium.restMultiplier);
     expect(long.warmupSetsPerCompound).toBeGreaterThan(medium.warmupSetsPerCompound);
   });
 
@@ -30,10 +29,7 @@ describe('shapeFor — longer sessions buy quality, not volume', () => {
     expect(short.cooldownMinutes).toBeLessThan(long.cooldownMinutes);
   });
 
-  it('rests longer when there is time for it', () => {
-    expect(short.restMultiplier).toBe(1);
-    expect(long.restMultiplier).toBeGreaterThan(1.2);
-  });
+
 
   // The load-bearing safety property: tripling the time must not triple the work.
   it('raises working sets far less than proportionally to time', () => {

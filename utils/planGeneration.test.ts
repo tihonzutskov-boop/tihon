@@ -913,7 +913,7 @@ describe('MIXAIM — aims are distributed across days, not mixed in a session', 
     const primaryWork = (d: (typeof bp)[number]) => d.slots.filter(sl => sl.aimTier !== 'secondary');
 
     expect(bp[0].primaryAim).toBe('Muscle gain');
-    expect(primaryWork(bp[0]).every(sl => sl.restSeconds === 120 || sl.restSeconds === 60)).toBe(true);
+    expect(primaryWork(bp[0]).every(sl => sl.restSeconds === 90)).toBe(true);
     expect(primaryWork(bp[0]).some(sl => sl.movementPattern.endsWith('_mobility'))).toBe(false);
 
     expect(bp[1].primaryAim).toBe('Mobility');
@@ -1080,7 +1080,7 @@ describe('warm-up and cooldown', () => {
     expect(short[0].slots.every(sl => !sl.optional)).toBe(true);
   });
 
-  it('rests longer in a long session than a short one for the same slot', () => {
+  it('rests the same whatever the session length', () => {
     const pool = [exercise({ id: 'p1', name: 'Push' })];
     const blueprint: PlanTemplate = {
       id: 't1', name: 'T', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 90, days: [],
@@ -1094,7 +1094,8 @@ describe('warm-up and cooldown', () => {
     if (shortRun.ok && longRun.ok) {
       const shortRest = working(shortRun.days[0])[0].setDetails![0].restSec;
       const longRest = working(longRun.days[0])[0].setDetails![0].restSec;
-      expect(longRest).toBeGreaterThan(shortRest);
+      expect(longRest).toBe(shortRest);
+      expect(shortRest).toBe(90);
     }
   });
 
@@ -1367,8 +1368,47 @@ describe('cardio is bookend-only', () => {
   });
 });
 
+describe('rest per goal', () => {
+  const restFor = (goal: string) => {
+    const slots = buildDefaultBlueprint(goal, 3, 60)[0].slots;
+    return {
+      compound: slots.find(s => s.exerciseCategory === 'compound')!.restSeconds,
+      isolation: slots.find(s => s.exerciseCategory === 'isolation')!.restSeconds,
+    };
+  };
+
+  it('rests 1 min 30 between every set for muscle growth', () => {
+    expect(restFor('Muscle gain')).toEqual({ compound: 90, isolation: 90 });
+  });
+
+  it('rests 45 s / 30 s for fat loss', () => {
+    expect(restFor('Weight loss')).toEqual({ compound: 45, isolation: 30 });
+  });
+
+  it('rests 30 s throughout for better fitness', () => {
+    expect(restFor('Endurance')).toEqual({ compound: 30, isolation: 30 });
+  });
+
+  it('rests 1 min 30 / 1 min for a healthy lifestyle', () => {
+    expect(restFor('General fitness')).toEqual({ compound: 90, isolation: 60 });
+  });
+
+  it('carries the table value through to the generated plan unchanged', () => {
+    const pool = [exercise({ id: 'p1', name: 'Push' })];
+    const blueprint: PlanTemplate = {
+      id: 't1', name: 'T', goal: 'Weight loss', daysPerWeek: '1', durationMin: 90, days: [],
+      blueprintDays: buildDefaultBlueprint('Weight loss', 1, 90),
+    };
+    const run = generatePlan(blueprint, pool, gym([]), profile({ sessionMinutes: 90, daysPerWeek: 1 }));
+    expect(run.ok).toBe(true);
+    if (!run.ok) return;
+    const push = working(run.days[0]).find(e => e.libraryExerciseId === 'p1')!;
+    expect(push.setDetails![0].restSec).toBe(45);
+  });
+});
+
 describe('rest prescription', () => {
-  it('prescribes rest in whole ten-second steps, never an arbitrary number', () => {
+  it('prescribes rest in whole five-second steps, never an arbitrary number', () => {
     const pool = [exercise({ id: 'p1', name: 'Push' })];
     const blueprint: PlanTemplate = {
       id: 't1', name: 'T', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 60, days: [],
@@ -1377,7 +1417,7 @@ describe('rest prescription', () => {
       }],
     };
     const rests: number[] = [];
-    // Every session length, so every rest multiplier is exercised.
+    // Every session length, to show none of them changes the steps.
     for (const sessionMinutes of [30, 45, 60, 75, 90]) {
       const run = generatePlan(blueprint, pool, gym([]), profile({ sessionMinutes, daysPerWeek: 1 }));
       expect(run.ok).toBe(true);
@@ -1391,18 +1431,17 @@ describe('rest prescription', () => {
     // Guards against the loop above silently checking nothing.
     expect(rests.length).toBeGreaterThan(0);
     for (const rest of rests) {
-      // Ten-second steps under a minute, half-minutes over it; even either way.
-      expect(rest % (rest > 60 ? 30 : 10)).toBe(0);
-      expect(rest % 2).toBe(0);
+      // Five-second steps under a minute, half-minutes over it.
+      expect(rest % (rest > 60 ? 30 : 5)).toBe(0);
     }
   });
 
   describe('roundRestSeconds', () => {
-    it('keeps short rests on ten-second steps', () => {
-      expect(roundRestSeconds(23)).toBe(20);
-      expect(roundRestSeconds(34.5)).toBe(30);
-      expect(roundRestSeconds(40.5)).toBe(40);
-      expect(roundRestSeconds(51.75)).toBe(50);
+    it('keeps short rests on five-second steps', () => {
+      expect(roundRestSeconds(22)).toBe(20);
+      expect(roundRestSeconds(34)).toBe(35);
+      expect(roundRestSeconds(41)).toBe(40);
+      expect(roundRestSeconds(52)).toBe(50);
     });
 
     it('snaps anything past a minute onto half-minutes', () => {
@@ -1416,29 +1455,21 @@ describe('rest prescription', () => {
       expect(roundRestSeconds(162)).toBe(150);
     });
 
-    it('produces only rests that can be said as minutes and halves', () => {
-      const bases = [20, 30, 45, 60, 90, 120];
-      const multipliers = [1.0, 1.15, 1.35];
-      for (const base of bases) {
-        for (const m of multipliers) {
-          const rest = roundRestSeconds(base * m);
-          if (rest > 60) expect(rest % 30).toBe(0);
-          else expect(rest % 10).toBe(0);
-        }
+    it('produces only rests that can be said as minutes and halves past a minute', () => {
+      for (const seconds of [20, 30, 45, 60, 70, 95, 110, 130]) {
+        const rest = roundRestSeconds(seconds);
+        if (rest > 60) expect(rest % 30).toBe(0);
+        else expect(rest % 5).toBe(0);
       }
     });
 
     it('leaves a rest already on a step exactly where it is', () => {
-      for (const rest of [20, 30, 60, 90, 120, 150]) expect(roundRestSeconds(rest)).toBe(rest);
-    });
-
-    it('rounds the one odd base rest up rather than down', () => {
-      expect(roundRestSeconds(45)).toBe(50);
+      for (const rest of [20, 30, 45, 60, 90, 120, 150]) expect(roundRestSeconds(rest)).toBe(rest);
     });
 
     it('never returns a rest of nothing', () => {
-      expect(roundRestSeconds(0)).toBe(10);
-      expect(roundRestSeconds(3)).toBe(10);
+      expect(roundRestSeconds(0)).toBe(5);
+      expect(roundRestSeconds(2)).toBe(5);
     });
   });
 });
