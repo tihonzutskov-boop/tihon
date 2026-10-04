@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { LibraryExercise, MovementPattern, EquipmentItem } from '../types';
 import { deriveMuscleGroups, deriveExerciseCategory, suggestMovementPattern, suggestEquipmentIds } from '../utils/exerciseTagDerivation';
+import { isBookendExercise } from '../utils/planGeneration';
 import { Loader2 } from 'lucide-react';
 
 const PATTERNS: MovementPattern[] = [
@@ -62,8 +63,11 @@ const BulkTaggingTable: React.FC<BulkTaggingTableProps> = ({ exercises, equipmen
   );
 
   // A row can only be enabled once it has both the things eligibility needs.
+  // A warm-up or cool-down doesn't need a movement pattern — it's picked by
+  // what it's tagged for, not by pattern.
   const derivedType = (ex: LibraryExercise) => ex.exerciseCategory || deriveExerciseCategory(ex.category);
-  const canEnable = (r: Row) => !!r.pattern && !!derivedType(r.ex);
+  const isBookend = (r: Row) => isBookendExercise({ bookendRoles: r.ex.bookendRoles, exerciseCategory: derivedType(r.ex) || undefined });
+  const canEnable = (r: Row) => (!!r.pattern || isBookend(r)) && !!derivedType(r.ex);
 
   const update = (i: number, patch: Partial<Row>) =>
     setRows(prev => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -71,14 +75,14 @@ const BulkTaggingTable: React.FC<BulkTaggingTableProps> = ({ exercises, equipmen
   const visible = rows
     .map((r, i) => ({ r, i }))
     .filter(({ r }) => {
-      if (filter === 'untagged') return !r.pattern;
+      if (filter === 'untagged') return !r.pattern && !isBookend(r);
       if (filter === 'ready') return canEnable(r);
       return true;
     });
 
   const enabledCount = rows.filter(r => r.enabled).length;
   const suggestedCount = rows.filter(r => r.suggested).length;
-  const unsetCount = rows.filter(r => !r.pattern).length;
+  const unsetCount = rows.filter(r => !r.pattern && !isBookend(r)).length;
   const coveredPatterns = new Set(rows.filter(r => r.enabled).map(r => r.pattern));
   const missing = REQUIRED_FOR_4_DAY.filter(p => !coveredPatterns.has(p));
 
@@ -196,7 +200,7 @@ const BulkTaggingTable: React.FC<BulkTaggingTableProps> = ({ exercises, equipmen
                       value={r.pattern}
                       onChange={e => {
                         const v = e.target.value as MovementPattern | '';
-                        update(i, { pattern: v, ...(v ? {} : { enabled: false }) });
+                        update(i, { pattern: v, ...(v || isBookend(r) ? {} : { enabled: false }) });
                       }}
                       className={`bg-slate-950 border rounded-lg px-2 py-1.5 text-[11px] font-bold min-w-[150px] cursor-pointer focus:outline-none focus:border-sky-500 transition-colors ${
                         !r.pattern ? 'border-slate-800 text-slate-500'
@@ -226,7 +230,7 @@ const BulkTaggingTable: React.FC<BulkTaggingTableProps> = ({ exercises, equipmen
                     <button
                       onClick={() => update(i, { enabled: !r.enabled })}
                       disabled={!enableable}
-                      title={enableable ? '' : 'Needs a movement pattern first'}
+                      title={enableable ? '' : 'Needs a movement pattern first (not needed for warm-ups and cool-downs)'}
                       className={`px-3 py-1.5 rounded-lg text-[10.5px] font-extrabold whitespace-nowrap transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
                         r.enabled ? 'bg-lime-500 text-slate-950' : 'bg-slate-950 border border-slate-800 text-slate-400'
                       }`}

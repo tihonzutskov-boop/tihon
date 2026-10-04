@@ -3,7 +3,7 @@ import {
   checkEligibility, eligibleExercises, gymEquipmentIds, selectSplit,
   selectForSlot, estimateDayMinutes, generatePlan, validatePlan, buildDefaultBlueprint,
   buildCombinedBlueprint, assignAimsToDays, aimProfile, GenerationProfile, EligibilityContext,
-  buildBookendExercise, selectBookendExercise,
+  buildBookendExercise, selectBookendExercise, isBookendExercise,
   roundRestSeconds,
 } from './planGeneration';
 import type { GenerationFailure } from './planGeneration';
@@ -1253,6 +1253,57 @@ describe('bookendRoles — one exercise can serve both ends', () => {
       movementPattern: 'conditioning',
     });
     expect(selectBookendExercise('warmup', [unmarked, marked])?.id).toBe('marked');
+  });
+});
+
+describe('a warm-up or cool-down needs no movement pattern', () => {
+  const noPattern = (over: Partial<LibraryExercise> & { id: string; name: string }) =>
+    exercise({ movementPattern: undefined, ...over });
+
+  it('counts an exercise marked for either end, or typed as one, as a bookend', () => {
+    expect(isBookendExercise({ bookendRoles: ['warmup'] })).toBe(true);
+    expect(isBookendExercise({ bookendRoles: ['cooldown'] })).toBe(true);
+    expect(isBookendExercise({ exerciseCategory: 'warmup' })).toBe(true);
+    expect(isBookendExercise({ exerciseCategory: 'cooldown' })).toBe(true);
+    expect(isBookendExercise({ exerciseCategory: 'compound', bookendRoles: [] })).toBe(false);
+    expect(isBookendExercise({})).toBe(false);
+  });
+
+  it('is eligible without one when it is a warm-up or cool-down', () => {
+    const treadmill = noPattern({ id: 'tread', name: 'Treadmill Walk', exerciseCategory: 'cardio', bookendRoles: ['warmup'] });
+    const stretch = noPattern({ id: 'stretch', name: 'Quad Stretch', exerciseCategory: 'cooldown' });
+    expect(checkEligibility(treadmill, ctx(gym([]))).eligible).toBe(true);
+    expect(checkEligibility(stretch, ctx(gym([]))).eligible).toBe(true);
+  });
+
+  it('still needs one for anything else', () => {
+    const press = noPattern({ id: 'press', name: 'Machine Press', exerciseCategory: 'compound' });
+    expect(checkEligibility(press, ctx(gym([])))).toEqual({ eligible: false, reason: 'missing_movement_pattern' });
+  });
+
+  it('still needs a type', () => {
+    const untyped = noPattern({ id: 'u', name: 'Untyped', exerciseCategory: undefined, bookendRoles: ['warmup'] });
+    expect(checkEligibility(untyped, ctx(gym([])))).toEqual({ eligible: false, reason: 'missing_category' });
+  });
+
+  it('is picked for the warm-up of a generated day, and never for the main work', () => {
+    const treadmill = noPattern({
+      id: 'tread', name: 'Treadmill Walk', exerciseCategory: 'cardio', bookendRoles: ['warmup', 'cooldown'],
+      primaryMuscles: ['Chest'],
+    });
+    const push = exercise({ id: 'push', name: 'Push-up', primaryMuscles: ['Chest'] });
+    const blueprint: PlanTemplate = {
+      id: 't1', name: 'T', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 60, days: [],
+      blueprintDays: [{ id: 'bd1', name: 'Day 1', slots: [slot({ id: 's1', movementPattern: 'horizontal_push', priority: 1 })] }],
+    };
+    const result = generatePlan(blueprint, [treadmill, push], gym([]), profile({ daysPerWeek: 1, sessionMinutes: 60 }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const day = result.days[0];
+    expect(day.exercises[0].bookend).toBe('warmup');
+    expect(day.exercises[0].libraryExerciseId).toBe('tread');
+    expect(day.exercises[day.exercises.length - 1].libraryExerciseId).toBe('tread');
+    expect(working(day).map(e => e.libraryExerciseId)).toEqual(['push']);
   });
 });
 

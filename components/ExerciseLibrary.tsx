@@ -6,6 +6,7 @@ import { getEquipmentIcon, isBeginnerFriendly } from '../utils/equipmentIcons';
 import { getEquipmentIconComponent } from './EquipmentLibrary';
 import { getExerciseRequiredEquipmentIds, getZoneEquipmentIds } from '../utils/equipmentMatcher';
 import { getYouTubeVideoId } from '../utils/youtubeEmbed';
+import { isBookendExercise } from '../utils/planGeneration';
 import { deriveMuscleGroups, deriveExerciseCategory, suggestEquipmentIds, suggestMovementPattern } from '../utils/exerciseTagDerivation';
 import EditTutorialModal from './EditTutorialModal';
 import BulkTaggingTable from './BulkTaggingTable';
@@ -363,6 +364,10 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
   const [formPrimaryMuscles, setFormPrimaryMuscles] = useState<MuscleGroup[]>([]);
   const [formSecondaryMuscles, setFormSecondaryMuscles] = useState<MuscleGroup[]>([]);
   const [formGenerationEnabled, setFormGenerationEnabled] = useState(false);
+  // A warm-up or cool-down is picked by what it's tagged for, not by
+  // movement pattern, so it only needs a type to be enabled.
+  const formIsBookend = isBookendExercise({ bookendRoles: formBookendRoles, exerciseCategory: formExerciseCategoryTag || undefined });
+  const canEnableGeneration = !!formExerciseCategoryTag && (!!formMovementPattern || formIsBookend);
   const [formError, setFormError] = useState('');
   const [savingExercise, setSavingExercise] = useState(false);
   const [equipmentPickerSearch, setEquipmentPickerSearch] = useState('');
@@ -1078,7 +1083,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                   jointStress: formJointStress,
                   primaryMuscles: formPrimaryMuscles,
                   secondaryMuscles: formSecondaryMuscles,
-                  generationEnabled: formGenerationEnabled,
+                  generationEnabled: formGenerationEnabled && canEnableGeneration,
                 } : (() => {
                   const zoneRaw = formData.get('equipmentId') as string;
                   return {
@@ -1109,7 +1114,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                     jointStress: formJointStress,
                     primaryMuscles: formPrimaryMuscles,
                     secondaryMuscles: formSecondaryMuscles,
-                    generationEnabled: formGenerationEnabled,
+                    generationEnabled: formGenerationEnabled && canEnableGeneration,
                     harderTutorial: formHarderVariation.mode === 'quick'
                       ? { videoUrl: formHarderVariation.videoUrl.trim(), steps: formHarderVariation.steps.map(s => s.trim()).filter(Boolean) }
                       : {},
@@ -1450,18 +1455,18 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                       <div className="min-w-0">
                         <p className="text-[10px] text-sky-400 font-bold uppercase tracking-wider mb-1">Automatic plan generation</p>
                         <p className="text-[10px] text-slate-500 leading-relaxed">
-                          Lets the generator pick this exercise for a client's plan on its own. It stays off until movement pattern and type are set.
+                          Lets the generator pick this exercise for a client's plan on its own. It stays off until movement pattern and type are set. Warm-ups and cool-downs only need a type.
                         </p>
                       </div>
                       <button
                         type="button"
                         onClick={() => setFormGenerationEnabled(v => !v)}
-                        disabled={!formMovementPattern || !formExerciseCategoryTag}
+                        disabled={!canEnableGeneration}
                         className={`flex-shrink-0 px-3 py-2 rounded-lg text-[11px] font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                          formGenerationEnabled ? 'bg-sky-500 text-slate-950' : 'bg-slate-800 text-slate-400 border border-slate-700'
+                          formGenerationEnabled && canEnableGeneration ? 'bg-sky-500 text-slate-950' : 'bg-slate-800 text-slate-400 border border-slate-700'
                         }`}
                       >
-                        {formGenerationEnabled ? '✓ Enabled' : 'Disabled'}
+                        {formGenerationEnabled && canEnableGeneration ? '✓ Enabled' : 'Disabled'}
                       </button>
                     </div>
 
@@ -1478,6 +1483,9 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
                         >
                           <Info className="w-3.5 h-3.5" />
                         </button>
+                        {formIsBookend && (
+                          <span className="text-[10px] text-slate-500 font-semibold">· not needed for warm-up / cool-down</span>
+                        )}
                       </div>
                       {showPatternHelp && (
                         <div className="mb-2 rounded-lg border border-slate-800 bg-slate-950 overflow-hidden">

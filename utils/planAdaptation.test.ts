@@ -193,6 +193,15 @@ describe('selectSubstitute', () => {
     jointStress: ['Shoulders', 'Elbows'],
   });
 
+  it('never offers a warm-up or cool-down without a movement pattern as a substitute', () => {
+    // Shares the muscle, loads nothing painful — but with no pattern it is a
+    // bookend only, and can't stand in for a pressing exercise.
+    const warmupOnly = ex({ id: 'arm-circles', movementPattern: undefined, bookendRoles: ['warmup'], primaryMuscles: ['Chest'], jointStress: [] });
+    const realSub = ex({ id: 'machine-press', primaryMuscles: ['Chest'], jointStress: ['Elbows'] });
+    expect(selectSubstitute({ withdrawn: barbellBench, pool: [warmupOnly, realSub] })?.id).toBe('machine-press');
+    expect(selectSubstitute({ withdrawn: barbellBench, pool: [warmupOnly] })).toBeNull();
+  });
+
   it('excludes anything loading the painful area, however well it otherwise fits', () => {
     // A perfect pattern and muscle match — but it loads the shoulder.
     const alsoShoulders = ex({ id: 'dip', primaryMuscles: ['Chest'], jointStress: ['Shoulders'] });

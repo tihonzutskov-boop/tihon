@@ -261,6 +261,9 @@ export const selectSubstitute = (input: SubstituteInput): LibraryExercise | null
     // failure DATA-1 names.
     if (withdrawnIds?.has(ex.id)) return false;
     if (ex.generationEnabled === false) return false;
+    // No movement pattern means a warm-up or cool-down only. It can't stand in
+    // for training work, however many muscles it shares with what was pulled.
+    if (!ex.movementPattern) return false;
     // A known painful area is a hard exclusion, not a penalty. Anything loading
     // it is disqualified however well it scores otherwise.
     if (painArea && (ex.jointStress || []).includes(painArea)) return false;

@@ -72,9 +72,16 @@ const EXPERIENCE_RANK: Record<ExperienceLevel, number> = { Beginner: 0, Intermed
 // Fail closed: anything we can't positively establish as safe and performable
 // is excluded. A missing tag is treated exactly like a disqualifying one, so
 // a half-tagged exercise can never slip into someone's plan.
+// A warm-up or cool-down is picked by what it is tagged for and the muscles it
+// drives (selectBookendExercise), never by movement pattern, so it doesn't
+// need one. Leaving it without one also keeps it out of the main block: slots
+// are filled by pattern, and a missing pattern matches none of them.
+export const isBookendExercise = (ex: Pick<LibraryExercise, 'bookendRoles' | 'exerciseCategory'>): boolean =>
+  (ex.bookendRoles?.length ?? 0) > 0 || ex.exerciseCategory === 'warmup' || ex.exerciseCategory === 'cooldown';
+
 export const checkEligibility = (ex: LibraryExercise, ctx: EligibilityContext): EligibilityResult => {
   if (ex.generationEnabled !== true) return { eligible: false, reason: 'not_generation_enabled' };
-  if (!ex.movementPattern) return { eligible: false, reason: 'missing_movement_pattern' };
+  if (!ex.movementPattern && !isBookendExercise(ex)) return { eligible: false, reason: 'missing_movement_pattern' };
   if (!ex.exerciseCategory) return { eligible: false, reason: 'missing_category' };
 
   const required = ex.requiredEquipmentIds || [];
