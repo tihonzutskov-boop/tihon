@@ -104,24 +104,19 @@ describe('ranking zones by usage', () => {
 });
 
 describe('the heat color scale', () => {
-  it('runs blue at 0 through to red at 1, the familiar density-map ramp', () => {
-    expect(heatColor(0)).toBe('rgb(37, 99, 235)');
+  it('runs green at 0 through yellow to red at 1, a traffic-light read', () => {
+    expect(heatColor(0)).toBe('rgb(22, 163, 74)');
+    expect(heatColor(0.5)).toBe('rgb(234, 179, 8)');
     expect(heatColor(1)).toBe('rgb(220, 38, 38)');
-  });
-
-  it('passes through cyan, green and yellow on the way', () => {
-    expect(heatColor(0.25)).toBe('rgb(34, 211, 238)');
-    expect(heatColor(0.5)).toBe('rgb(34, 197, 94)');
-    expect(heatColor(0.75)).toBe('rgb(234, 179, 8)');
   });
 
   it('moves between named stops smoothly rather than jumping', () => {
     const rgb = (c: string) => c.match(/\d+/g)!.map(Number);
-    const mid = rgb(heatColor(0.125)); // halfway between blue and cyan
-    const blue = rgb(heatColor(0));
-    const cyan = rgb(heatColor(0.25));
+    const mid = rgb(heatColor(0.25)); // halfway between green and yellow
+    const green = rgb(heatColor(0));
+    const yellow = rgb(heatColor(0.5));
     mid.forEach((v, i) => {
-      const lo = Math.min(blue[i], cyan[i]), hi = Math.max(blue[i], cyan[i]);
+      const lo = Math.min(green[i], yellow[i]), hi = Math.max(green[i], yellow[i]);
       expect(v).toBeGreaterThanOrEqual(lo);
       expect(v).toBeLessThanOrEqual(hi);
     });

@@ -95,16 +95,14 @@ export const topZonesByUsage = (
     .sort((a, b) => b.uses - a.uses || a.name.localeCompare(b.name));
 };
 
-// The familiar density-map ramp — blue (sparse) through cyan and green to
-// yellow and red (the busiest spot) — rather than this app's usual slate/amber
-// register, because the whole point of this scale is to be instantly readable
-// against a map the way a weather or traffic heatmap is.
+// A traffic-light read: green where a piece of equipment barely gets touched,
+// through yellow, to red where it is the busiest thing in the gym — the same
+// register a risk matrix uses for "how much attention does this need", which
+// is exactly the question this answers for a piece of gym equipment.
 const HEAT_STOPS: [number, [number, number, number]][] = [
-  [0, [37, 99, 235]],    // blue-600
-  [0.25, [34, 211, 238]],// cyan-400
-  [0.5, [34, 197, 94]],  // green-500
-  [0.75, [234, 179, 8]], // yellow-500
-  [1, [220, 38, 38]],    // red-600 — the busiest
+  [0, [22, 163, 74]],   // green-600 — least used
+  [0.5, [234, 179, 8]], // yellow-500
+  [1, [220, 38, 38]],   // red-600 — busiest
 ];
 
 /** Interpolated along HEAT_STOPS; an intensity outside [0,1] clamps to an end. */
