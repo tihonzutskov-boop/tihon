@@ -171,6 +171,10 @@ export interface Exercise {
   requiredEquipmentIds?: string[];
   setDetails?: SetDetail[]; // Optional per-set reps/weight/rest, authored in the session builder; sets/reps above stay in sync as a flat summary for consumers that don't read this
   isCardio?: boolean;   // true when this exercise is tracked by a single duration instead of sets/reps (e.g. treadmill, rowing)
+  // The easy steady cardio a plan can end its weights with, before the cool-down.
+  // Like a warm-up it is timed rather than counted in sets, and is not
+  // progressed or adapted — but unlike one it is a real machine in the gym.
+  finisher?: 'zone2';
   cardioMinutes?: number; // minutes to perform, used when isCardio is true
   // Set by the adaptation engine when the plan is fetched for training. Absent
   // on the stored plan, which is the authored intent — these describe what the
@@ -316,6 +320,14 @@ export const ALL_MUSCLE_GROUPS: MuscleGroup[] = [
   'Abs', 'Obliques',
 ];
 
+// The body areas a client can ask their plan to give extra attention — the
+// optional third level of the questionnaire's goals. Broad on purpose: a
+// client thinks "glutes" or "arms", not "hip extension" or "elbow flexion";
+// the engine maps each to the movement patterns and muscles behind it.
+export type FocusArea = 'Glutes' | 'Legs' | 'Core' | 'Back' | 'Chest' | 'Arms' | 'Shoulders';
+
+export const ALL_FOCUS_AREAS: FocusArea[] = ['Glutes', 'Legs', 'Core', 'Back', 'Chest', 'Arms', 'Shoulders'];
+
 export interface LibraryExercise {
   id: string;
   name: string;
@@ -410,12 +422,16 @@ export interface QuestionnaireAnswers {
   heightCm: number;
   weightKg: number;
   sex: string;
-  goals: string[];           // main goals as engine aims, most important first
-  secondaryGoals?: string[]; // supporting aims — ride along inside the main goals' days, never own one
+  // Goals come in three levels: a broad training type, the goals within it,
+  // and optional body areas to focus on (see utils/goals.ts).
+  trainingType?: string;     // 'Strength' | 'Cardio' | 'Health'; absent on answers from before it was asked
+  goals: string[];           // the type's goals as engine aims, most important first
+  focusAreas?: FocusArea[];  // optional, at most three
+  secondaryGoals?: string[]; // legacy: supporting aims from before the three levels; still honoured, no longer asked
   level: string;              // only 'Beginner' selectable for now
   daysPerWeek: string;        // '1'..'4'
   preferredDays?: Weekday[];  // legacy: answers from before the questionnaire stopped asking which days
-  minutesPerSession: string;  // '30 min'..'90 min'
+  minutesPerSession: string;  // '45 min' | '60 min' | '90 min' (older answers may hold '30 min')
   gymId?: string;             // which gym they train at — determines the equipment pool available to plan generation
   equipment: string;
   avoidExercises?: string;
@@ -450,6 +466,9 @@ export interface ExerciseSlot {
   // it outranks role when deciding what gets cut: all secondary-aim work goes
   // before any primary-aim work, whatever their roles. Absent means primary.
   aimTier?: 'primary' | 'secondary';
+  // Extra work added because the client asked to focus on this body area.
+  // Kept until every other optional slot is gone when the session runs long.
+  focusArea?: FocusArea;
   setsMin: number;
   setsMax: number;
   repsMin: number;
@@ -465,6 +484,8 @@ export interface BlueprintDay {
   // so every day belongs to exactly one aim. Held as data rather than encoded
   // in the name, so the engine and the admin queue can both read it.
   primaryAim?: string;
+  // Minutes of zone-2 cardio to end the session with, for aims that carry it.
+  zone2Minutes?: number;
   // MIXAIM-1: the day's optional secondary aim, whose essential work is
   // appended below all primary-aim work and cut first (MIXAIM-7 / DROP-1).
   secondaryAim?: string | null;

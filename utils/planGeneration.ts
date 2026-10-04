@@ -4,13 +4,13 @@
 import type {
   LibraryExercise, Gym, ExerciseSlot, BlueprintDay, PlanTemplate,
   ExperienceLevel, JointStressArea, WorkoutDay, Exercise, SetDetail,
-  MovementPattern, MuscleGroup, SlotRole,
+  MovementPattern, MuscleGroup, SlotRole, FocusArea,
 } from '../types.js';
 // A real import, not type-only: the session's length decides its whole shape,
 // so these run at generation time. Compiled alongside planGeneration into the
 // engine build the server uses.
-import { shapeFor, bookendsFor, trainingMinutesAvailable } from './sessionShape.js';
-import type { SessionShape } from './sessionShape.js';
+import { shapeFor, bookendsFor, maxBookendMinutes, zone2MinutesFor } from './sessionShape.js';
+import type { SessionShape, SessionBookend } from './sessionShape.js';
 
 // ---------------------------------------------------------------------------
 // Inputs
@@ -22,6 +22,8 @@ export interface GenerationProfile {
   daysPerWeek: number;
   sessionMinutes: number;
   injuryAreas: JointStressArea[];
+  /** Body areas the client asked to focus on. */
+  focusAreas?: FocusArea[];
 }
 
 export interface EligibilityContext {
@@ -129,18 +131,22 @@ export const selectSplit = (daysPerWeek: number): { split: SplitName; dayNames: 
 
 // Set/rep/rest defaults per goal. Compound and isolation work are prescribed
 // differently within the same goal, which is why this is keyed by both.
+// The goals a client can choose are meant to feel different, so their rep
+// ranges step apart rather than overlap: muscle gain 8-12, general fitness
+// 12-15 (single-joint 14-18), weight loss 15-20. Endurance is no longer
+// offered but still builds plans for clients who chose it earlier.
 const GOAL_PRESCRIPTION: Record<string, { compound: Omit<ExerciseSlot, 'id' | 'movementPattern' | 'priority'>; isolation: Omit<ExerciseSlot, 'id' | 'movementPattern' | 'priority'> }> = {
   'Muscle gain': {
     compound: { setsMin: 3, setsMax: 4, repsMin: 8, repsMax: 12, restSeconds: 90, exerciseCategory: 'compound' },
     isolation: { setsMin: 2, setsMax: 3, repsMin: 10, repsMax: 15, restSeconds: 90, exerciseCategory: 'isolation' },
   },
   'Weight loss': {
-    compound: { setsMin: 3, setsMax: 3, repsMin: 12, repsMax: 15, restSeconds: 45, exerciseCategory: 'compound' },
-    isolation: { setsMin: 2, setsMax: 3, repsMin: 12, repsMax: 15, restSeconds: 30, exerciseCategory: 'isolation' },
+    compound: { setsMin: 3, setsMax: 3, repsMin: 15, repsMax: 20, restSeconds: 45, exerciseCategory: 'compound' },
+    isolation: { setsMin: 2, setsMax: 3, repsMin: 15, repsMax: 20, restSeconds: 30, exerciseCategory: 'isolation' },
   },
   'General fitness': {
-    compound: { setsMin: 3, setsMax: 3, repsMin: 10, repsMax: 12, restSeconds: 90, exerciseCategory: 'compound' },
-    isolation: { setsMin: 2, setsMax: 3, repsMin: 10, repsMax: 15, restSeconds: 60, exerciseCategory: 'isolation' },
+    compound: { setsMin: 2, setsMax: 3, repsMin: 12, repsMax: 15, restSeconds: 90, exerciseCategory: 'compound' },
+    isolation: { setsMin: 2, setsMax: 3, repsMin: 14, repsMax: 18, restSeconds: 60, exerciseCategory: 'isolation' },
   },
   'Endurance': {
     compound: { setsMin: 2, setsMax: 3, repsMin: 15, repsMax: 20, restSeconds: 30, exerciseCategory: 'compound' },
@@ -251,6 +257,63 @@ const DAY_TEMPLATES: { match: (name: string) => boolean; slots: SlotSpec[] }[] =
   { match: n => n.startsWith('Legs'), slots: LEGS },
 ];
 
+// What focusing on a body area adds to a day: extra work for it, on the days
+// that already train that part of the body. A pattern from `alongside` in the
+// day's template is what marks such a day, so arms work lands on push and pull
+// days rather than on leg day, and a full-body day, which has a bit of
+// everything, takes every focus. `muscles` is what the area means when scoring
+// an exercise for any slot — a glute focus tips a hinge slot toward a glute
+// exercise too, not only the slot added for it.
+type FocusExtra = SlotSpec & { alongside: MovementPattern[] | 'any' };
+const FOCUS_WORK: Record<FocusArea, { muscles: MuscleGroup[]; extra: FocusExtra[] }> = {
+  Glutes: {
+    muscles: ['Glutes', 'Abductors'],
+    extra: [{ pattern: 'hip_extension', kind: 'isolation', alongside: ['squat', 'hinge', 'lunge'] }],
+  },
+  Legs: {
+    muscles: ['Quads', 'Hamstrings', 'Calves', 'Adductors'],
+    extra: [
+      { pattern: 'lunge', kind: 'compound', alongside: ['squat', 'hinge'] },
+      { pattern: 'knee_flexion', kind: 'isolation', alongside: ['squat', 'hinge'] },
+    ],
+  },
+  // Core work fits any day, so it does not wait for a lower-body day.
+  Core: {
+    muscles: ['Abs', 'Obliques'],
+    extra: [{ pattern: 'core', kind: 'isolation', alongside: 'any' }],
+  },
+  Back: {
+    muscles: ['Lats', 'Upper back', 'Lower back'],
+    extra: [{ pattern: 'vertical_pull', kind: 'compound', alongside: ['horizontal_pull', 'vertical_pull'] }],
+  },
+  Chest: {
+    muscles: ['Chest', 'Upper chest'],
+    extra: [{ pattern: 'horizontal_adduction', kind: 'isolation', alongside: ['horizontal_push'] }],
+  },
+  Arms: {
+    muscles: ['Biceps', 'Triceps', 'Forearms'],
+    extra: [
+      { pattern: 'elbow_flexion', kind: 'isolation', alongside: ['horizontal_pull', 'vertical_pull'] },
+      { pattern: 'elbow_extension', kind: 'isolation', alongside: ['horizontal_push', 'vertical_push'] },
+    ],
+  },
+  Shoulders: {
+    muscles: ['Front delts', 'Side delts', 'Rear delts'],
+    extra: [{ pattern: 'shoulder_abduction', kind: 'isolation', alongside: ['horizontal_push', 'vertical_push'] }],
+  },
+};
+
+const focusExtrasFor = (template: SlotSpec[], focusAreas: FocusArea[]): (SlotSpec & { focusArea: FocusArea })[] => {
+  const trained = new Set(template.map(sp => sp.pattern));
+  return [...new Set(focusAreas)]
+    .filter(area => FOCUS_WORK[area])
+    .flatMap(area => FOCUS_WORK[area].extra
+      .filter(x => x.alongside === 'any' || x.alongside.some(p => trained.has(p)))
+      .map(({ pattern, kind }) => ({ pattern, kind, optional: true, focusArea: area })));
+};
+
+const focusMusclesOf = (focusAreas: FocusArea[] = []): Set<MuscleGroup> =>
+  new Set(focusAreas.flatMap(area => FOCUS_WORK[area]?.muscles ?? []));
 
 // Builds a complete blueprint from goal + days/week alone — no admin
 // authoring required. An admin-authored blueprint always wins when one
@@ -286,29 +349,33 @@ export interface AimProfile {
   namesOwnDays: boolean;
   /** GOALS_WITH_CONDITIONING, moved onto the profile where it belongs. */
   conditioningFinisher: boolean;
+  /** Ends the session with easy zone-2 cardio, after the weights and before the cool-down. */
+  zone2Finisher: boolean;
 }
 
 const AIM_PROFILES: Record<string, AimProfile> = {
   'Muscle gain': {
     intensityAxis: 'load', progressionAxis: 'load', orderHeuristic: 'heaviest_first',
-    ownTemplate: null, namesOwnDays: false, conditioningFinisher: false,
+    ownTemplate: null, namesOwnDays: false, conditioningFinisher: false, zone2Finisher: false,
   },
+  // Zone-2 cardio takes the place of the conditioning finisher: ending a
+  // session with both would stack two finishers on one tired client.
   'Weight loss': {
     intensityAxis: 'load', progressionAxis: 'load', orderHeuristic: 'heaviest_first',
-    ownTemplate: null, namesOwnDays: false, conditioningFinisher: true,
+    ownTemplate: null, namesOwnDays: false, conditioningFinisher: false, zone2Finisher: true,
   },
   'General fitness': {
     intensityAxis: 'load', progressionAxis: 'load', orderHeuristic: 'heaviest_first',
-    ownTemplate: null, namesOwnDays: false, conditioningFinisher: false,
+    ownTemplate: null, namesOwnDays: false, conditioningFinisher: false, zone2Finisher: false,
   },
   'Endurance': {
     intensityAxis: 'pace_hr_power', progressionAxis: 'duration_or_pace', orderHeuristic: 'priority_first',
-    ownTemplate: null, namesOwnDays: false, conditioningFinisher: true,
+    ownTemplate: null, namesOwnDays: false, conditioningFinisher: true, zone2Finisher: false,
   },
   'Mobility': {
     intensityAxis: 'range_control', progressionAxis: 'usable_range',
     orderHeuristic: 'easier_range_to_demanding_range',
-    ownTemplate: MOBILITY, namesOwnDays: true, conditioningFinisher: false,
+    ownTemplate: MOBILITY, namesOwnDays: true, conditioningFinisher: false, zone2Finisher: false,
   },
 };
 
@@ -346,24 +413,33 @@ const roleOfSpec = (spec: SlotSpec): SlotRole =>
 const roleOf = (slot: ExerciseSlot): SlotRole =>
   slot.role ?? (slot.optional ? 'accessory' : 'primary');
 
-const slotsForGoal = (goal: string, dayName: string, shape: SessionShape): ExerciseSlot[] => {
+const slotsForGoal = (goal: string, dayName: string, shape: SessionShape, focusAreas: FocusArea[] = []): ExerciseSlot[] => {
   const rx = GOAL_PRESCRIPTION[goal] || GOAL_PRESCRIPTION[DEFAULT_GOAL];
   const aim = aimProfile(goal);
   // An aim either brings its own template or builds from the day's split —
   // read off the profile rather than asked for by name.
   const base = aim.ownTemplate || DAY_TEMPLATES.find(t => t.match(dayName))?.slots || FULL_BODY;
-  const focused = shape.includeAccessories ? base : base.filter(sp => roleOfSpec(sp) === 'primary');
+  const essentials = shape.includeAccessories ? base : base.filter(sp => roleOfSpec(sp) === 'primary');
   const withFinisher: SlotSpec[] = aim.conditioningFinisher && shape.includeAccessories
-    ? [...focused, { pattern: 'conditioning', kind: 'isolation', optional: true }]
-    : focused;
+    ? [...essentials, { pattern: 'conditioning', kind: 'isolation', optional: true }]
+    : essentials;
+  // Focus work goes onto days built from the split. An aim with its own
+  // template (mobility) is a different kind of session, and a set of lateral
+  // raises does not belong in it. Added even to a short session: the client
+  // asked for it, and the duration fitter is what decides whether it fits.
+  const focusExtras = aim.ownTemplate ? [] : focusExtrasFor(base, focusAreas);
+  const specs: (SlotSpec & { focusArea?: FocusArea })[] = [...withFinisher, ...focusExtras];
 
-  const built = withFinisher.map((spec, i) => ({
+  const built = specs.map((spec, i) => ({
     ...rx[spec.kind],
     id: `slot-${i}`, // placeholder — the caller (single- or combined-blueprint) assigns the real, namespaced id
     movementPattern: spec.pattern,
     priority: i + 1,
     optional: spec.optional,
-    role: roleOfSpec(spec),
+    // Focus work ranks with the movements that make the session, ahead of
+    // finishing work, whatever kind of exercise it is.
+    role: spec.focusArea ? 'supporting' as const : roleOfSpec(spec),
+    ...(spec.focusArea ? { focusArea: spec.focusArea } : {}),
     // Conditioning and mobility work sit outside the compound/isolation
     // split, so leaving the category unset lets any exercise tagged for
     // that pattern fill the slot rather than none.
@@ -426,7 +502,9 @@ const dayLabel = (aim: string, splitName: string, aimDayIndex: number, aimHasMan
     ? (aimHasManyDays ? `${aim} ${aimDayIndex + 1}` : aim)
     : splitName;
 
-export const buildCombinedBlueprint = (goals: string[], daysPerWeek: number, sessionMinutes = 60, supporting: string[] = []): BlueprintDay[] => {
+export const buildCombinedBlueprint = (
+  goals: string[], daysPerWeek: number, sessionMinutes = 60, supporting: string[] = [], focusAreas: FocusArea[] = [],
+): BlueprintDay[] => {
   // Session length shapes what gets built, rather than trimming what was built.
   // A short session is composed of the priority work only; it is not a long
   // session with the end cut off.
@@ -458,7 +536,7 @@ export const buildCombinedBlueprint = (goals: string[], daysPerWeek: number, ses
     // MIXAIM-3: this block takes its reps, rest and intensity from the day's
     // primary aim alone — never blended or averaged with the other aim's,
     // even where the two share a movement pattern.
-    const primarySlots = slotsForGoal(day.primary, splitName, shape);
+    const primarySlots = slotsForGoal(day.primary, splitName, shape, focusAreas);
 
     // MIXAIM-7: the secondary aim adds real work, but only its essential
     // (primary-role) slots. Its own supporting and accessory work is by
@@ -488,6 +566,9 @@ export const buildCombinedBlueprint = (goals: string[], daysPerWeek: number, ses
       name: dayLabel(day.primary, splitName, aimDayIndex, (dayCountPerAim[day.primary] || 0) > 1),
       primaryAim: day.primary,
       secondaryAim: day.secondary,
+      // Sized to the session, whatever else the day holds. Whether it fits is
+      // decided at generation, once the day's weights are known.
+      ...(aimProfile(day.primary).zone2Finisher ? { zone2Minutes: zone2MinutesFor(sessionMinutes) } : {}),
       slots: slots.map((spec, i) => ({ ...spec, id: `defslot-${dayIdx}-${i}`, priority: i + 1 })),
     };
   });
@@ -512,6 +593,10 @@ export const SCORING = {
   // repeat is still picked over no exercise at all when the library has only
   // one candidate for the pattern.
   usedEarlierInWeek: -40,
+  // An exercise that trains an area the client asked to focus on. Smaller
+  // than usedEarlierInWeek, so a focus never brings back the same exercise
+  // every day when there is an alternative.
+  focusMuscle: 10,
 };
 
 const GOAL_PREFERS_COMPOUND = new Set(['Muscle gain', 'General fitness']);
@@ -537,6 +622,8 @@ export const scoreCandidate = (
   // filtered out — it just loses the tie to anything the client hasn't done
   // yet this week.
   if (usedEarlierInWeek.has(ex.id)) score += SCORING.usedEarlierInWeek;
+  const focus = focusMusclesOf(profile.focusAreas);
+  if ((ex.primaryMuscles || []).some(m => focus.has(m))) score += SCORING.focusMuscle;
   return score;
 };
 
@@ -581,7 +668,7 @@ export const selectForSlot = (
 // ---------------------------------------------------------------------------
 
 export const TIMING = {
-  secondsPerRep: 3,
+  secondsPerRep: 2,
   setupSecondsPerExercise: 60,
   warmupMinutes: 5,
 };
@@ -716,7 +803,57 @@ const buildExercise = (
 // overlaps (24) still lose to a single explicit bookend tag (30), so an admin's
 // tagging always outranks the day, and the day only breaks ties within the
 // group of exercises already marked for this end of the session.
-const BOOKEND_SCORING = { taggedForBookend: 30, mobility: 20, mobilityPattern: 15, cardio: 10, dayMuscleMatch: 8 };
+// A follow-along video tagged for this end of the session outranks any machine
+// or movement: the admin recorded it to be the warm-up or cooldown, which is
+// more deliberate than a bike happening to suit it. Large enough to beat the
+// most a machine can score (tag + cardio + several day muscles). A video that
+// is not tagged for this end gets none of it, so a cooldown video is never
+// preferred as a warm-up.
+const BOOKEND_SCORING = {
+  taggedForBookend: 30, mobility: 20, mobilityPattern: 15, cardio: 10, dayMuscleMatch: 8,
+  taggedVideo: 100,
+  // Several videos rotate through the week instead of one playing every day.
+  // Smaller than taggedVideo, so a repeat still beats a machine.
+  videoUsedEarlierInWeek: -45,
+};
+
+/**
+ * Minutes a video runs, read from the free-text length an admin typed
+ * ("10 min", "10 minutes", "12:30", "1:05:00", "90 sec"). Null when there is
+ * nothing to read — the label is whatever was typed, so "Follow-along video"
+ * or an empty field is expected, and the caller falls back to a fixed length.
+ */
+export const parseVideoMinutes = (label?: string | null): number | null => {
+  const text = (label || '').trim().toLowerCase();
+  if (!text) return null;
+  const clock = text.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (clock) {
+    const [a, b] = [Number(clock[1]), Number(clock[2])];
+    const seconds = clock[3] === undefined ? a * 60 + b : a * 3600 + b * 60 + Number(clock[3]);
+    return seconds > 0 ? Math.max(1, Math.round(seconds / 60)) : null;
+  }
+  const mins = text.match(/(\d+(?:[.,]\d+)?)\s*(?:minutes?|mins?|m)\b/);
+  if (mins) {
+    const n = Number(mins[1].replace(',', '.'));
+    return n > 0 ? Math.max(1, Math.round(n)) : null;
+  }
+  const secs = text.match(/(\d+)\s*(?:seconds?|secs?|s)\b/);
+  if (secs && Number(secs[1]) > 0) return Math.max(1, Math.round(Number(secs[1]) / 60));
+  return null;
+};
+
+const isTaggedVideo = (ex: LibraryExercise, kind: 'warmup' | 'cooldown'): boolean =>
+  ex.exerciseType === 'video' && (!!ex.bookendRoles?.includes(kind) || ex.exerciseCategory === kind);
+
+/**
+ * The warm-up or cooldown block for a day. A follow-along video sets the
+ * block's length to its own and says to follow it; anything else keeps the
+ * fixed block, whose steps are written for a machine or movement.
+ */
+export const bookendBlockFor = (block: SessionBookend, le: LibraryExercise | null): SessionBookend =>
+  le?.exerciseType === 'video'
+    ? { ...block, minutes: parseVideoMinutes(le.videoDurationLabel) ?? block.minutes, steps: ['Follow along with the video.'] }
+    : block;
 
 export const selectBookendExercise = (
   kind: 'warmup' | 'cooldown',
@@ -727,10 +864,20 @@ export const selectBookendExercise = (
   // empty set simply scores nothing — every existing caller keeps its old
   // behaviour without passing it.
   dayMuscles: Set<MuscleGroup> | MuscleGroup[] = [],
+  options: {
+    /** Videos already used for this end earlier in the week, to rotate rather than repeat. */
+    usedEarlierInWeek?: Set<string>;
+    /** A video longer than this does not fit the session, so is not a candidate. */
+    maxVideoMinutes?: number;
+  } = {},
 ): LibraryExercise | null => {
   const trained = dayMuscles instanceof Set ? dayMuscles : new Set(dayMuscles);
   const scoreOne = (ex: LibraryExercise): number => {
     let score = 0;
+    if (isTaggedVideo(ex, kind)) {
+      score += BOOKEND_SCORING.taggedVideo;
+      if (options.usedEarlierInWeek?.has(ex.id)) score += BOOKEND_SCORING.videoUsedEarlierInWeek;
+    }
     // Counted per muscle rather than as a yes/no, so on a lower day a
     // stairmaster (quads + glutes) is picked over a treadmill (quads only).
     for (const m of ex.primaryMuscles || []) {
@@ -746,8 +893,13 @@ export const selectBookendExercise = (
     if (ex.exerciseCategory === 'cardio') score += BOOKEND_SCORING.cardio;
     return score;
   };
+  const fits = (ex: LibraryExercise): boolean => {
+    if (ex.exerciseType !== 'video' || options.maxVideoMinutes === undefined) return true;
+    const minutes = parseVideoMinutes(ex.videoDurationLabel);
+    return minutes === null || minutes <= options.maxVideoMinutes;
+  };
   const scored = pool
-    .filter(ex => ex.generationEnabled !== false && scoreOne(ex) > 0)
+    .filter(ex => ex.generationEnabled !== false && fits(ex) && scoreOne(ex) > 0)
     .map(ex => ({ ex, score: scoreOne(ex) }))
     .sort((a, b) => (b.score - a.score) || a.ex.id.localeCompare(b.ex.id));
   return scored.length > 0 ? scored[0].ex : null;
@@ -786,6 +938,43 @@ export const buildBookendExercise = (
     || block.steps.join(' · '),
 });
 
+// Zone 2 is steady cardio at a pace where you can still hold a conversation.
+// Any cardio exercise the gym can offer will do; one not done earlier in the
+// week is preferred, so a client is not on the same machine every session.
+export const selectZone2Exercise = (
+  pool: LibraryExercise[],
+  usedEarlierInWeek: Set<string> = new Set(),
+): LibraryExercise | null => {
+  const candidates = pool.filter(ex => ex.generationEnabled !== false && ex.exerciseCategory === 'cardio');
+  if (candidates.length === 0) return null;
+  return [...candidates].sort((a, b) =>
+    (Number(usedEarlierInWeek.has(a.id)) - Number(usedEarlierInWeek.has(b.id))) || a.id.localeCompare(b.id)
+  )[0];
+};
+
+const ZONE2_NOTE = 'Keep it easy and steady: a pace where you could still talk in full sentences, '
+  + 'around 6 or 7 out of 10 effort. Stay at that pace for the whole time.';
+
+export const buildZone2Exercise = (le: LibraryExercise, minutes: number, idSuffix: string): Exercise => ({
+  id: `gz2-${idSuffix}`,
+  name: le.name,
+  targetMuscle: 'Zone 2 cardio',
+  sets: 0,
+  reps: '',
+  isCardio: true,
+  cardioMinutes: minutes,
+  equipmentId: le.equipmentId || 'manual',
+  libraryExerciseId: le.id,
+  finisher: 'zone2',
+  notes: ZONE2_NOTE,
+});
+
+// Zone 2 is the first thing to give when the weights need the time: it shrinks
+// in steps down to this floor, and below it is left out for that day. The main
+// lifts are never cut for it.
+const ZONE2_FLOOR_MINUTES = 5;
+const ZONE2_STEP_MINUTES = 5;
+
 export const generatePlan = (
   blueprint: PlanTemplate,
   library: LibraryExercise[],
@@ -813,6 +1002,9 @@ export const generatePlan = (
   // preference — never a hard exclusion, since a repeat is still the right
   // pick when the library has nothing else for that pattern.
   const usedEarlierInWeek = new Set<string>();
+  // Warm-up and cooldown videos used so far this week, per end, so several
+  // videos rotate instead of one playing every day.
+  const bookendVideosUsed = { warmup: new Set<string>(), cooldown: new Set<string>() };
 
   for (let d = 0; d < blueprintDays.length; d++) {
     const bpDay: BlueprintDay = blueprintDays[d];
@@ -849,7 +1041,33 @@ export const generatePlan = (
     // training time — a session can never be squeezed until there is no room
     // left to warm up.
     const shape = shapeFor(profile.sessionMinutes);
-    const trainingBudget = trainingMinutesAvailable(profile.sessionMinutes, shape);
+    // The warm-up and cooldown are chosen before the weights are fitted, since
+    // a video sets its own length and that length comes off the training time.
+    // They are matched to the muscles the day was built to train, which is the
+    // same set whether or not an exercise is later dropped for time. A video
+    // too long to leave the other end its usual minutes within the session's
+    // bookend allowance is not offered.
+    const defaultBookends = bookendsFor(shape);
+    const allowedBookendMinutes = maxBookendMinutes(profile.sessionMinutes);
+    const warmupLe = selectBookendExercise('warmup', pool, musclesInDay, {
+      usedEarlierInWeek: bookendVideosUsed.warmup,
+      maxVideoMinutes: allowedBookendMinutes - defaultBookends.cooldown.minutes,
+    });
+    const warmup = bookendBlockFor(defaultBookends.warmup, warmupLe);
+    const cooldownLe = selectBookendExercise('cooldown', pool, musclesInDay, {
+      usedEarlierInWeek: bookendVideosUsed.cooldown,
+      maxVideoMinutes: allowedBookendMinutes - warmup.minutes,
+    });
+    const cooldown = bookendBlockFor(defaultBookends.cooldown, cooldownLe);
+    const trainingBudget = Math.max(0, profile.sessionMinutes - warmup.minutes - cooldown.minutes);
+    // The zone-2 block, for an aim that ends its session with one. Its minutes
+    // come out of the training time, so the weights are fitted into what is
+    // left. With no cardio exercise at this gym there is nothing to put there:
+    // the day is built without it, and the gap is recorded below.
+    const zoneTarget = bpDay.zone2Minutes ?? 0;
+    const zoneLibraryExercise = zoneTarget > 0 ? selectZone2Exercise(pool, usedEarlierInWeek) : null;
+    let zoneMinutes = zoneLibraryExercise ? zoneTarget : 0;
+    const availableForWeights = () => trainingBudget - zoneMinutes;
     const measure = () => estimateDayMinutes(picked.map(p => {
       const { sets, reps, restSeconds } = prescriptionFor(p.slot, profile);
       return { sets, reps, restSeconds };
@@ -858,20 +1076,23 @@ export const generatePlan = (
     // DROP-1: whole exercises come out, never partial sets, in this order —
     // every secondary-aim exercise first (MIXAIM-7: all of it ranks below any
     // primary-aim work, whatever its own role), then primary-aim accessory,
-    // then primary-aim supporting. So a session sheds the second aim before
-    // it sheds finishing work, and finishing work before it gives up a
-    // movement pattern. Within a tier the lowest-priority exercise goes
-    // first. Primary-aim primary work is never dropped; a day that still
-    // doesn't fit is DROP-2's case.
+    // then primary-aim supporting, then the work added for the client's focus
+    // areas. So a session sheds the second aim before it sheds finishing work,
+    // and finishing work before it gives up a movement pattern; what the
+    // client explicitly asked for goes last. Within a tier the
+    // lowest-priority exercise goes first. Primary-aim primary work is never
+    // dropped; a day that still doesn't fit is DROP-2's case.
     const isSecondary = (sl: ExerciseSlot) => sl.aimTier === 'secondary';
+    const isFocus = (sl: ExerciseSlot) => !!sl.focusArea && !isSecondary(sl);
     const DROP_TIERS: ((sl: ExerciseSlot) => boolean)[] = [
       isSecondary,
-      sl => !isSecondary(sl) && roleOf(sl) === 'accessory',
-      sl => !isSecondary(sl) && roleOf(sl) === 'supporting',
+      sl => !isSecondary(sl) && !isFocus(sl) && roleOf(sl) === 'accessory',
+      sl => !isSecondary(sl) && !isFocus(sl) && roleOf(sl) === 'supporting',
+      isFocus,
     ];
 
     const droppedIds: string[] = [];
-    while (measure() > trainingBudget) {
+    while (measure() > availableForWeights()) {
       let dropIdx = -1;
       for (const inTier of DROP_TIERS) {
         let worstPriority = -Infinity;
@@ -882,6 +1103,12 @@ export const generatePlan = (
           }
         });
         if (dropIdx !== -1) break;
+      }
+      if (dropIdx === -1 && zoneMinutes > 0) {
+        // Every optional lift is gone and the main lifts still do not fit
+        // alongside the cardio. The cardio gives next: shorter, then not at all.
+        zoneMinutes = zoneMinutes > ZONE2_FLOOR_MINUTES ? Math.max(ZONE2_FLOOR_MINUTES, zoneMinutes - ZONE2_STEP_MINUTES) : 0;
+        continue;
       }
       if (dropIdx === -1) {
         // Every accessory and supporting exercise is already gone and the
@@ -900,7 +1127,7 @@ export const generatePlan = (
       picked.splice(dropIdx, 1);
     }
 
-    if (measure() > trainingBudget) continue;  // recorded just above
+    if (measure() > availableForWeights()) continue;  // recorded just above
 
     if (picked.length === 0) {
       const wanted = bpDay.slots.map(sl => sl.movementPattern).join(', ');
@@ -943,18 +1170,36 @@ export const generatePlan = (
       droppedReason: 'duration',
     }));
 
+    // What became of the zone-2 block, so an admin can see why a day has none:
+    // no cardio at the gym, or no time left for it beside the main lifts.
+    if (zoneTarget > 0) {
+      decisions.push({
+        dayName: bpDay.name,
+        slotId: 'zone2',
+        movementPattern: 'zone2_cardio',
+        selectedExerciseId: zoneMinutes > 0 && zoneLibraryExercise ? zoneLibraryExercise.id : '',
+        selectedExerciseName: zoneMinutes > 0 && zoneLibraryExercise ? zoneLibraryExercise.name : '',
+        score: 0,
+        ...(zoneMinutes > 0 ? {} : {
+          dropped: true,
+          droppedReason: zoneLibraryExercise ? 'duration' as const : 'no_candidate' as const,
+        }),
+      });
+    }
+
     // Always present, whatever the library contains. Training cold is a
     // beginner injury risk, and it is the first thing skipped when it is left
     // to chance.
-    const { warmup, cooldown } = bookendsFor(shape);
     days.push({
       id: `gday-${d}`,
       name: bpDay.name,
-      // Bookends bracket the working exercises, in the order they're done.
+      // Bookends bracket the working exercises, in the order they're done; the
+      // zone-2 block, when there is one, closes the weights before the cooldown.
       exercises: [
-        buildBookendExercise('warmup', warmup, selectBookendExercise('warmup', pool, musclesInDay), `${d}-warmup`),
+        buildBookendExercise('warmup', warmup, warmupLe, `${d}-warmup`),
         ...picked.map((p, i) => buildExercise(p.le, p.slot, profile, `${d}-${i}`)),
-        buildBookendExercise('cooldown', cooldown, selectBookendExercise('cooldown', pool, musclesInDay), `${d}-cooldown`),
+        ...(zoneMinutes > 0 && zoneLibraryExercise ? [buildZone2Exercise(zoneLibraryExercise, zoneMinutes, `${d}`)] : []),
+        buildBookendExercise('cooldown', cooldown, cooldownLe, `${d}-cooldown`),
       ],
       warmup,
       cooldown,
@@ -965,6 +1210,9 @@ export const generatePlan = (
     // trimming — an exercise dropped for time was never really trained, so it
     // shouldn't cost itself a later day's variety.
     picked.forEach(p => usedEarlierInWeek.add(p.le.id));
+    if (zoneMinutes > 0 && zoneLibraryExercise) usedEarlierInWeek.add(zoneLibraryExercise.id);
+    if (warmupLe) bookendVideosUsed.warmup.add(warmupLe.id);
+    if (cooldownLe) bookendVideosUsed.cooldown.add(cooldownLe.id);
   }
 
   // Every day failed, so there is no plan to deliver — that is a week-level
@@ -1048,7 +1296,8 @@ export const validatePlan = (
       if (seen.has(le.id)) errors.push(`"${le.name}" appears twice in "${day.name}"`);
       seen.add(le.id);
 
-      if (!ex.setDetails || ex.setDetails.length === 0) {
+      // A zone-2 block is timed, not counted in sets.
+      if (!ex.finisher && (!ex.setDetails || ex.setDetails.length === 0)) {
         errors.push(`"${ex.name}" in "${day.name}" has no sets`);
       }
     });
@@ -1060,11 +1309,15 @@ export const validatePlan = (
     // client's stated time — and the whole point of this check is to be an
     // independent guard, not a weaker one.
     const shape = shapeFor(profile.sessionMinutes);
-    const minutes = estimateDayMinutes(day.exercises.filter(ex => !ex.bookend).map(ex => ({
+    // A video warm-up or cooldown carries its own length on the day.
+    const warmupMinutes = day.warmup?.minutes ?? shape.warmupMinutes;
+    const cooldownMinutes = day.cooldown?.minutes ?? shape.cooldownMinutes;
+    const zoneMinutes = day.exercises.reduce((sum, ex) => sum + (ex.finisher ? ex.cardioMinutes || 0 : 0), 0);
+    const minutes = estimateDayMinutes(day.exercises.filter(ex => !ex.bookend && !ex.finisher).map(ex => ({
       sets: ex.setDetails?.length || ex.sets || 0,
       reps: parseInt(ex.setDetails?.[0]?.reps || '0', 10) || 0,
       restSeconds: ex.setDetails?.[0]?.restSec ?? 60,
-    })), shape.warmupMinutes + shape.cooldownMinutes);
+    })), warmupMinutes + cooldownMinutes + zoneMinutes);
     if (minutes > profile.sessionMinutes) {
       errors.push(`"${day.name}" is ${minutes} min, over the ${profile.sessionMinutes} min target`);
     }
@@ -1079,7 +1332,7 @@ export const validatePlan = (
   if (tagged.length > 0) {
     const trained = new Set<MuscleGroup>();
     days.forEach(day => day.exercises.forEach(ex => {
-      if (ex.bookend) return;
+      if (ex.bookend || ex.finisher) return;
       const le = ex.libraryExerciseId ? byId.get(ex.libraryExerciseId) : undefined;
       (le?.primaryMuscles || []).forEach(m => trained.add(m));
     }));

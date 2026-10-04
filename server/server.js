@@ -15,7 +15,7 @@ import {
 } from './auth.js';
 import {
   validateQuestionnaire, validatePlanPayload, validateExerciseLogs,
-  validateCompletedWorkout, validateCheckinText,
+  validateCompletedWorkout, validateCheckinText, FOCUS_AREAS,
 } from './validate.js';
 import { createRateLimiter, createJsonBodyParser, byUserOrIp } from './limits.js';
 import { computeStreak, timeZoneFromRequest, todayIn } from './stats.js';
@@ -797,8 +797,9 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
 
         // The warm-up and cooldown ride along in the day so they can be found
         // on the map, but they are not training work: no progression, no
-        // weekly volume, no add-set. Passed through exactly as authored.
-        if (ex.bookend) {
+        // weekly volume, no add-set. Passed through exactly as authored. The
+        // zone-2 cardio block is timed rather than counted, so the same holds.
+        if (ex.bookend || ex.finisher) {
           resolved.push({ dayIdx, key, muscles: [], baseSets: 0,
             decision: { action: 'maintain', rule: '', reason: '' }, build: () => ex });
           return;
@@ -1017,6 +1018,7 @@ const buildGenerationProfile = (answers, goal) => ({
   // Only recognized areas reach the engine — an unrecognized value would
   // otherwise silently match nothing and behave as "no injury".
   injuryAreas: (answers.injuryAreas || []).filter(a => GENERATION_INJURY_AREAS.includes(a)),
+  focusAreas: (Array.isArray(answers.focusAreas) ? answers.focusAreas : []).filter(a => FOCUS_AREAS.includes(a)),
 });
 
 // Loads the gym the plan is being generated against, with its zones — the
@@ -1170,7 +1172,7 @@ app.put('/api/questionnaire/me', requireAuth, questionnaireLimiter, async (req, 
         // multi-aim submission both go through the same call — only the
         // array differs.
         const blueprintDays = buildCombinedBlueprint(
-          match ? [match.goal] : goals, profile.daysPerWeek, profile.sessionMinutes, secondaryGoals
+          match ? [match.goal] : goals, profile.daysPerWeek, profile.sessionMinutes, secondaryGoals, profile.focusAreas
         );
 
         const library = await loadLibraryForGeneration();

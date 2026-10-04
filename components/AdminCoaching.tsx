@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { PlanTemplate, CoachingClient, GenerationFailureRecord } from '../types';
 import { QUESTIONNAIRE_GOALS } from '../constants';
-import { primaryGoalLabel, secondaryGoalLabel } from '../utils/goals';
+import { describeGoals } from '../utils/goals';
 import { hasGeneratedPlan } from '../utils/planSchedule';
 import { api } from '../services/api';
 import { ClipboardList, Loader2, ChevronRight, Plus, AlertTriangle, History } from 'lucide-react';
@@ -26,7 +26,7 @@ const FAILURE_FIXES: Record<string, string> = {
   validation_failed: 'A generated plan broke a safety or structure rule. The detail above says which.',
 };
 
-const DURATIONS = [30, 45, 60, 90];
+const DURATIONS = [45, 60, 90];
 
 const DAYS_OPTIONS = ['1', '2', '3', '4'];
 
@@ -547,8 +547,17 @@ const AdminCoaching: React.FC = () => {
                   />
                 </div>
                 <div className="flex flex-wrap gap-1.5 mb-4">
-                  {selectedClient.answers.goals.map(g => <Tag key={g}>{primaryGoalLabel(g)}</Tag>)}
-                  {(selectedClient.answers.secondaryGoals ?? []).map(g => <Tag key={`2-${g}`}>+ {secondaryGoalLabel(g)}</Tag>)}
+                  {(() => {
+                    const d = describeGoals(selectedClient.answers);
+                    return (
+                      <>
+                        {d.type && <Tag>{d.type}</Tag>}
+                        {d.goals.map(g => <Tag key={g}>{g}</Tag>)}
+                        {d.extras.map(g => <Tag key={`2-${g}`}>+ {g}</Tag>)}
+                        {d.focus.map(f => <Tag key={`f-${f}`}>Focus: {f}</Tag>)}
+                      </>
+                    );
+                  })()}
                 </div>
                 <Answer label="Equipment comfort" value={selectedClient.answers.equipment} />
                 {selectedClient.answers.avoidExercises && (

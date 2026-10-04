@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   validateQuestionnaire, validatePlanPayload, validateExerciseLogs,
-  validateCompletedWorkout, validateCheckinText, AIMS, LOG_MAX_ENTRIES, LOG_MAX_SETS,
+  validateCompletedWorkout, validateCheckinText, AIMS, TRAINING_TYPES, FOCUS_AREAS, MAX_FOCUS_AREAS,
+  LOG_MAX_ENTRIES, LOG_MAX_SETS,
   PLAN_MAX_DAYS, PLAN_MAX_EXERCISES_PER_DAY,
 } from './validate.js';
 
@@ -22,6 +23,35 @@ describe('questionnaire answers', () => {
     expect(r.value.secondaryGoals).toEqual(['Mobility']);
   });
 
+  it('accepts the training type and focus areas the app sends, and keeps them', () => {
+    const r = validateQuestionnaire(answers({ trainingType: 'Strength', focusAreas: ['Glutes', 'Arms'] }));
+    expect(r.ok).toBe(true);
+    expect(r.value.trainingType).toBe('Strength');
+    expect(r.value.focusAreas).toEqual(['Glutes', 'Arms']);
+  });
+
+  it('still accepts answers from before the training type and focus areas were asked', () => {
+    const r = validateQuestionnaire(answers());
+    expect(r.ok).toBe(true);
+    expect('trainingType' in r.value).toBe(false);
+    expect('focusAreas' in r.value).toBe(false);
+    expect('focusAreas' in validateQuestionnaire(answers({ focusAreas: [] })).value).toBe(false);
+  });
+
+  it('only accepts a training type the app offers', () => {
+    for (const t of TRAINING_TYPES) expect(bad({ trainingType: t }).ok).toBe(true);
+    for (const t of ['Powerlifting', '', 5, ['Strength']]) expect(bad({ trainingType: t }).ok, String(t)).toBe(false);
+  });
+
+  it('only accepts focus areas the engine can act on, and at most three', () => {
+    expect(bad({ focusAreas: ['Toes'] }).ok).toBe(false);
+    expect(bad({ focusAreas: 'Arms' }).ok).toBe(false);
+    expect(bad({ focusAreas: FOCUS_AREAS.slice(0, MAX_FOCUS_AREAS) }).ok).toBe(true);
+    expect(bad({ focusAreas: FOCUS_AREAS.slice(0, MAX_FOCUS_AREAS + 1) }).ok).toBe(false);
+    expect(bad({ focusAreas: Array.from({ length: 1000 }, () => 'Arms') }).ok).toBe(true); // repeats collapse to one
+    expect(validateQuestionnaire(answers({ focusAreas: ['Arms', 'Arms', 'Core'] })).value.focusAreas).toEqual(['Arms', 'Core']);
+  });
+
   it('refuses a days-per-week that would build an enormous plan', () => {
     // 60000 days made a 185 MB plan in testing.
     for (const days of ['60000', '0', '8', '-1', '3.5', 'abc', '', 3, null, undefined]) {
@@ -31,8 +61,13 @@ describe('questionnaire answers', () => {
   });
 
   it('bounds the session length', () => {
-    for (const m of ['5 min', '999 min', '60', '60 minutes', '', 60]) expect(bad({ minutesPerSession: m }).ok, String(m)).toBe(false);
-    for (const m of ['30 min', '45 min', '60 min', '90 min']) expect(bad({ minutesPerSession: m }).ok).toBe(true);
+    for (const m of ['5 min', '999 min', '60', '60 minutes', '', 60, null, undefined]) expect(bad({ minutesPerSession: m }).ok, String(m)).toBe(false);
+    for (const m of ['45 min', '60 min', '90 min']) expect(bad({ minutesPerSession: m }).ok).toBe(true);
+  });
+
+  it('no longer takes a 30 minute session, nor a length in between', () => {
+    for (const m of ['30 min', '40 min', '75 min', '120 min']) expect(bad({ minutesPerSession: m }).ok, m).toBe(false);
+    expect(bad({ minutesPerSession: '30 min' }).error).toMatch(/45, 60 or 90/);
   });
 
   it('only accepts goals the engine has an aim for', () => {

@@ -7,6 +7,10 @@ import { EquipmentType, GymZone, Gym } from './types';
 // in this list. 'Mobility' is no longer offered as a main goal (it is a
 // secondary one now) but stays here so clients who chose it earlier still show
 // up in their group.
+// The session lengths a client can choose. Shared with the server's check
+// (server/validate.js), and kept in step with it by validate.test.js.
+export const SESSION_LENGTHS = ['45 min', '60 min', '90 min'];
+
 export const QUESTIONNAIRE_GOALS = ['Muscle gain', 'Weight loss', 'General fitness', 'Endurance', 'Mobility'];
 
 // Mock Data

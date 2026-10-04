@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { ClipboardList, Check } from 'lucide-react';
 import RankList from './RankList';
 import { moveItem } from '../utils/reorder';
-import { QuestionnaireAnswers, ALL_JOINT_STRESS_AREAS } from '../types';
+import { QuestionnaireAnswers, ALL_JOINT_STRESS_AREAS, FocusArea } from '../types';
+import { SESSION_LENGTHS } from '../constants';
 import {
-  PRIMARY_GOALS, primaryGoalLabel, secondaryOptionsFor, pruneSecondary,
+  TRAINING_TYPES, FOCUS_AREAS, MAX_FOCUS_AREAS, trainingTypeFor, goalLabel,
   goalsFromAnswers, describeGoals,
 } from '../utils/goals';
 
@@ -32,7 +33,6 @@ const STEP_LABELS: Record<StepKey, string> = {
 const LEVELS = ['Beginner', 'Intermediate', 'Advanced'];
 const LEVELS_ENABLED = ['Beginner'];
 const DAYS = ['1', '2', '3', '4'];
-const LENGTHS = ['30 min', '45 min', '60 min', '90 min'];
 const SEXES = ['Male', 'Female', 'Prefer not to say'];
 const EQUIPMENT_OPTIONS = ['Machines only', 'Comfortable with free weights', 'Anything'];
 const CLEARANCE_OPTIONS = ['Yes, cleared to exercise', 'No / not sure', "Doesn't apply to me"];
@@ -42,7 +42,7 @@ const COMMON_INJURIES = ALL_JOINT_STRESS_AREAS;
 
 interface FormState {
   age: string; heightCm: string; weightKg: string; sex: string;
-  primaryGoals: string[]; secondaryGoals: string[]; level: string;
+  trainingType: string; goals: string[]; focusAreas: FocusArea[]; level: string;
   daysPerWeek: string; minutesPerSession: string;
   gymId: string;
   equipment: string; avoidExercises: string;
@@ -52,7 +52,7 @@ interface FormState {
 
 const blankForm = (): FormState => ({
   age: '', heightCm: '', weightKg: '', sex: '',
-  primaryGoals: [], secondaryGoals: [], level: '',
+  trainingType: '', goals: [], focusAreas: [], level: '',
   daysPerWeek: '', minutesPerSession: '',
   gymId: '',
   equipment: '', avoidExercises: '',
@@ -67,11 +67,12 @@ const toFormState = (existing: QuestionnaireAnswers | null): FormState => {
     heightCm: String(existing.heightCm ?? ''),
     weightKg: String(existing.weightKg ?? ''),
     sex: existing.sex || '',
-    primaryGoals: goalsFromAnswers(existing).primary,
-    secondaryGoals: goalsFromAnswers(existing).secondary,
+    ...goalsFromAnswers(existing),
     level: existing.level || '',
     daysPerWeek: existing.daysPerWeek || '',
-    minutesPerSession: existing.minutesPerSession || '',
+    // A length that is no longer offered (30 min) is left blank, so it is
+    // picked again rather than saved back unchanged.
+    minutesPerSession: SESSION_LENGTHS.includes(existing.minutesPerSession) ? existing.minutesPerSession : '',
     gymId: existing.gymId || '',
     equipment: existing.equipment || '',
     avoidExercises: existing.avoidExercises || '',
@@ -156,30 +157,30 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
       return { ...prev, [key]: arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value] };
     });
   };
-  // Newly picked main goals land at the bottom of the ranking, which the
-  // client then adjusts — this is what feeds assignAimsToDays's day-per-aim
-  // rotation and buildGenerationProfile's "which aim stands in for the goal"
-  // pick, so the order here is a real priority signal, not incidental UI state.
-  // The secondary goals on offer depend on the main goals, so a change here
-  // can take one away — it is dropped rather than left selected but hidden.
-  const togglePrimary = (aim: string) => {
-    setForm(prev => {
-      const primaryGoals = prev.primaryGoals.includes(aim)
-        ? prev.primaryGoals.filter(a => a !== aim)
-        : [...prev.primaryGoals, aim];
-      return { ...prev, primaryGoals, secondaryGoals: pruneSecondary(primaryGoals, prev.secondaryGoals) };
-    });
+  // The goals on offer belong to the training type, so switching type clears
+  // them rather than carrying a goal over under another type's name.
+  const chooseType = (key: string) => {
+    setForm(prev => (prev.trainingType === key ? prev : { ...prev, trainingType: key, goals: [] }));
   };
-  const toggleSecondary = (aim: string) => {
+  // Newly picked goals land at the bottom of the ranking, which the client
+  // then adjusts — this is what feeds assignAimsToDays's day-per-aim rotation
+  // and buildGenerationProfile's "which aim stands in for the goal" pick, so
+  // the order here is a real priority signal, not incidental UI state.
+  const toggleGoal = (aim: string) => {
     setForm(prev => ({
       ...prev,
-      secondaryGoals: prev.secondaryGoals.includes(aim)
-        ? prev.secondaryGoals.filter(a => a !== aim)
-        : [...prev.secondaryGoals, aim],
+      goals: prev.goals.includes(aim) ? prev.goals.filter(a => a !== aim) : [...prev.goals, aim],
     }));
   };
+  const toggleFocus = (area: FocusArea) => {
+    setForm(prev => {
+      if (prev.focusAreas.includes(area)) return { ...prev, focusAreas: prev.focusAreas.filter(a => a !== area) };
+      if (prev.focusAreas.length >= MAX_FOCUS_AREAS) return prev;
+      return { ...prev, focusAreas: [...prev.focusAreas, area] };
+    });
+  };
   const reorderGoals = (from: number, to: number) => {
-    setForm(prev => ({ ...prev, primaryGoals: moveItem(prev.primaryGoals, from, to) }));
+    setForm(prev => ({ ...prev, goals: moveItem(prev.goals, from, to) }));
   };
   const startFresh = () => { setForm(blankForm()); setStep(0); setMaxReached(0); setMode('form'); };
   const editExisting = () => { setForm(toFormState(existing)); setStep(0); setMaxReached(STEP_KEYS.length - 1); setMode('form'); };
@@ -188,8 +189,8 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
   const hasHealthInfo = form.injuryNotes.trim() !== '' || form.injuryAreas.length > 0;
 
   const isStepValid = (key: StepKey): boolean => {
-    if (key === 'about') return !!(form.age && form.heightCm && form.weightKg && form.sex);
-    if (key === 'goal') return form.primaryGoals.length > 0 && !!form.level;
+    if (key === 'about') return !!(form.age && form.heightCm && form.weightKg && form.sex && form.level);
+    if (key === 'goal') return !!trainingTypeFor(form.trainingType) && form.goals.length > 0;
     if (key === 'schedule') return !!(form.daysPerWeek && form.minutesPerSession);
     if (key === 'preferences') return !!form.equipment && (gyms.length === 0 || !!form.gymId);
     if (key === 'health') return !hasHealthInfo || !!(form.medicalClearance && form.consent);
@@ -205,8 +206,11 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
         heightCm: Number(form.heightCm),
         weightKg: Number(form.weightKg),
         sex: form.sex,
-        goals: form.primaryGoals,
-        secondaryGoals: form.secondaryGoals.length > 0 ? form.secondaryGoals : undefined,
+        // Supporting goals from before the three levels are not asked for any
+        // more, so saving answers again lets them go.
+        trainingType: form.trainingType,
+        goals: form.goals,
+        focusAreas: form.focusAreas.length > 0 ? form.focusAreas : undefined,
         level: form.level,
         daysPerWeek: form.daysPerWeek,
         minutesPerSession: form.minutesPerSession,
@@ -245,7 +249,10 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
   if (mode === 'prompt') {
     if (existing) {
       const described = describeGoals(existing);
-      const chips = [...described.primary, ...described.secondary, existing.level, `${existing.daysPerWeek} days/week`, existing.minutesPerSession].filter(Boolean);
+      const chips = [
+        described.type, ...described.goals, ...described.extras, ...described.focus.map(f => `Focus: ${f}`),
+        existing.level, `${existing.daysPerWeek} days/week`, existing.minutesPerSession,
+      ].filter(Boolean);
       return (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 mb-16 text-center">
           <div className="w-14 h-14 rounded-full bg-lime-500 text-slate-950 flex items-center justify-center mx-auto mb-4">
@@ -283,7 +290,7 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
     );
   }
 
-  const secondaryOptions = secondaryOptionsFor(form.primaryGoals);
+  const chosenType = trainingTypeFor(form.trainingType);
   const key = STEP_KEYS[step];
   const pct = Math.round(((step + 1) / STEP_KEYS.length) * 100);
   const isLast = step === STEP_KEYS.length - 1;
@@ -331,49 +338,6 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
               {SEXES.map(opt => <Pill key={opt} label={opt} selected={form.sex === opt} onClick={() => set('sex', opt)} />)}
             </div>
           </div>
-        </div>
-      )}
-
-      {key === 'goal' && (
-        <div className="space-y-5">
-          <div>
-            <FieldLabel required hint="choose all that apply">What's your main goal?</FieldLabel>
-            <div className="grid grid-cols-2 gap-2">
-              {PRIMARY_GOALS.map(g => (
-                <GoalCard key={g.aim} label={g.label} hint={g.hint} selected={form.primaryGoals.includes(g.aim)} onClick={() => togglePrimary(g.aim)} />
-              ))}
-            </div>
-          </div>
-          {/* Only meaningful with two or more goals — one goal is already its
-              own rank one, and a list of one nothing has anything to reorder
-              against. Every day of the plan gets one goal as its main focus;
-              this order is what decides which goal that is, day by day. */}
-          {form.primaryGoals.length > 1 && (
-            <div>
-              <FieldLabel required hint="most important first">Rank your goals</FieldLabel>
-              <p className="text-[11.5px] text-slate-500 mb-3 leading-relaxed">
-                Your plan gives each training day to one goal. #1 gets the most days —
-                the rest fill in around it. Drag to reorder.
-              </p>
-              <RankList
-                items={form.primaryGoals.map(aim => ({ id: aim, label: primaryGoalLabel(aim) }))}
-                onMove={reorderGoals}
-              />
-            </div>
-          )}
-          {secondaryOptions.length > 0 && (
-            <div>
-              <FieldLabel hint="pick any">Anything else to work on?</FieldLabel>
-              <p className="text-[11.5px] text-slate-500 mb-3 leading-relaxed">
-                Added to your sessions as extra work alongside your main goal. It never takes over a whole training day.
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                {secondaryOptions.map(o => (
-                  <GoalCard key={o.aim} label={o.label} hint={o.hint} selected={form.secondaryGoals.includes(o.aim)} onClick={() => toggleSecondary(o.aim)} />
-                ))}
-              </div>
-            </div>
-          )}
           <div>
             <FieldLabel required>Training experience</FieldLabel>
             <div className="flex flex-wrap gap-2">
@@ -395,6 +359,67 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
         </div>
       )}
 
+      {key === 'goal' && (
+        <div className="space-y-6">
+          <div>
+            <FieldLabel required>What kind of training?</FieldLabel>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {TRAINING_TYPES.map(t => (
+                <GoalCard key={t.key} label={t.label} hint={t.hint} selected={form.trainingType === t.key} onClick={() => chooseType(t.key)} />
+              ))}
+            </div>
+          </div>
+          {chosenType && (
+            <div>
+              <FieldLabel required hint={chosenType.goals.length > 1 ? 'pick one or both' : undefined}>What's your goal?</FieldLabel>
+              <div className="grid grid-cols-2 gap-2">
+                {chosenType.goals.map(g => (
+                  <GoalCard key={g.aim} label={g.label} hint={g.hint} selected={form.goals.includes(g.aim)} onClick={() => toggleGoal(g.aim)} />
+                ))}
+              </div>
+            </div>
+          )}
+          {/* Only meaningful with both goals picked — one goal is already its
+              own rank one. Every day of the plan gets one goal as its main
+              focus; this order is what decides which goal that is, day by day. */}
+          {form.goals.length > 1 && (
+            <div>
+              <FieldLabel required hint="most important first">Rank your goals</FieldLabel>
+              <p className="text-[11.5px] text-slate-500 mb-3 leading-relaxed">
+                Your plan gives each training day to one goal. #1 gets the most days —
+                the rest fill in around it. Drag to reorder.
+              </p>
+              <RankList
+                items={form.goals.map(aim => ({ id: aim, label: goalLabel(aim, form.trainingType) }))}
+                onMove={reorderGoals}
+              />
+            </div>
+          )}
+          {form.goals.length > 0 && (
+            <div>
+              <FieldLabel hint={`pick up to ${MAX_FOCUS_AREAS}`}>Any area to focus on?</FieldLabel>
+              <p className="text-[11.5px] text-slate-500 mb-3 leading-relaxed">
+                Your plan adds extra exercises for these areas on the days that train them.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {FOCUS_AREAS.map(area => {
+                  const selected = form.focusAreas.includes(area);
+                  return (
+                    <Pill
+                      key={area}
+                      label={area}
+                      selected={selected}
+                      disabled={!selected && form.focusAreas.length >= MAX_FOCUS_AREAS}
+                      onClick={() => toggleFocus(area)}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {key === 'schedule' && (
         <div className="space-y-5">
           <div>
@@ -409,7 +434,7 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
           <div>
             <FieldLabel required>Minutes per session</FieldLabel>
             <div className="flex flex-wrap gap-2">
-              {LENGTHS.map(opt => <Pill key={opt} label={opt} selected={form.minutesPerSession === opt} onClick={() => set('minutesPerSession', opt)} />)}
+              {SESSION_LENGTHS.map(opt => <Pill key={opt} label={opt} selected={form.minutesPerSession === opt} onClick={() => set('minutesPerSession', opt)} />)}
             </div>
           </div>
         </div>

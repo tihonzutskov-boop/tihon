@@ -31,8 +31,10 @@ export interface SessionShape {
   maxWorkingSets: number;
 }
 
-// Thresholds sit between the questionnaire's offered values ('30 min'..'90 min')
-// rather than on them, so an answer never lands ambiguously on a boundary.
+// Thresholds sit between the questionnaire's offered values ('45 min'..'90 min')
+// rather than on them, so an answer never lands ambiguously on a boundary. The
+// short tier is no longer reachable from the questionnaire, which starts at 45
+// minutes, but answers saved when it offered 30 still build plans with it.
 export const TIER_BOUNDS = { shortBelow: 45, longAbove: 70 };
 
 const SHAPES: Record<SessionTier, Omit<SessionShape, 'tier'>> = {
@@ -70,11 +72,21 @@ export const tierFor = (sessionMinutes: number): SessionTier => {
   return 'medium';
 };
 
+// Minutes of zone-2 cardio a session can end with: 10 up to and including 45
+// minutes, 15 up to 70, 20 beyond. Sized to the session the way the warm-up is,
+// so a longer one carries more of it. The questionnaire offers 45, 60 and 90,
+// which read as 10, 15 and 20; the boundaries sit where the tiers do.
+export const zone2MinutesFor = (sessionMinutes: number): number =>
+  sessionMinutes <= TIER_BOUNDS.shortBelow ? 10 : sessionMinutes > TIER_BOUNDS.longAbove ? 20 : 15;
+
 // Warm-up and cooldown are guaranteed, but they must not eat the session. On an
 // unusually short slot the bookends scale down together rather than one of them
 // being dropped — a brief warm-up is still a warm-up, whereas no warm-up is a
 // beginner training cold.
 const MAX_BOOKEND_SHARE = 0.35;
+
+/** The most a session's warm-up and cooldown can take between them, in minutes. */
+export const maxBookendMinutes = (sessionMinutes: number): number => Math.floor(sessionMinutes * MAX_BOOKEND_SHARE);
 
 export const shapeFor = (sessionMinutes: number): SessionShape => {
   const tier = tierFor(sessionMinutes);

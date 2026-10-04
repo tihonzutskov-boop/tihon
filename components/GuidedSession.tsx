@@ -96,7 +96,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   const musclesTrainedToday = useMemo(() => {
     const muscles = new Set<string>();
     for (const ex of exercises) {
-      if (ex.bookend) continue;
+      if (ex.bookend || ex.finisher) continue;
       const le = ex.libraryExerciseId ? libraryExercises.find(l => l.id === ex.libraryExerciseId) : undefined;
       (le?.primaryMuscles || []).forEach(m => muscles.add(m));
     }
@@ -418,7 +418,11 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   const isLastStage = current === total - 1;
   const pct = Math.round(((current + 1) / total) * 100);
 
-  const instructions = libraryExercise?.instructions || exercise.notes;
+  // A zone-2 block leads with what makes it zone 2, then the machine's own
+  // instructions, since the pace is the part a client would not know.
+  const instructions = exercise.finisher
+    ? [exercise.notes, libraryExercise?.instructions].filter(Boolean).join(' ')
+    : (libraryExercise?.instructions || exercise.notes);
   // The note for this end of the session, read from the library entry so an
   // admin's edit shows immediately without regenerating every stored plan.
   //

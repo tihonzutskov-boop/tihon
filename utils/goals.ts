@@ -1,11 +1,15 @@
 // The goals a client sees in the questionnaire, and the engine aims behind them.
 //
-// The engine knows five aims (see AIM_PROFILES in planGeneration.ts). Clients
-// pick from friendlier names, in two tiers: a main goal that owns training
-// days, and secondary goals that ride along as supporting work inside those
-// days. Answers store engine aim keys — `goals` for the main ones, ranked, and
-// `secondaryGoals` for the supporting ones — so old answers stay valid and
-// nothing downstream needs to know the friendly names exist.
+// Three levels, each narrower than the one before:
+//   1. a broad type of training (required, one),
+//   2. the goals that type offers (required, one or both, ranked),
+//   3. body areas to focus on (optional, up to three).
+// The engine knows five aims (see AIM_PROFILES in planGeneration.ts). Answers
+// store the aim keys in `goals`, so nothing downstream needs to know the
+// friendly names exist; `trainingType` and `focusAreas` sit beside them.
+
+import { ALL_FOCUS_AREAS } from '../types';
+import type { FocusArea } from '../types';
 
 export interface GoalOption {
   label: string;
@@ -14,82 +18,101 @@ export interface GoalOption {
   hint: string;
 }
 
-export interface SecondaryGoalOption extends GoalOption {
-  /** Main-goal aims this is offered alongside. */
-  suggestedFor: string[];
+export type TrainingTypeKey = 'Strength' | 'Cardio' | 'Health';
+
+export interface TrainingType {
+  key: TrainingTypeKey;
+  label: string;
+  hint: string;
+  goals: GoalOption[];
 }
 
-export const PRIMARY_GOALS: GoalOption[] = [
-  { label: 'Muscle growth', aim: 'Muscle gain', hint: 'Get bigger and stronger' },
-  { label: 'Fat loss', aim: 'Weight loss', hint: 'Burn more and lean out' },
-  { label: 'Better fitness', aim: 'Endurance', hint: 'More stamina and energy' },
-  { label: 'Healthy lifestyle', aim: 'General fitness', hint: 'Stay active and feel good' },
+// Every goal is something the engine does today. A choice no aim backs would
+// be a button that changes nothing. "Tone up" and "Stay active" share the
+// general-fitness aim, so they build the same style of plan.
+export const TRAINING_TYPES: TrainingType[] = [
+  {
+    key: 'Strength', label: 'Strength', hint: 'Lift weights, get stronger',
+    goals: [
+      { label: 'Build muscle', aim: 'Muscle gain', hint: 'Get bigger and stronger' },
+      { label: 'Tone up', aim: 'General fitness', hint: 'Firmer and fitter, without bulk' },
+    ],
+  },
+  {
+    key: 'Cardio', label: 'Cardio & fat burn', hint: 'Burn calories, build fitness',
+    goals: [
+      { label: 'Lose weight', aim: 'Weight loss', hint: 'Weights, then easy zone 2 cardio' },
+    ],
+  },
+  {
+    key: 'Health', label: 'Health & mobility', hint: 'Move well, feel good',
+    goals: [
+      { label: 'Mobility & flexibility', aim: 'Mobility', hint: 'Move better, stay loose' },
+      { label: 'Stay active', aim: 'General fitness', hint: 'Keep moving and feel good' },
+    ],
+  },
 ];
 
-// Each is something the engine can do as supporting work today. Adding a
-// choice here that no aim backs would be a button that changes nothing.
-export const SECONDARY_GOALS: SecondaryGoalOption[] = [
-  {
-    label: 'Mobility & flexibility', aim: 'Mobility',
-    hint: 'Move better, stay loose',
-    suggestedFor: ['Muscle gain', 'Weight loss', 'Endurance', 'General fitness'],
-  },
-  {
-    label: 'Stamina', aim: 'Endurance',
-    hint: 'Keep going for longer',
-    suggestedFor: ['Muscle gain', 'General fitness'],
-  },
-  {
-    label: 'Build muscle', aim: 'Muscle gain',
-    hint: 'Add tone and strength',
-    suggestedFor: ['Weight loss', 'Endurance', 'General fitness'],
-  },
-];
+export const FOCUS_AREAS: FocusArea[] = ALL_FOCUS_AREAS;
+export const MAX_FOCUS_AREAS = 3;
 
-export const primaryGoalLabel = (aim: string): string =>
-  PRIMARY_GOALS.find(g => g.aim === aim)?.label ?? aim;
+export const trainingTypeFor = (key: string | null | undefined): TrainingType | undefined =>
+  TRAINING_TYPES.find(t => t.key === key);
 
-export const secondaryGoalLabel = (aim: string): string =>
-  SECONDARY_GOALS.find(g => g.aim === aim)?.label ?? aim;
-
-/**
- * The secondary goals worth offering for the chosen main goals: whatever suits
- * any of them, minus anything already chosen as a main goal.
- */
-export const secondaryOptionsFor = (primaryAims: string[]): SecondaryGoalOption[] =>
-  SECONDARY_GOALS.filter(o =>
-    !primaryAims.includes(o.aim) && o.suggestedFor.some(a => primaryAims.includes(a))
-  );
-
-/** Drops secondary goals that are no longer on offer after the main goals changed. */
-export const pruneSecondary = (primaryAims: string[], secondaryAims: string[]): string[] => {
-  const offered = new Set(secondaryOptionsFor(primaryAims).map(o => o.aim));
-  return secondaryAims.filter(a => offered.has(a));
+// Answers from before the training type was asked carry only aims. This is
+// the type each aim was closest to then — general fitness was "Healthy
+// lifestyle", so it reads as Health rather than Strength's "Tone up".
+const LEGACY_TYPE_BY_AIM: Record<string, TrainingTypeKey> = {
+  'Muscle gain': 'Strength',
+  'Weight loss': 'Cardio',
+  'Endurance': 'Cardio',
+  'Mobility': 'Health',
+  'General fitness': 'Health',
 };
 
+// Aims a client can no longer choose. Answers saved earlier still carry them,
+// and the plans built from those answers still use them, so they keep a name.
+const RETIRED_LABELS: Record<string, string> = { 'Endurance': 'Build stamina' };
+
+/** The client's name for an aim, as the training type they chose words it. */
+export const goalLabel = (aim: string, typeKey?: string | null): string => {
+  const type = trainingTypeFor(typeKey) ?? trainingTypeFor(LEGACY_TYPE_BY_AIM[aim]);
+  return type?.goals.find(g => g.aim === aim)?.label ?? RETIRED_LABELS[aim] ?? aim;
+};
+
+type StoredGoals = {
+  trainingType?: string; goals?: string[]; focusAreas?: string[]; secondaryGoals?: string[];
+} | null | undefined;
+
+const validFocus = (areas: string[] | undefined): FocusArea[] =>
+  (areas ?? []).filter((a, i, all): a is FocusArea =>
+    (FOCUS_AREAS as string[]).includes(a) && all.indexOf(a) === i).slice(0, MAX_FOCUS_AREAS);
+
 /**
- * Form state from stored answers. Anything stored as a main goal that is no
- * longer offered as one (a legacy 'Mobility') is kept as a secondary goal
- * instead, so editing old answers does not silently lose it.
+ * Form state from stored answers. Answers from before the training type was
+ * asked get the type of their top-ranked goal, keeping whichever of their
+ * goals that type offers — editing them is how the rest drops away.
  */
-export const goalsFromAnswers = (
-  answers: { goals?: string[]; secondaryGoals?: string[] } | null | undefined
-): { primary: string[]; secondary: string[] } => {
+export const goalsFromAnswers = (answers: StoredGoals): { trainingType: string; goals: string[]; focusAreas: FocusArea[] } => {
   const stored = answers?.goals ?? [];
-  const isPrimary = (aim: string) => PRIMARY_GOALS.some(g => g.aim === aim);
-  const primary = stored.filter(isPrimary);
-  const demoted = stored.filter(a => !isPrimary(a));
-  const secondary = [...(answers?.secondaryGoals ?? []), ...demoted];
+  const type = trainingTypeFor(answers?.trainingType) ?? trainingTypeFor(LEGACY_TYPE_BY_AIM[stored[0]]);
+  if (!type) return { trainingType: '', goals: [], focusAreas: validFocus(answers?.focusAreas) };
+  const offered = new Set(type.goals.map(g => g.aim));
   return {
-    primary,
-    secondary: pruneSecondary(primary, secondary.filter((a, i) => secondary.indexOf(a) === i)),
+    trainingType: type.key,
+    goals: stored.filter((a, i) => offered.has(a) && stored.indexOf(a) === i),
+    focusAreas: validFocus(answers?.focusAreas),
   };
 };
 
-/** Friendly names for display: main goals first, then secondary ones. */
-export const describeGoals = (
-  answers: { goals?: string[]; secondaryGoals?: string[] } | null | undefined
-): { primary: string[]; secondary: string[] } => ({
-  primary: (answers?.goals ?? []).map(primaryGoalLabel),
-  secondary: (answers?.secondaryGoals ?? []).map(secondaryGoalLabel),
+/**
+ * Friendly names for display, level by level. `type` is null on answers saved
+ * before it was asked; `extras` are the supporting goals those older answers
+ * could carry, which their plans still use.
+ */
+export const describeGoals = (answers: StoredGoals): { type: string | null; goals: string[]; extras: string[]; focus: string[] } => ({
+  type: trainingTypeFor(answers?.trainingType)?.label ?? null,
+  goals: (answers?.goals ?? []).map(aim => goalLabel(aim, answers?.trainingType)),
+  extras: (answers?.secondaryGoals ?? []).map(aim => goalLabel(aim)),
+  focus: validFocus(answers?.focusAreas),
 });

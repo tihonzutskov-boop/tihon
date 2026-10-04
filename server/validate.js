@@ -21,6 +21,15 @@ const isInt = (v, min, max) => inRange(v, min, max) && Number.isInteger(v);
 // The engine's aims. A goal outside this list would silently fall back to the
 // default aim, which looks like it worked and quietly builds the wrong plan.
 export const AIMS = ['Muscle gain', 'Weight loss', 'General fitness', 'Endurance', 'Mobility'];
+// The first and third levels of the questionnaire's goals (utils/goals.ts and
+// ALL_FOCUS_AREAS in types.ts) — kept in step with them by validate.test.js.
+export const TRAINING_TYPES = ['Strength', 'Cardio', 'Health'];
+export const FOCUS_AREAS = ['Glutes', 'Legs', 'Core', 'Back', 'Chest', 'Arms', 'Shoulders'];
+export const MAX_FOCUS_AREAS = 3;
+// The session lengths the questionnaire offers (SESSION_LENGTHS in constants.ts).
+// A length outside these would still build a plan, but not one the app's own
+// answers could ever ask for.
+export const SESSION_LENGTHS = ['45 min', '60 min', '90 min'];
 const LEVELS = ['Beginner', 'Intermediate', 'Advanced'];
 const SEXES = ['Male', 'Female', 'Prefer not to say'];
 
@@ -60,14 +69,27 @@ export const validateQuestionnaire = (raw) => {
     if (extras.length > 0) secondaryGoals = extras;
   }
 
+  // Optional so answers saved before these were asked still validate.
+  if (a.trainingType !== undefined && a.trainingType !== null && !TRAINING_TYPES.includes(a.trainingType)) {
+    return fail('Please choose a type of training.');
+  }
+  let focusAreas;
+  if (a.focusAreas !== undefined && a.focusAreas !== null) {
+    if (!Array.isArray(a.focusAreas) || !a.focusAreas.every(x => FOCUS_AREAS.includes(x))) {
+      return fail('One of the focus areas is not recognised.');
+    }
+    const unique = [...new Set(a.focusAreas)];
+    if (unique.length > MAX_FOCUS_AREAS) return fail(`Please choose at most ${MAX_FOCUS_AREAS} focus areas.`);
+    if (unique.length > 0) focusAreas = unique;
+  }
+
   // Days per week is a string in the answers ('3'), and it is what sizes the
   // plan, so it is the value that matters most to bound.
   if (!isString(a.daysPerWeek) || !/^[1-7]$/.test(a.daysPerWeek)) {
     return fail('Days per week must be between 1 and 7.');
   }
-  const minutes = isString(a.minutesPerSession) ? a.minutesPerSession.match(/^(\d{2,3}) min$/) : null;
-  if (!minutes || Number(minutes[1]) < 10 || Number(minutes[1]) > 180) {
-    return fail('Minutes per session must be between 10 and 180.');
+  if (!SESSION_LENGTHS.includes(a.minutesPerSession)) {
+    return fail('Please choose a session length of 45, 60 or 90 minutes.');
   }
 
   const equipment = optionalString(a.equipment, 'Equipment comfort', 100);
@@ -98,6 +120,8 @@ export const validateQuestionnaire = (raw) => {
     equipment: equipment.value,
     injuryAreas: [...new Set(injuryAreas)],
   };
+  if (a.trainingType) value.trainingType = a.trainingType;
+  if (focusAreas) value.focusAreas = focusAreas;
   if (secondaryGoals) value.secondaryGoals = secondaryGoals;
   if (gymId.value) value.gymId = gymId.value;
   if (avoid.value) value.avoidExercises = avoid.value;
