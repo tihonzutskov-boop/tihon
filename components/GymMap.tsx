@@ -4,7 +4,7 @@ import { translations, getGymTranslation } from '../translations';
 import { isExerciseAvailableInZone } from '../utils/exerciseMatcher';
 import { ZoomOut, Settings, Dumbbell, Activity, Zap, Target, Cpu, Layers, Box, Wind, RotateCcw, ArrowUpRight, MoveDown, Circle, Waves, Timer, ZoomIn, Minus, Plus, Maximize2, Search, X, MapPin, Play, Sparkles, Filter, ChevronRight, ChevronLeft, DoorOpen, Lock, Bath, Droplets, ShieldCheck, Sprout, Anchor, Repeat, ChevronsRight } from 'lucide-react';
 import { ICON_MAP, getEquipmentIcon, getTaxonomyColor, isBeginnerFriendly, isAmenityZone, getAmenityStyleConfig, getZoneVisualCategory, VISUAL_CATEGORY_STYLES, ZoneVisualCategory, getZoneThemeStyle } from '../utils/equipmentIcons';
-import { heatColor, type HeatEntry } from '../utils/equipmentUsage';
+import { heatColor, heatClipRects, type HeatEntry } from '../utils/equipmentUsage';
 
 const NEUTRAL_ZONE_STYLE = { fill: '#334155', stroke: '#475569', dashStroke: '#475569', textColor: '#cbd5e1' };
 
@@ -940,10 +940,12 @@ const GymMap: React.FC<GymMapProps> = ({
                 weather heatmap), so a busy zone reads as a hot spot bleeding
                 into its surroundings instead of a block of solid color. */}
             {!isThumbnail && (zoneHeat || machineHeat) && (
-              // Keeps a glow near the outer wall from bleeding into the page
-              // outside the building, the way the overshoot otherwise would.
+              // Keeps a glow near an outer wall from bleeding onto the page
+              // outside the building. Several shapes in one clipPath are a union.
               <clipPath id="heatFloorClip">
-                <rect x={dimensions.x || 0} y={dimensions.y || 0} width={dimensions.width} height={dimensions.height} />
+                {heatClipRects(dimensions, annexes, zones).map((r, i) => (
+                  <rect key={`heatclip-${i}`} x={r.x} y={r.y} width={r.width} height={r.height} />
+                ))}
               </clipPath>
             )}
             {!isThumbnail && zoneHeat && zones.map(z => {
