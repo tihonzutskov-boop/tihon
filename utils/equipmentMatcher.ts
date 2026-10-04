@@ -126,7 +126,9 @@ export function getExerciseRequiredEquipmentIds(exercise: LibraryExercise, allEq
   const text = `${exercise.name} ${exercise.equipmentRequired || ''}`.toLowerCase();
 
   if (text.includes('dumbbell') || text.includes('db ')) ids.add('eq-dumbbells');
-  if (text.includes('barbell') || text.includes('deadlift') || text.includes('bench press') || text.includes('squat')) ids.add('eq-barbell-plates');
+  // "Bench press" means a barbell only when the name doesn't say otherwise —
+  // a dumbbell bench press needs dumbbells and a bench, not a barbell.
+  if (text.includes('barbell') || text.includes('deadlift') || (text.includes('bench press') && !text.includes('dumbbell')) || text.includes('squat')) ids.add('eq-barbell-plates');
   // Deliberately no bare 'rack' — plenty of unrelated equipment labels
   // legitimately contain that word too (e.g. "Dumbbell rack"), and a bare
   // match here previously tagged those exercises with a squat rack instead

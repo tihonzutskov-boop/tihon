@@ -4,6 +4,21 @@ import { getZoneEquipmentIds, getExerciseRequiredEquipmentIds } from './equipmen
 
 const FLOOR_MAT_ID = 'eq-floor-mat';
 
+// Implements an exercise name can lead with. The implement is the thing to go
+// and find; the movement words after it are shared with other equipment — a
+// barbell bench station is also "bench press" — and on their own they sent a
+// dumbbell bench press to the barbell station.
+const IMPLEMENTS = ['dumbbell', 'barbell', 'kettlebell', 'cable', 'smith', 'ez bar', 'trap bar', 'medicine ball'];
+
+const mentionsWord = (text: string, word: string): boolean =>
+  new RegExp(`\\b${word.replace(/ /g, '\\s+')}s?\\b`).test(text);
+
+/** The implement an exercise's name says it uses, when it names one. */
+export function implementOf(name: string | undefined | null): string | null {
+  const n = normalizeText(getEnglishExerciseName(name || ''));
+  return IMPLEMENTS.find(i => mentionsWord(n, i)) ?? null;
+}
+
 /**
  * Standardize text helper (lowercase, trimmed, collapsed whitespace, punctuation stripped).
  */
@@ -368,25 +383,43 @@ export function getExerciseLocations(
   // miss from winning just because its zone happened to be listed first, which
   // is what sent people to the wrong equipment for exercises with no zone
   // pinned to them — every template-authored exercise, in other words.
-  const bestNamedMachine = (() => {
-    if (matchedMachinesList.length === 0) return null;
-    const scoreOf = (machineName: string): number => {
-      const m = normalizeText(machineName);
-      const e = normalizeText(exName);
-      if (!m || !e) return 0;
-      if (m === e) return 3;
-      if (e.includes(m) || m.includes(e)) return 2;
-      return 0;
-    };
-    const ranked = matchedMachinesList
-      .map(entry => ({ entry, score: scoreOf(entry.machine.name) }))
-      .filter(r => r.score > 0)
-      .sort((a, b) => b.score - a.score);
-    // Only overrides the existing order when something genuinely matches by
-    // name; when every candidate is an equally loose keyword hit there is
-    // nothing to prefer, and the previous behaviour stands.
-    return ranked.length > 0 ? ranked[0].entry : null;
-  })();
+  //
+  // Two things outrank the name: the equipment the exercise is tagged with, and
+  // the implement its name leads with. "Dumbbell Bench Press" contains "bench
+  // press", so a machine named "Bench Press" — the barbell station — scored as a
+  // near-exact name hit while the dumbbell rack scored nothing, and the client
+  // was sent to the barbell and shown its photo.
+  const requiredIds = new Set(
+    hasRequirementInfo
+      ? getExerciseRequiredEquipmentIds(exercise as LibraryExercise).filter(id => id !== FLOOR_MAT_ID)
+      : []
+  );
+  const implement = implementOf(exName);
+  const scoreMachine = (machine: GymMachine): number => {
+    const m = normalizeText(machine.name);
+    const e = normalizeText(exName);
+    let score = 0;
+    if (m && e) {
+      if (m === e) score += 3;
+      else if (e.includes(m) || m.includes(e)) score += 2;
+    }
+    if (machine.equipmentId && requiredIds.has(machine.equipmentId)) score += 4;
+    if (implement) {
+      if (mentionsWord(m, implement)) score += 3;
+      // Names a different implement outright: a "Barbell Bench" is never the
+      // place for a dumbbell press, however much of the name it shares.
+      else if (IMPLEMENTS.some(i => i !== implement && mentionsWord(m, i))) score -= 3;
+    }
+    return score;
+  };
+  // Only overrides the existing order when something genuinely scores; when
+  // every candidate is an equally loose keyword hit there is nothing to prefer,
+  // and the previous behaviour stands. The sort is stable, so ties keep it too.
+  const rankedMachines = matchedMachinesList
+    .map(entry => ({ entry, score: scoreMachine(entry.machine) }))
+    .filter(r => r.score > 0)
+    .sort((a, b) => b.score - a.score);
+  const bestNamedMachine = rankedMachines.length > 0 ? rankedMachines[0].entry : null;
 
   if (exercise.equipmentId && matchedZonesMap.has(exercise.equipmentId)) {
     primaryZone = matchedZonesMap.get(exercise.equipmentId)!;
@@ -410,7 +443,10 @@ export function getExerciseLocations(
     // Not for a zone matched only because it has open floor: nothing in it
     // answers to this exercise, so falling back to machines[0] would pin
     // someone's warm-up to whichever rack happens to be listed first.
-    const foundInZone = matchedMachinesList.find(m => m.zone.id === primaryZone!.id);
+    // The best-ranked match in this zone, not just the first one listed: a zone
+    // pinned by the exercise can hold both the dumbbells and a bench station.
+    const bestInZone = rankedMachines.find(r => r.entry.zone.id === primaryZone!.id)?.entry;
+    const foundInZone = bestInZone || matchedMachinesList.find(m => m.zone.id === primaryZone!.id);
     primaryMachine = foundInZone ? foundInZone.machine : primaryZone.machines[0];
   }
 

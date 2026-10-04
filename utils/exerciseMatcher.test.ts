@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getExerciseLocations } from './exerciseMatcher';
+import { getExerciseLocations, implementOf } from './exerciseMatcher';
 import { planSessionRoute } from './sessionRoute';
 import { EquipmentType } from '../types';
 import type { Exercise, Gym, GymZone, GymMachine, LibraryExercise } from '../types';
@@ -138,5 +138,88 @@ describe('routing an exercise that needs open floor', () => {
     const bare = { ...planExercise() };
     delete bare.requiredEquipmentIds;
     expect(planSessionRoute([bare], g)[0].zone).toBeNull();
+  });
+});
+
+describe('a dumbbell exercise is sent to the dumbbells, not a bench station that shares its name', () => {
+  // The station is the user's own equipment item: a flat bench with uprights
+  // for the barbell bench press. "Dumbbell Bench Press" contains "bench press",
+  // which is what used to make it win.
+  const station = (id = 'station') => ({ id, name: 'Bench Press', x: 5, y: 5, width: 10, height: 10, equipmentId: 'eq-bench-station' } as GymMachine);
+  const dumbbells = (id = 'db') => ({ id, name: 'Dumbbells', x: 5, y: 5, width: 10, height: 10, equipmentId: 'eq-dumbbells' } as GymMachine);
+  const freeWeights = (machines: GymMachine[], x = 0, id = 'free') =>
+    ({ ...zone(id, x, []), name: 'Free Weights', type: EquipmentType.FREE_WEIGHTS, machines });
+
+  const dbPress = (over: Partial<Exercise> = {}): Exercise => ({
+    id: 'e1', name: 'Dumbbell Bench Press', targetMuscle: 'Chest', sets: 3, reps: '10', equipmentId: 'manual',
+    requiredEquipmentIds: ['eq-dumbbells', 'eq-adj-bench'], ...over,
+  });
+
+  it('picks the dumbbells when both are in the same zone, whichever is listed first', () => {
+    const g = gym([freeWeights([station(), dumbbells()])]);
+    expect(getExerciseLocations(dbPress(), g).primaryMachine?.id).toBe('db');
+  });
+
+  it('picks the dumbbells from the implement in the name alone, when the exercise carries no tags', () => {
+    const g = gym([freeWeights([station(), dumbbells()])]);
+    const untagged = { id: 'e1', name: 'Dumbbell Bench Press', targetMuscle: 'Chest', sets: 3, reps: '10', equipmentId: 'manual' } as Exercise;
+    expect(getExerciseLocations(untagged, g).primaryMachine?.id).toBe('db');
+  });
+
+  it('routes to the dumbbells even when the station is nearer the entrance', () => {
+    const g = gym([
+      freeWeights([station()], 0, 'near'),
+      freeWeights([dumbbells()], 300, 'far'),
+    ]);
+    const [stop] = planSessionRoute([dbPress()], g);
+    expect(stop.machine?.id).toBe('db');
+    expect(stop.zone?.id).toBe('far');
+  });
+
+  it('ranks inside a zone the exercise is pinned to, rather than taking the first match', () => {
+    // The best match overall is in another zone, so the pinned zone has to
+    // choose among its own machines — and the station is listed first there.
+    const exact = { id: 'exact', name: 'Dumbbell Bench Press', x: 5, y: 5, width: 10, height: 10, equipmentId: 'eq-dumbbells' } as GymMachine;
+    const g = gym([freeWeights([station(), dumbbells()], 0, 'free'), freeWeights([exact], 300, 'other')]);
+    const result = getExerciseLocations(dbPress({ equipmentId: 'free' }), g);
+    expect(result.primaryZone?.id).toBe('free');
+    expect(result.primaryMachine?.id).toBe('db');
+  });
+
+  it('never picks a machine that names a different implement', () => {
+    const barbellBench = { id: 'bb', name: 'Barbell Bench Press', x: 5, y: 5, width: 10, height: 10 } as GymMachine;
+    const g = gym([freeWeights([barbellBench, dumbbells()])]);
+    const untagged = { id: 'e1', name: 'Dumbbell Bench Press', targetMuscle: 'Chest', sets: 3, reps: '10', equipmentId: 'manual' } as Exercise;
+    expect(getExerciseLocations(untagged, g).primaryMachine?.id).toBe('db');
+  });
+
+  it('still sends a barbell bench press to the station', () => {
+    const g = gym([freeWeights([dumbbells(), station()])]);
+    const barbell = dbPress({ name: 'Barbell Bench Press', requiredEquipmentIds: ['eq-bench-station'] });
+    expect(getExerciseLocations(barbell, g).primaryMachine?.id).toBe('station');
+  });
+});
+
+describe('reading the implement from an exercise name', () => {
+  it('finds the implement the name leads with', () => {
+    expect(implementOf('Dumbbell Bench Press')).toBe('dumbbell');
+    expect(implementOf('Barbell Row')).toBe('barbell');
+    expect(implementOf('Cable Fly')).toBe('cable');
+    expect(implementOf('Kettlebell Swing')).toBe('kettlebell');
+    expect(implementOf('EZ Bar Curl')).toBe('ez bar');
+  });
+
+  it('accepts the plural', () => {
+    expect(implementOf('Dumbbells Shoulder Press')).toBe('dumbbell');
+  });
+
+  it('finds none when the name names none', () => {
+    expect(implementOf('Push-up')).toBeNull();
+    expect(implementOf('Leg Press')).toBeNull();
+    expect(implementOf('')).toBeNull();
+  });
+
+  it('does not mistake a word that merely contains one', () => {
+    expect(implementOf('Cablestation Stretch')).toBeNull();
   });
 });
