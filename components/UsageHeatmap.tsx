@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Flame, Loader2 } from 'lucide-react';
+import { Flame, Loader2, TrendingUp, MapPin } from 'lucide-react';
 import { Gym, EquipmentItem } from '../types';
 import { api } from '../services/api';
 import { zoneHeatMap, machineHeatMap, topEquipmentByUsage, topZonesByUsage, heatColor, GymUsage } from '../utils/equipmentUsage';
@@ -94,11 +94,36 @@ const UsageHeatmap: React.FC<UsageHeatmapProps> = ({ gym, equipmentList }) => {
           <Flame className="w-8 h-8 text-slate-700 mx-auto mb-3" />
           <p className="text-sm font-bold text-slate-300 mb-1">No training logged here yet</p>
           <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
-            Once clients complete sessions at this gym, this map will color each zone by how often it gets used — click a hot zone to see which specific machine inside it.
+            Once clients complete sessions at this gym, every machine here will glow by how often it gets used, from blue (barely touched) to red (the busiest thing in the gym).
           </p>
         </div>
       ) : (
-        <div className="grid lg:grid-cols-[1fr_320px] gap-6">
+        <>
+          <div className="grid sm:grid-cols-2 gap-3 mb-5">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-red-500/10 border border-red-500/25 text-red-400 flex items-center justify-center flex-shrink-0">
+                <TrendingUp className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">Peak equipment</p>
+                {topEquipment[0] ? (
+                  <p className="text-sm font-bold text-white truncate">{topEquipment[0].name} <span className="text-slate-500 font-semibold">&middot; {topEquipment[0].uses} uses</span></p>
+                ) : (
+                  <p className="text-sm font-bold text-slate-600">No equipment tagged yet</p>
+                )}
+              </div>
+            </div>
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-400 flex items-center justify-center flex-shrink-0">
+                <MapPin className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">Busiest zone</p>
+                <p className="text-sm font-bold text-white truncate">{topZones[0].name} <span className="text-slate-500 font-semibold">&middot; {topZones[0].uses} uses</span></p>
+              </div>
+            </div>
+          </div>
+          <div className="grid lg:grid-cols-[1fr_320px] gap-6">
           <div>
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 h-[480px] relative">
               <GymMap
@@ -118,7 +143,7 @@ const UsageHeatmap: React.FC<UsageHeatmapProps> = ({ gym, equipmentList }) => {
               <span>Least used</span>
               <div className="w-32 h-2 rounded-full" style={{ background: `linear-gradient(to right, ${heatColor(0)}, ${heatColor(0.5)}, ${heatColor(1)})` }} />
               <span>Most used</span>
-              <span className="ml-3 text-slate-600">Click a zone to see its machines</span>
+              <span className="ml-3 text-slate-600">Click a zone to zoom in</span>
             </div>
           </div>
 
@@ -144,7 +169,8 @@ const UsageHeatmap: React.FC<UsageHeatmapProps> = ({ gym, equipmentList }) => {
               )}
             </div>
           </div>
-        </div>
+          </div>
+        </>
       )}
     </div>
   );

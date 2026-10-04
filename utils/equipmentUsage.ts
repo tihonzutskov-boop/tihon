@@ -95,12 +95,11 @@ export const topZonesByUsage = (
     .sort((a, b) => b.uses - a.uses || a.name.localeCompare(b.name));
 };
 
-// A traffic-light read: green where a piece of equipment barely gets touched,
-// through yellow, to red where it is the busiest thing in the gym — the same
-// register a risk matrix uses for "how much attention does this need", which
-// is exactly the question this answers for a piece of gym equipment.
+// Blue where a piece of equipment barely gets touched, through yellow, to red
+// where it is the busiest thing in the gym — a traffic-density read, the same
+// register maps and dashboards use for "how much is happening here".
 const HEAT_STOPS: [number, [number, number, number]][] = [
-  [0, [22, 163, 74]],   // green-600 — least used
+  [0, [37, 99, 235]],   // blue-600 — least used
   [0.5, [234, 179, 8]], // yellow-500
   [1, [220, 38, 38]],   // red-600 — busiest
 ];

@@ -104,19 +104,19 @@ describe('ranking zones by usage', () => {
 });
 
 describe('the heat color scale', () => {
-  it('runs green at 0 through yellow to red at 1, a traffic-light read', () => {
-    expect(heatColor(0)).toBe('rgb(22, 163, 74)');
+  it('runs blue at 0 through yellow to red at 1, a traffic-density read', () => {
+    expect(heatColor(0)).toBe('rgb(37, 99, 235)');
     expect(heatColor(0.5)).toBe('rgb(234, 179, 8)');
     expect(heatColor(1)).toBe('rgb(220, 38, 38)');
   });
 
   it('moves between named stops smoothly rather than jumping', () => {
     const rgb = (c: string) => c.match(/\d+/g)!.map(Number);
-    const mid = rgb(heatColor(0.25)); // halfway between green and yellow
-    const green = rgb(heatColor(0));
+    const mid = rgb(heatColor(0.25)); // halfway between blue and yellow
+    const blue = rgb(heatColor(0));
     const yellow = rgb(heatColor(0.5));
     mid.forEach((v, i) => {
-      const lo = Math.min(green[i], yellow[i]), hi = Math.max(green[i], yellow[i]);
+      const lo = Math.min(blue[i], yellow[i]), hi = Math.max(blue[i], yellow[i]);
       expect(v).toBeGreaterThanOrEqual(lo);
       expect(v).toBeLessThanOrEqual(hi);
     });

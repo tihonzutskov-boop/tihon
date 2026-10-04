@@ -962,6 +962,24 @@ const GymMap: React.FC<GymMapProps> = ({
                 </React.Fragment>
               );
             })}
+            {!isThumbnail && machineHeat && zones.flatMap(z => (z.machines || []).map(m => {
+              const entry = machineHeat[m.id];
+              if (!entry) return null;
+              const color = heatColor(entry.intensity);
+              const blurRadius = Math.max(2, Math.min(m.width, m.height) * 0.12);
+              return (
+                <React.Fragment key={`heatdefs-machine-${m.id}`}>
+                  <filter id={`heatglow-machine-${m.id}`} x="-150%" y="-150%" width="400%" height="400%">
+                    <feGaussianBlur stdDeviation={blurRadius} />
+                  </filter>
+                  <radialGradient id={`heatgrad-machine-${m.id}`}>
+                    <stop offset="0%" stopColor={color} stopOpacity="0.95" />
+                    <stop offset="55%" stopColor={color} stopOpacity="0.6" />
+                    <stop offset="100%" stopColor={color} stopOpacity="0" />
+                  </radialGradient>
+                </React.Fragment>
+              );
+            }))}
           </defs>
           
           {!isThumbnail && isEditable && (
@@ -1500,7 +1518,15 @@ const GymMap: React.FC<GymMapProps> = ({
                 const isPickupZone = !isThumbnail && !!pickupZoneId && pickupZoneId === zone.id && !isTargetZone;
                 const isAmenity = isAmenityZone(zone);
                 const isMatch = matchingZoneIds.has(zone.id);
-                const zoneHeatEntry = !isThumbnail && zoneHeat ? zoneHeat[zone.id] : undefined;
+                // A zone whose own machines carry usage data shows heat on
+                // those machines instead of itself — showing both would say
+                // the same thing twice and, worse, say it inconsistently
+                // whenever the zone's average differs from its hottest
+                // machine. A zone with no individually tagged machines (open
+                // floor, a turf area) has nothing finer to show, so it keeps
+                // the zone-level glow as the only signal available.
+                const zoneMachinesHaveHeat = !!machineHeat && (zone.machines || []).some(m => !!machineHeat[m.id]);
+                const zoneHeatEntry = !isThumbnail && zoneHeat && !zoneMachinesHaveHeat ? zoneHeat[zone.id] : undefined;
                 const hasActiveSearch = matchingZoneIds.size > 0 || mapSearchQuery.trim().length > 0 || selectedMuscleFilter !== 'All';
                 const zoneOpacity = focusedZoneId
                   ? (isFocused ? 1 : 0.6)
@@ -1767,8 +1793,12 @@ const GymMap: React.FC<GymMapProps> = ({
                       </text>
                     )}
 
-                    {/* Machines rendered inside zone (when focused or editing) */}
-                    {((isFocused && !isAmenity && !isEditable) || (isMachineEdit && isFocused)) && zone.machines && (
+                    {/* Machines rendered inside zone: normally only once focused
+                        or while editing, but the usage heatmap wants every
+                        machine visible and glowing at once — that is the whole
+                        point of a heatmap — so it stays shown regardless of
+                        focus whenever machineHeat is passed in. */}
+                    {((isFocused && !isAmenity && !isEditable) || (isMachineEdit && isFocused) || (!isEditable && !isThumbnail && !!machineHeat && !isAmenity)) && zone.machines && (
                       <g className="animate-in fade-in zoom-in duration-300">
                         {(() => {
                           // Spotlight mode: once a specific machine in this zone is the
@@ -1836,12 +1866,25 @@ const GymMap: React.FC<GymMapProps> = ({
                                   </text>
                                 </>
                               )}
+                              {machineHeatEntry && (() => {
+                                const grow = 0.5 + machineHeatEntry.intensity * 0.9;
+                                return (
+                                  <ellipse
+                                    cx={machine.width / 2} cy={machine.height / 2}
+                                    rx={(machine.width * (1 + grow)) / 2} ry={(machine.height * (1 + grow)) / 2}
+                                    fill={`url(#heatgrad-machine-${machine.id})`}
+                                    filter={`url(#heatglow-machine-${machine.id})`}
+                                    style={{ mixBlendMode: 'screen' }}
+                                    className="pointer-events-none"
+                                  />
+                                );
+                              })()}
                               <rect
                                 width={machine.width} height={machine.height}
-                                fill={machineHeatEntry ? heatColor(machineHeatEntry.intensity) : zoneStyle.stroke}
+                                fill={machineHeatEntry ? '#0f172a' : zoneStyle.stroke}
                                 fillOpacity={isUserTarget ? 1 : isDimmed ? 0.5 : 0.85}
-                                stroke={showAdminSelected ? "#3b82f6" : isUserTarget ? "#a3e635" : isPickup ? "#38bdf8" : "#ffffff"}
-                                strokeWidth={(showAdminSelected || showUserGlow) ? 2 : 1}
+                                stroke={showAdminSelected ? "#3b82f6" : isUserTarget ? "#a3e635" : isPickup ? "#38bdf8" : machineHeatEntry ? heatColor(machineHeatEntry.intensity) : "#ffffff"}
+                                strokeWidth={(showAdminSelected || showUserGlow) ? 2 : machineHeatEntry ? 1.5 : 1}
                                 rx="4"
                                 className={showAdminSelected ? 'machine-pulse' : isUserTarget ? 'machine-glow-lime' : (showUserGlow ? 'machine-glow-white' : '')}
                               />
