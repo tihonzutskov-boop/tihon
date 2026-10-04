@@ -36,6 +36,7 @@ export const TRAINING_TYPES: TrainingType[] = [
     goals: [
       { label: 'Build muscle', aim: 'Muscle gain', hint: 'Get bigger and stronger' },
       { label: 'Tone up', aim: 'General fitness', hint: 'Firmer and fitter, without bulk' },
+      { label: 'Lose weight', aim: 'Weight loss', hint: 'Weights, then easy zone 2 cardio' },
     ],
   },
   {

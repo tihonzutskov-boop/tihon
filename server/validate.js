@@ -29,7 +29,7 @@ export const MAX_FOCUS_AREAS = 3;
 // The session lengths the questionnaire offers (SESSION_LENGTHS in constants.ts).
 // A length outside these would still build a plan, but not one the app's own
 // answers could ever ask for.
-export const SESSION_LENGTHS = ['45 min', '60 min', '90 min'];
+export const SESSION_LENGTHS = ['45 min', '60 min', '75 min'];
 const LEVELS = ['Beginner', 'Intermediate', 'Advanced'];
 const SEXES = ['Male', 'Female', 'Prefer not to say'];
 
@@ -89,7 +89,7 @@ export const validateQuestionnaire = (raw) => {
     return fail('Days per week must be between 1 and 7.');
   }
   if (!SESSION_LENGTHS.includes(a.minutesPerSession)) {
-    return fail('Please choose a session length of 45, 60 or 90 minutes.');
+    return fail('Please choose a session length of 45, 60 or 75 minutes.');
   }
 
   const equipment = optionalString(a.equipment, 'Equipment comfort', 100);

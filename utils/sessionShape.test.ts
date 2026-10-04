@@ -91,7 +91,7 @@ describe('warm-up and cooldown by session length', () => {
     const minutes = (m: number) => { const sh = shapeFor(m); return [sh.warmupMinutes, sh.cooldownMinutes]; };
     expect(minutes(45)).toEqual([10, 5]);
     expect(minutes(60)).toEqual([14, 10]);
-    expect(minutes(90)).toEqual([20, 15]);
+    expect(minutes(75)).toEqual([15, 12]);
     // Answers saved when 30 minutes was offered are unchanged.
     expect(minutes(30)).toEqual([6, 4]);
   });
@@ -141,15 +141,18 @@ describe('the written warm-up and cooldown', () => {
     expect(warmup.extra).toEqual(['One light set of your first exercise, well short of the working weight']);
   });
 
-  it('adds four minutes of dynamic stretching at 60 and ten at 90', () => {
+  it('adds four minutes of dynamic stretching at 60 and five of activation at 75', () => {
     const mid = bookendsFor(shapeFor(60), [...all]).warmup.extra!;
-    const long = bookendsFor(shapeFor(90), [...all]).warmup.extra!;
-    expect(mid.find(l => l.endsWith(':'))).toMatch(/about 4 minutes/);
-    expect(long.find(l => l.includes('about 10 minutes'))).toBeTruthy();
+    const long = bookendsFor(shapeFor(75), [...all]).warmup.extra!;
+    expect(mid.find(l => l.endsWith(':'))).toMatch(/Dynamic stretching, about 4 minutes/);
+    expect(long.find(l => l.endsWith(':'))).toMatch(/Activation, about 5 minutes: mobility drills, core activation and light band work/);
     const moves = (extra: string[]) => extra.filter(l => !l.endsWith(':') && /\d/.test(l) && !/light set|ramp-up/i.test(l));
     expect(moves(mid)).toHaveLength(4);
-    expect(moves(long)).toHaveLength(8);
-    expect(text(long)).toMatch(/joint circles/i);
+    expect(moves(long)).toHaveLength(6);
+    // Activation is a drill or two for today's work, the core, and light band work.
+    expect(text(long)).toMatch(/dead bugs/i);
+    expect(text(long)).toMatch(/bird dogs/i);
+    expect(text(long)).toMatch(/band/i);
     expect(long[long.length - 1]).toMatch(/ramp-up sets/);
   });
 
@@ -180,16 +183,16 @@ describe('the written warm-up and cooldown', () => {
   it('is an easy walk, then stretches with a hold time, then breathing', () => {
     const base = bookendsFor(shapeFor(45), [...all]).cooldown;
     const mid = bookendsFor(shapeFor(60), [...all]).cooldown;
-    const long = bookendsFor(shapeFor(90), [...all]).cooldown;
+    const long = bookendsFor(shapeFor(75), [...all]).cooldown;
     expect(base.steps[0]).toMatch(/2 minutes easy walking/);
     expect(mid.steps[0]).toMatch(/3 minutes/);
     const stretches = (c: typeof base) => c.extra!.filter(l => !l.endsWith(':') && !/breathing/i.test(l));
     expect(stretches(base)).toHaveLength(3);
     expect(stretches(mid)).toHaveLength(6);
-    expect(stretches(long)).toHaveLength(9);
+    expect(stretches(long)).toHaveLength(7);
     expect(base.extra![0]).toMatch(/20–30 seconds/);
     expect(mid.extra![0]).toMatch(/30 seconds/);
-    expect(long.extra![0]).toMatch(/45 seconds/);
+    expect(long.extra![0]).toMatch(/30 seconds/);
     expect(text(base.extra)).not.toMatch(/breathing/i);
     expect(mid.extra![mid.extra!.length - 1]).toMatch(/minute of slow breathing/);
     expect(long.extra![long.extra!.length - 1]).toMatch(/two minutes of slow breathing/);

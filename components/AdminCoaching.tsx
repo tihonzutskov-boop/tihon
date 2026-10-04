@@ -26,7 +26,7 @@ const FAILURE_FIXES: Record<string, string> = {
   validation_failed: 'A generated plan broke a safety or structure rule. The detail above says which.',
 };
 
-const DURATIONS = [45, 60, 90];
+const DURATIONS = [45, 60, 75];
 
 const DAYS_OPTIONS = ['1', '2', '3', '4'];
 

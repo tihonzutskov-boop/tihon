@@ -62,12 +62,12 @@ describe('questionnaire answers', () => {
 
   it('bounds the session length', () => {
     for (const m of ['5 min', '999 min', '60', '60 minutes', '', 60, null, undefined]) expect(bad({ minutesPerSession: m }).ok, String(m)).toBe(false);
-    for (const m of ['45 min', '60 min', '90 min']) expect(bad({ minutesPerSession: m }).ok).toBe(true);
+    for (const m of ['45 min', '60 min', '75 min']) expect(bad({ minutesPerSession: m }).ok).toBe(true);
   });
 
-  it('no longer takes a 30 minute session, nor a length in between', () => {
-    for (const m of ['30 min', '40 min', '75 min', '120 min']) expect(bad({ minutesPerSession: m }).ok, m).toBe(false);
-    expect(bad({ minutesPerSession: '30 min' }).error).toMatch(/45, 60 or 90/);
+  it('no longer takes a 30 or 90 minute session, nor a length in between', () => {
+    for (const m of ['30 min', '40 min', '90 min', '120 min']) expect(bad({ minutesPerSession: m }).ok, m).toBe(false);
+    expect(bad({ minutesPerSession: '30 min' }).error).toMatch(/45, 60 or 75/);
   });
 
   it('only accepts goals the engine has an aim for', () => {

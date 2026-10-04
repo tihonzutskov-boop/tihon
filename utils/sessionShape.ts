@@ -39,7 +39,7 @@ export interface SessionShape {
   maxWorkingSets: number;
 }
 
-// Thresholds sit between the questionnaire's offered values ('45 min'..'90 min')
+// Thresholds sit between the questionnaire's offered values ('45 min'..'75 min')
 // rather than on them, so an answer never lands ambiguously on a boundary. The
 // short tier is no longer reachable from the questionnaire, which starts at 45
 // minutes, but answers saved when it offered 30 still build plans with it.
@@ -70,13 +70,14 @@ const SHAPES: Record<SessionTier, Omit<SessionShape, 'tier' | 'band' | 'warmupMi
 
 // A longer session spends its extra time on the warm-up and cooldown, not on
 // more sets. The warm-up is always 10 minutes of easy cardio; at 60 minutes
-// dynamic stretching follows it (4 minutes), at 90 more of it (10). The cooldown
-// is an easy walk and then stretching, growing the same way.
+// dynamic stretching follows it (4 minutes), at 75 five minutes of activation:
+// mobility drills, core activation and light band work. The cooldown is an easy
+// walk and then stretching, growing the same way.
 export const BOOKEND_MINUTES: Record<BookendBand, { warmup: number; cooldown: number; cardio: number; walk: number }> = {
   short: { warmup: 6, cooldown: 4, cardio: 2, walk: 2 },
   base: { warmup: 10, cooldown: 5, cardio: 10, walk: 2 },
   mid: { warmup: 14, cooldown: 10, cardio: 10, walk: 3 },
-  long: { warmup: 20, cooldown: 15, cardio: 10, walk: 3 },
+  long: { warmup: 15, cooldown: 12, cardio: 10, walk: 3 },
 };
 
 export const bookendBandFor = (sessionMinutes: number): BookendBand =>
@@ -93,7 +94,7 @@ export const tierFor = (sessionMinutes: number): SessionTier => {
 
 // Minutes of zone-2 cardio a session can end with: 10 up to and including 45
 // minutes, 15 up to 70, 20 beyond. Sized to the session the way the warm-up is,
-// so a longer one carries more of it. The questionnaire offers 45, 60 and 90,
+// so a longer one carries more of it. The questionnaire offers 45, 60 and 75,
 // which read as 10, 15 and 20; the boundaries sit where the tiers do.
 export const zone2MinutesFor = (sessionMinutes: number): number =>
   sessionMinutes <= TIER_BOUNDS.shortBelow ? 10 : sessionMinutes > TIER_BOUNDS.longAbove ? 20 : 15;
@@ -241,10 +242,20 @@ const pick = (table: Record<BodyRegion, string[]>, regions: BodyRegion[], count:
 // stretched for the whole body rather than for nothing.
 const WHOLE_BODY: BodyRegion[] = ['legs', 'push', 'pull'];
 
-const DYNAMIC_COUNT: Partial<Record<BookendBand, number>> = { mid: 4, long: 8 };
-const STRETCH_COUNT: Partial<Record<BookendBand, number>> = { base: 3, mid: 6, long: 9 };
+const DYNAMIC_COUNT: Partial<Record<BookendBand, number>> = { mid: 4 };
+
+// The long warm-up is activation rather than stretching: a couple of mobility
+// drills for what the day trains, the core, and light work with a band.
+const CORE_ACTIVATION = ['Dead bugs, 8 each side', 'Bird dogs, 8 each side'];
+const BAND_MOVES: Record<BodyRegion, string[]> = {
+  legs: ['Banded glute bridges, 10 reps', 'Banded lateral steps, 8 each way'],
+  push: ['Band external rotations, 10 each arm'],
+  pull: ['Band pull-aparts, 10 reps'],
+  core: [],
+};
+const STRETCH_COUNT: Partial<Record<BookendBand, number>> = { base: 3, mid: 6, long: 7 };
 const STRETCH_HOLD: Partial<Record<BookendBand, string>> = {
-  base: '20–30 seconds', mid: '30 seconds', long: '45 seconds',
+  base: '20–30 seconds', mid: '30 seconds', long: '30 seconds',
 };
 
 // `byVideo`: the dynamic stretching or the stretches are done as follow-along
@@ -254,7 +265,10 @@ const warmupExtra = (band: BookendBand, regions: BodyRegion[], byVideo: boolean)
   const today = regions.length > 0 ? regions : WHOLE_BODY;
   const count = byVideo ? 0 : DYNAMIC_COUNT[band] ?? 0;
   const lines: string[] = [];
-  if (band === 'long' && !byVideo) lines.push('Full joint circles: ankles, knees, hips, spine, shoulders, wrists');
+  if (band === 'long' && !byVideo) {
+    lines.push(`Activation, about ${BOOKEND_MINUTES.long.warmup - BOOKEND_MINUTES.long.cardio} minutes: mobility drills, core activation and light band work:`);
+    lines.push(...pick(DYNAMIC_MOVES, today, 2), ...CORE_ACTIVATION, ...pick(BAND_MOVES, today, 2));
+  }
   if (count > 0) {
     lines.push(`Dynamic stretching, about ${BOOKEND_MINUTES[band].warmup - BOOKEND_MINUTES[band].cardio} minutes, for what you train today:`);
     lines.push(...pick(DYNAMIC_MOVES, today, count));

@@ -9,7 +9,7 @@ import { EquipmentType, GymZone, Gym } from './types';
 // up in their group.
 // The session lengths a client can choose. Shared with the server's check
 // (server/validate.js), and kept in step with it by validate.test.js.
-export const SESSION_LENGTHS = ['45 min', '60 min', '90 min'];
+export const SESSION_LENGTHS = ['45 min', '60 min', '75 min'];
 
 export const QUESTIONNAIRE_GOALS = ['Muscle gain', 'Weight loss', 'General fitness', 'Endurance', 'Mobility'];
 

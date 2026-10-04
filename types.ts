@@ -434,7 +434,7 @@ export interface QuestionnaireAnswers {
   level: string;              // only 'Beginner' selectable for now
   daysPerWeek: string;        // '1'..'4'
   preferredDays?: Weekday[];  // legacy: answers from before the questionnaire stopped asking which days
-  minutesPerSession: string;  // '45 min' | '60 min' | '90 min' (older answers may hold '30 min')
+  minutesPerSession: string;  // '45 min' | '60 min' | '75 min' (older answers may hold '30 min' or '90 min')
   gymId?: string;             // which gym they train at — determines the equipment pool available to plan generation
   equipment: string;
   avoidExercises?: string;
@@ -472,6 +472,9 @@ export interface ExerciseSlot {
   // Extra work added because the client asked to focus on this body area.
   // Kept until every other optional slot is gone when the session runs long.
   focusArea?: FocusArea;
+  // Prefer a follow-along video for this slot when the library has one that
+  // fits: the abs at the end of a strength session are a video, not sets.
+  preferVideo?: boolean;
   setsMin: number;
   setsMax: number;
   repsMin: number;

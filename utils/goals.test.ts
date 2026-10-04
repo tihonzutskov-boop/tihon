@@ -19,7 +19,7 @@ describe('the three levels of goals', () => {
 
   it('offers each type its own goals', () => {
     const labels = (key: string) => trainingTypeFor(key)!.goals.map(g => g.label);
-    expect(labels('Strength')).toEqual(['Build muscle', 'Tone up']);
+    expect(labels('Strength')).toEqual(['Build muscle', 'Tone up', 'Lose weight']);
     expect(labels('Cardio')).toEqual(['Lose weight']);
     expect(labels('Health')).toEqual(['Mobility & flexibility', 'Stay active']);
   });
@@ -62,7 +62,7 @@ describe('the three levels of goals', () => {
   });
 
   it('offers session lengths from 45 minutes, and the server accepts the same ones', () => {
-    expect(SESSION_LENGTHS).toEqual(['45 min', '60 min', '90 min']);
+    expect(SESSION_LENGTHS).toEqual(['45 min', '60 min', '75 min']);
     expect(SERVER_LENGTHS).toEqual(SESSION_LENGTHS);
   });
 });
@@ -71,6 +71,11 @@ describe('naming a goal', () => {
   it('uses the wording of the type the client chose', () => {
     expect(goalLabel('General fitness', 'Strength')).toBe('Tone up');
     expect(goalLabel('General fitness', 'Health')).toBe('Stay active');
+    expect(goalLabel('Weight loss', 'Cardio')).toBe('Lose weight');
+  });
+
+  it('names Lose weight the same under Strength as under Cardio', () => {
+    expect(goalLabel('Weight loss', 'Strength')).toBe('Lose weight');
     expect(goalLabel('Weight loss', 'Cardio')).toBe('Lose weight');
   });
 
@@ -113,8 +118,14 @@ describe('reading stored answers back into the form', () => {
   });
 
   it('keeps only the goals that type offers', () => {
-    expect(goalsFromAnswers({ goals: ['Muscle gain', 'Weight loss'], secondaryGoals: ['Mobility'] })).toEqual({
+    expect(goalsFromAnswers({ goals: ['Muscle gain', 'Mobility'], secondaryGoals: ['Weight loss'] })).toEqual({
       trainingType: 'Strength', goals: ['Muscle gain'], focusAreas: [],
+    });
+  });
+
+  it('keeps both goals of a client who chose muscle growth and fat loss, now both under Strength', () => {
+    expect(goalsFromAnswers({ goals: ['Muscle gain', 'Weight loss'] })).toEqual({
+      trainingType: 'Strength', goals: ['Muscle gain', 'Weight loss'], focusAreas: [],
     });
   });
 

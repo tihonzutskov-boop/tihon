@@ -581,7 +581,7 @@ describe('default blueprints', () => {
     const library = [
       exercise({ id: 'squat', name: 'Goblet Squat', movementPattern: 'squat' }),
       exercise({ id: 'push', name: 'Push-up', movementPattern: 'horizontal_push' }),
-      exercise({ id: 'row', name: 'Dumbbell Row', movementPattern: 'horizontal_pull' }),
+      exercise({ id: 'row', name: 'Lat Pulldown', movementPattern: 'vertical_pull' }),
     ];
     const template: PlanTemplate = {
       id: 'auto', name: 'Auto', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 60, days: [],
@@ -592,7 +592,7 @@ describe('default blueprints', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(working(result.days[0]).map(e => e.name).sort())
-      .toEqual(['Dumbbell Row', 'Goblet Squat', 'Push-up']);
+      .toEqual(['Goblet Squat', 'Lat Pulldown', 'Push-up']);
     expect(validatePlan(result.days, library, gym([]), p).valid).toBe(true);
   });
 
@@ -602,7 +602,7 @@ describe('default blueprints', () => {
     const library = [
       exercise({ id: 'squat', name: 'Squat', movementPattern: 'squat' }),
       exercise({ id: 'push', name: 'Push-up', movementPattern: 'horizontal_push' }),
-      exercise({ id: 'row', name: 'Row', movementPattern: 'horizontal_pull' }),
+      exercise({ id: 'row', name: 'Pulldown', movementPattern: 'vertical_pull' }),
     ];
     const template: PlanTemplate = {
       id: 'auto', name: 'Auto', goal: 'General fitness', daysPerWeek: '1', durationMin: 60, days: [],
@@ -1113,7 +1113,7 @@ describe('warm-up and cooldown', () => {
     const library = [
       exercise({ id: 'squat', name: 'Squat', movementPattern: 'squat' }),
       exercise({ id: 'push', name: 'Push-up', movementPattern: 'horizontal_push' }),
-      exercise({ id: 'row', name: 'Row', movementPattern: 'horizontal_pull' }),
+      exercise({ id: 'row', name: 'Row', movementPattern: 'vertical_pull' }),
     ];
     const tpl: PlanTemplate = {
       id: 't', name: 'T', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 60, days: [],
@@ -1354,7 +1354,7 @@ describe('cardio is bookend-only', () => {
       bike,
       exercise({ id: 'squat', name: 'Squat', movementPattern: 'squat', exerciseCategory: 'compound' }),
       exercise({ id: 'push', name: 'Push-up', movementPattern: 'horizontal_push', exerciseCategory: 'compound' }),
-      exercise({ id: 'row', name: 'Row', movementPattern: 'horizontal_pull', exerciseCategory: 'compound' }),
+      exercise({ id: 'row', name: 'Row', movementPattern: 'vertical_pull', exerciseCategory: 'compound' }),
     ];
     // Weight loss ends with a zone-2 cardio block of its own (it is checked
     // separately); everything else in the day is training work.
@@ -1427,8 +1427,9 @@ describe('reps and sets per goal', () => {
     return { compound: pick('compound'), isolation: pick('isolation') };
   };
 
-  it('builds muscle with 8-12 reps and 3-4 sets', () => {
-    expect(rx('Muscle gain').compound).toEqual({ sets: [3, 4], reps: [8, 12] });
+  it('builds muscle with 8-10 reps and 3-4 sets, and 10-12 reps on single-joint work', () => {
+    expect(rx('Muscle gain').compound).toEqual({ sets: [3, 4], reps: [8, 10] });
+    expect(rx('Muscle gain').isolation.reps).toEqual([10, 12]);
   });
 
   it('tones up with 12-15 reps and 2-3 sets, a little higher on single-joint work', () => {
@@ -1591,7 +1592,7 @@ describe('thin library does not break generation', () => {
     // so the client got nothing at all.
     const library = [
       exercise({ id: 'bench', name: 'Bench Press', movementPattern: 'horizontal_push' }),
-      exercise({ id: 'row', name: 'Row', movementPattern: 'horizontal_pull' }),
+      exercise({ id: 'row', name: 'Row', movementPattern: 'vertical_pull' }),
     ];
     const tpl: PlanTemplate = {
       id: 't', name: 'T', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 90, days: [],
@@ -1808,7 +1809,7 @@ describe('zone-2 cardio', () => {
   const lifts = [
     exercise({ id: 'squat', name: 'Squat', movementPattern: 'squat' }),
     exercise({ id: 'push', name: 'Push-up', movementPattern: 'horizontal_push' }),
-    exercise({ id: 'row', name: 'Row', movementPattern: 'horizontal_pull' }),
+    exercise({ id: 'row', name: 'Pulldown', movementPattern: 'vertical_pull' }),
     exercise({ id: 'hinge', name: 'Deadlift', movementPattern: 'hinge' }),
     exercise({ id: 'press', name: 'Press', movementPattern: 'vertical_push' }),
     exercise({ id: 'plank', name: 'Plank', movementPattern: 'core', exerciseCategory: 'isolation' }),
@@ -1884,14 +1885,14 @@ describe('zone-2 cardio', () => {
   });
 
   it('trims the weights to make room for it before it gives up any minutes', () => {
-    // 45 min: 31 left after warm-up and cooldown, 10 for cardio, 21 for lifts:
-    // room for four of the six, so the optional ones drop out, last first.
+    // 45 min: 30 left after warm-up and cooldown, 10 for cardio, 20 for lifts:
+    // room for five of the six (the two-set press is short), so the last drops out.
     const run = plan([...lifts, bike], 45);
     if (!run.ok) throw new Error('plan failed');
     const day = run.days[0];
     expect(zoneOf(day)!.cardioMinutes).toBe(10);
     const names = working(day).filter(e => !e.finisher).map(e => e.name);
-    expect(names).toEqual(['Squat', 'Push-up', 'Row', 'Deadlift']);
+    expect(names).toEqual(['Squat', 'Push-up', 'Pulldown', 'Deadlift', 'Press']);
   });
 
   it('shrinks to fit when even the main lifts leave too little room, and never cuts them', () => {
@@ -1901,7 +1902,7 @@ describe('zone-2 cardio', () => {
     if (!run.ok) throw new Error('plan failed');
     const day = run.days[0];
     expect(zoneOf(day)!.cardioMinutes).toBe(5);
-    expect(working(day).filter(e => !e.finisher).map(e => e.name)).toEqual(['Squat', 'Push-up', 'Row']);
+    expect(working(day).filter(e => !e.finisher).map(e => e.name)).toEqual(['Squat', 'Push-up', 'Pulldown']);
   });
 
   it('is left out for a day when there is no room for it even at the shortest', () => {
@@ -1976,7 +1977,7 @@ describe('warm-up and cool-down built from videos', () => {
   const lifts = [
     exercise({ id: 'squat', name: 'Squat', movementPattern: 'squat', primaryMuscles: ['Quads', 'Glutes'] }),
     exercise({ id: 'push', name: 'Push-up', movementPattern: 'horizontal_push' }),
-    exercise({ id: 'row', name: 'Row', movementPattern: 'horizontal_pull' }),
+    exercise({ id: 'row', name: 'Pulldown', movementPattern: 'vertical_pull' }),
   ];
   const warmVid = (n: number, minutes = '2 min', over: any = {}) => video({ id: `w${n}`, videoDurationLabel: minutes, ...over });
   const coolVid = (n: number, minutes = '3 min', over: any = {}) => video({ id: `c${n}`, bookendRoles: ['cooldown'], videoDurationLabel: minutes, ...over });
@@ -2098,12 +2099,12 @@ describe('warm-up and cool-down built from videos', () => {
       expect(day.exercises.slice(0, 3).map(e => e.bookend)).toEqual(['warmup', 'warmup', 'warmup']);
     });
 
-    it('adds about ten minutes of them at 90 minutes', () => {
-      const lib = [...lifts, bike, ...[1, 2, 3, 4, 5, 6].map(n => warmVid(n, '2 min'))];
-      const day = run(lib, 90).days[0];
+    it('adds five minutes of activation videos at 75 minutes, for a 15 minute warm-up', () => {
+      const lib = [...lifts, bike, warmVid(1, '5 min'), warmVid(2, '5 min'), warmVid(3, '5 min')];
+      const day = run(lib, 75).days[0];
       const videos = ends(day, 'warmup').slice(1);
-      expect(videos.reduce((n, e) => n + (e.cardioMinutes || 0), 0)).toBe(10);
-      expect(day.warmup!.minutes).toBe(20);
+      expect(videos.map(e => e.cardioMinutes)).toEqual([5]);
+      expect(day.warmup!.minutes).toBe(15);
     });
 
     it('closes with a walk and then stretching videos', () => {
@@ -2124,16 +2125,16 @@ describe('warm-up and cool-down built from videos', () => {
         exercise({ id: 'plank', name: 'Plank', movementPattern: 'core', exerciseCategory: 'isolation' }),
         bike,
       ];
-      // Long rests make each lift six minutes, so the day needs about 34 minutes.
-      // At 56 minutes, 2-minute videos leave room for all six; 5-minute ones do not.
-      const heavy = buildCombinedBlueprint(['Muscle gain'], 1, 56).map(d => ({
+      // Long rests make the six lifts take about 31 minutes between them. At 52
+      // minutes, 2-minute videos leave room for all six; 5-minute ones do not.
+      const heavy = buildCombinedBlueprint(['Muscle gain'], 1, 52).map(d => ({
         ...d, slots: d.slots.map(sl => ({ ...sl, restSeconds: 120 })),
       }));
       const lifted = (videoLength: string) => {
         const lib = [...six, warmVid(1, videoLength), warmVid(2, videoLength), coolVid(1, videoLength), coolVid(2, videoLength)];
         const r = generatePlan(
-          { id: 't', name: 'T', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 56, days: [], blueprintDays: heavy },
-          lib, gym([]), profile({ sessionMinutes: 56 }),
+          { id: 't', name: 'T', goal: 'Muscle gain', daysPerWeek: '1', durationMin: 52, days: [], blueprintDays: heavy },
+          lib, gym([]), profile({ sessionMinutes: 52 }),
         );
         if (!r.ok) throw new Error('plan failed');
         return working(r.days[0]).length;
@@ -2187,6 +2188,193 @@ describe('warm-up and cool-down built from videos', () => {
       const lib = [...lifts, bike, warmVid(1), warmVid(2), coolVid(1), coolVid(2)];
       const { days, p } = run(lib, 60);
       expect(validatePlan(days, lib, gym([]), p)).toMatchObject({ valid: true, errors: [] });
+    });
+  });
+});
+
+// --- the strength session ---------------------------------------------------
+
+describe('the strength session', () => {
+  const lib = (extra: LibraryExercise[] = []) => [
+    exercise({ id: 'squat', name: 'Squat', movementPattern: 'squat' }),
+    exercise({ id: 'push', name: 'Press-up', movementPattern: 'horizontal_push' }),
+    exercise({ id: 'pull', name: 'Pulldown', movementPattern: 'vertical_pull' }),
+    exercise({ id: 'hinge', name: 'Hinge', movementPattern: 'hinge' }),
+    exercise({ id: 'press', name: 'Overhead press', movementPattern: 'vertical_push' }),
+    exercise({ id: 'tri', name: 'Pushdown', movementPattern: 'elbow_extension', exerciseCategory: 'isolation' }),
+    exercise({ id: 'plank', name: 'Plank', movementPattern: 'core', exerciseCategory: 'isolation' }),
+    exercise({ id: 'bike', name: 'Bike', exerciseCategory: 'cardio', movementPattern: 'conditioning', equipmentId: 'zone-cardio', bookendRoles: ['warmup', 'cooldown'] }),
+    ...extra,
+  ];
+  // Its id sorts after "plank", so only the preference can put it ahead of the ordinary abs.
+  const absVideo = (minutes = '5 min', id = 'zz-abs') => exercise({
+    id, name: 'Abs routine', exerciseType: 'video', movementPattern: 'core', exerciseCategory: 'isolation',
+    videoUrl: 'https://youtu.be/abs', videoDurationLabel: minutes, targetMuscle: 'Abs',
+  });
+  const activation = (id = 'act', minutes = '5 min') => exercise({
+    id, name: 'Activation', exerciseType: 'video', movementPattern: undefined, exerciseCategory: 'mobility',
+    bookendRoles: ['warmup'], videoUrl: 'https://youtu.be/act', videoDurationLabel: minutes, targetMuscle: 'Full body',
+  } as any);
+  const day = (goal: string, minutes: number, library: LibraryExercise[], days = 3) => {
+    const blueprintDays = buildCombinedBlueprint([goal], days, minutes);
+    const p = profile({ goal, daysPerWeek: days, sessionMinutes: minutes });
+    const r = generatePlan(
+      { id: 't', name: 'T', goal, daysPerWeek: String(days), durationMin: minutes, days: [], blueprintDays },
+      library, gym([]), p,
+    );
+    if (!r.ok) throw new Error('plan failed');
+    return { days: r.days, p, library };
+  };
+
+  describe('the day', () => {
+    it('is a squat, a press, a pull, a hinge, an overhead press, triceps, then abs', () => {
+      const slots = buildCombinedBlueprint(['Muscle gain'], 3, 75)[0].slots;
+      expect(slots.map(s => s.movementPattern)).toEqual(
+        ['squat', 'horizontal_push', 'vertical_pull', 'hinge', 'vertical_push', 'elbow_extension', 'core']);
+    });
+
+    it('makes the first three the session and trims the rest from the end', () => {
+      const slots = buildCombinedBlueprint(['Muscle gain'], 3, 75)[0].slots;
+      expect(slots.slice(0, 3).every(s => !s.optional)).toBe(true);
+      expect(slots.slice(3).every(s => s.optional)).toBe(true);
+      expect(slots.map(s => s.priority)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    });
+
+    it('pulls vertically, so there is no row in a full-body day', () => {
+      expect(buildCombinedBlueprint(['Muscle gain'], 3, 75)[0].slots.some(s => s.movementPattern === 'horizontal_pull')).toBe(false);
+    });
+
+    it('is the day for one, two and three training days alike', () => {
+      for (const days of [1, 2, 3]) {
+        const bp = buildCombinedBlueprint(['Muscle gain'], days, 75);
+        bp.forEach(d => expect(d.slots.map(s => s.movementPattern)[2]).toBe('vertical_pull'));
+      }
+    });
+
+    it('leaves the split days as they were', () => {
+      const bp = buildCombinedBlueprint(['Muscle gain'], 4, 75);
+      expect(bp.map(d => d.name)).toEqual(['Upper', 'Lower', 'Upper', 'Lower']);
+      expect(bp[0].slots.some(s => s.movementPattern === 'horizontal_pull')).toBe(true);
+    });
+  });
+
+  describe('sets and reps for build muscle', () => {
+    const bySlot = () => {
+      const slots = buildCombinedBlueprint(['Muscle gain'], 3, 75)[0].slots;
+      return Object.fromEntries(slots.map(s => [s.movementPattern, { sets: [s.setsMin, s.setsMax], reps: [s.repsMin, s.repsMax] }]));
+    };
+
+    it('does the four main lifts for 3 sets of 8-10', () => {
+      const b = bySlot();
+      for (const p of ['squat', 'horizontal_push', 'vertical_pull', 'hinge']) {
+        expect(b[p].sets[0], p).toBe(3);
+        expect(b[p].reps, p).toEqual([8, 10]);
+      }
+    });
+
+    it('does the overhead press for 2 sets', () => {
+      expect(bySlot().vertical_push.sets).toEqual([2, 2]);
+    });
+
+    it('does the triceps for 2 sets of 10-12', () => {
+      const t = bySlot().elbow_extension;
+      expect(t.sets[0]).toBe(2);
+      expect(t.reps).toEqual([10, 12]);
+    });
+
+    it('generates exactly those sets for a beginner', () => {
+      const { days } = day('Muscle gain', 75, lib());
+      const sets = Object.fromEntries(working(days[0]).map(e => [e.libraryExerciseId, e.setDetails?.length]));
+      expect(sets).toMatchObject({ squat: 3, push: 3, pull: 3, hinge: 3, press: 2, tri: 2 });
+    });
+
+    it('keeps the overhead press to two sets for the other strength goals too', () => {
+      for (const goal of ['General fitness', 'Weight loss']) {
+        const slots = buildCombinedBlueprint([goal], 3, 75)[0].slots;
+        expect(slots.find(s => s.movementPattern === 'vertical_push')!.setsMin, goal).toBe(2);
+      }
+    });
+
+    it('leaves each goal its own reps', () => {
+      const reps = (goal: string) => buildCombinedBlueprint([goal], 3, 75)[0].slots[0].repsMin;
+      expect(reps('Muscle gain')).toBe(8);
+      expect(reps('General fitness')).toBe(12);
+      expect(reps('Weight loss')).toBe(15);
+    });
+  });
+
+  describe('the abs video', () => {
+    it('takes a video for the abs over an ordinary abs exercise', () => {
+      const { days } = day('Muscle gain', 75, lib([absVideo()]));
+      const ids = working(days[0]).map(e => e.libraryExerciseId);
+      expect(ids).toContain('zz-abs');
+      expect(ids).not.toContain('plank');
+    });
+
+    it('falls back to an ordinary abs exercise when the library has no video', () => {
+      const ids = working(day('Muscle gain', 75, lib()).days[0]).map(e => e.libraryExerciseId);
+      expect(ids).toContain('plank');
+    });
+
+    it('is the last thing before the cooldown', () => {
+      const { days } = day('Muscle gain', 75, lib([absVideo()]));
+      const names = days[0].exercises.filter(e => !e.bookend).map(e => e.libraryExerciseId);
+      expect(names[names.length - 1]).toBe('zz-abs');
+      expect(days[0].exercises[days[0].exercises.length - 1].bookend).toBe('cooldown');
+    });
+
+    it('is watched for its own length, not counted in sets', () => {
+      const abs = working(day('Muscle gain', 75, lib([absVideo('6 min')])).days[0]).find(e => e.libraryExerciseId === 'zz-abs')!;
+      expect(abs).toMatchObject({ sets: 0, isCardio: true, cardioMinutes: 6 });
+      expect(abs.setDetails).toBeUndefined();
+    });
+
+    it('is counted by its length when the day is fitted to the session', () => {
+      // A 5-minute video fits a 60-minute session; a 20-minute one does not, and is left out.
+      const fits = working(day('Muscle gain', 60, lib([absVideo('5 min')])).days[0]).map(e => e.libraryExerciseId);
+      const tooLong = working(day('Muscle gain', 60, lib([absVideo('20 min')])).days[0]).map(e => e.libraryExerciseId);
+      expect(fits).toContain('zz-abs');
+      expect(tooLong).not.toContain('zz-abs');
+    });
+
+    it('passes validation, counting its minutes toward the session', () => {
+      const library = lib([absVideo('5 min')]);
+      const { days, p } = day('Muscle gain', 75, library);
+      expect(validatePlan(days, library, gym([]), p)).toMatchObject({ valid: true, errors: [] });
+      // The same day against a much shorter session is over length because the video counts.
+      const tight = profile({ goal: 'Muscle gain', daysPerWeek: 3, sessionMinutes: 40 });
+      expect(validatePlan(days, library, gym([]), tight).errors.some(e => /over the 40 min target/.test(e))).toBe(true);
+    });
+  });
+
+  describe('checking a day with a video in it', () => {
+    it('counts the video by its length, so one that runs long makes the day over length', () => {
+      const library = lib([absVideo('5 min')]);
+      const { days, p } = day('Muscle gain', 60, library);
+      expect(validatePlan(days, library, gym([]), p).valid).toBe(true);
+      const stretched = days.map(d => ({
+        ...d, exercises: d.exercises.map(e => e.libraryExerciseId === 'zz-abs' ? { ...e, cardioMinutes: 40 } : e),
+      }));
+      expect(validatePlan(stretched, library, gym([]), p).errors.some(e => /over the 60 min target/.test(e))).toBe(true);
+    });
+  });
+
+  describe('the whole 75 minute session', () => {
+    it('is a 15 minute warm-up, the six lifts, the abs video and a cooldown', () => {
+      const library = lib([absVideo('5 min'), activation('act', '5 min'),
+        exercise({ id: 'cool', name: 'Stretch', exerciseType: 'video', movementPattern: undefined, exerciseCategory: 'mobility',
+          bookendRoles: ['cooldown'], videoUrl: 'x', videoDurationLabel: '5 min' } as any)]);
+      const { days } = day('Muscle gain', 75, library);
+      const d = days[0];
+      const seq = d.exercises.map(e => e.bookend ? `${e.bookend}:${e.libraryExerciseId}` : e.libraryExerciseId);
+      expect(seq).toEqual([
+        'warmup:bike', 'warmup:act',
+        'squat', 'push', 'pull', 'hinge', 'press', 'tri', 'zz-abs',
+        'cooldown:bike', 'cooldown:cool',
+      ]);
+      expect(d.warmup!.minutes).toBe(15);
+      expect(d.exercises[0].cardioMinutes).toBe(10);
+      expect(d.exercises[1].cardioMinutes).toBe(5);
     });
   });
 });

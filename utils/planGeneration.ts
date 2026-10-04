@@ -137,8 +137,8 @@ export const selectSplit = (daysPerWeek: number): { split: SplitName; dayNames: 
 // offered but still builds plans for clients who chose it earlier.
 const GOAL_PRESCRIPTION: Record<string, { compound: Omit<ExerciseSlot, 'id' | 'movementPattern' | 'priority'>; isolation: Omit<ExerciseSlot, 'id' | 'movementPattern' | 'priority'> }> = {
   'Muscle gain': {
-    compound: { setsMin: 3, setsMax: 4, repsMin: 8, repsMax: 12, restSeconds: 90, exerciseCategory: 'compound' },
-    isolation: { setsMin: 2, setsMax: 3, repsMin: 10, repsMax: 15, restSeconds: 90, exerciseCategory: 'isolation' },
+    compound: { setsMin: 3, setsMax: 4, repsMin: 8, repsMax: 10, restSeconds: 90, exerciseCategory: 'compound' },
+    isolation: { setsMin: 2, setsMax: 3, repsMin: 10, repsMax: 12, restSeconds: 90, exerciseCategory: 'isolation' },
   },
   'Weight loss': {
     compound: { setsMin: 3, setsMax: 3, repsMin: 15, repsMax: 20, restSeconds: 45, exerciseCategory: 'compound' },
@@ -167,7 +167,13 @@ const DEFAULT_GOAL = 'General fitness';
 // Which movements make up each day type, in training order. Compound work
 // first (it's required), accessories and conditioning last (optional, so the
 // duration fitter trims them before touching the main lifts).
-type SlotSpec = { pattern: MovementPattern; kind: 'compound' | 'isolation'; optional?: boolean };
+type SlotSpec = {
+  pattern: MovementPattern; kind: 'compound' | 'isolation'; optional?: boolean;
+  /** Sets for this slot whatever the goal prescribes elsewhere (the shoulder press is two). */
+  sets?: number;
+  /** See ExerciseSlot.preferVideo. */
+  preferVideo?: boolean;
+};
 
 // One session structure regardless of day count: unlike a strength split,
 // there's no basis for an "upper mobility day" vs a "lower mobility day" — a
@@ -187,13 +193,19 @@ const MOBILITY: SlotSpec[] = [
   { pattern: 'core', kind: 'isolation', optional: true },
 ];
 
+// A strength session: a squat, a press and a pull, then a hinge, an overhead
+// press and a triceps exercise, then the abs. The first three are the session;
+// the rest are trimmed from the end, abs first, when the time is short. The
+// pull is a vertical one (a pulldown), the overhead press is two sets, and the
+// abs are a follow-along video where the library has one.
 const FULL_BODY: SlotSpec[] = [
   { pattern: 'squat', kind: 'compound' },
   { pattern: 'horizontal_push', kind: 'compound' },
-  { pattern: 'horizontal_pull', kind: 'compound' },
+  { pattern: 'vertical_pull', kind: 'compound' },
   { pattern: 'hinge', kind: 'compound', optional: true },
-  { pattern: 'vertical_push', kind: 'compound', optional: true },
-  { pattern: 'core', kind: 'isolation', optional: true },
+  { pattern: 'vertical_push', kind: 'compound', optional: true, sets: 2 },
+  { pattern: 'elbow_extension', kind: 'isolation', optional: true },
+  { pattern: 'core', kind: 'isolation', optional: true, preferVideo: true },
 ];
 
 const UPPER: SlotSpec[] = [
@@ -432,6 +444,9 @@ const slotsForGoal = (goal: string, dayName: string, shape: SessionShape, focusA
 
   const built = specs.map((spec, i) => ({
     ...rx[spec.kind],
+    // A slot with its own set count keeps it whatever the goal prescribes.
+    ...(spec.sets !== undefined ? { setsMin: spec.sets, setsMax: spec.sets } : {}),
+    ...(spec.preferVideo ? { preferVideo: true } : {}),
     id: `slot-${i}`, // placeholder — the caller (single- or combined-blueprint) assigns the real, namespaced id
     movementPattern: spec.pattern,
     priority: i + 1,
@@ -593,6 +608,9 @@ export const SCORING = {
   // repeat is still picked over no exercise at all when the library has only
   // one candidate for the pattern.
   usedEarlierInWeek: -40,
+  // A slot that asks for a video (the abs) takes one over any other candidate
+  // for it, and otherwise falls back to whatever the library has.
+  preferredVideo: 50,
   // An exercise that trains an area the client asked to focus on. Smaller
   // than usedEarlierInWeek, so a focus never brings back the same exercise
   // every day when there is an alternative.
@@ -622,6 +640,7 @@ export const scoreCandidate = (
   // filtered out — it just loses the tie to anything the client hasn't done
   // yet this week.
   if (usedEarlierInWeek.has(ex.id)) score += SCORING.usedEarlierInWeek;
+  if (slot.preferVideo && ex.exerciseType === 'video') score += SCORING.preferredVideo;
   const focus = focusMusclesOf(profile.focusAreas);
   if ((ex.primaryMuscles || []).some(m => focus.has(m))) score += SCORING.focusMuscle;
   return score;
@@ -680,10 +699,13 @@ export const estimateExerciseSeconds = (sets: number, reps: number, restSeconds:
 // callers keep their previous behaviour; the generator passes the real
 // warm-up + cooldown for the session's tier.
 export const estimateDayMinutes = (
-  exercises: { sets: number; reps: number; restSeconds: number }[],
+  // `fixedMinutes` is for something that runs a set length however it is done,
+  // such as a follow-along video, in place of counting sets and reps.
+  exercises: { sets: number; reps: number; restSeconds: number; fixedMinutes?: number }[],
   bookendMinutes: number = TIMING.warmupMinutes,
 ): number => {
-  const seconds = exercises.reduce((a, e) => a + estimateExerciseSeconds(e.sets, e.reps, e.restSeconds), 0);
+  const seconds = exercises.reduce((a, e) =>
+    a + (e.fixedMinutes !== undefined ? e.fixedMinutes * 60 : estimateExerciseSeconds(e.sets, e.reps, e.restSeconds)), 0);
   return Math.round(seconds / 60) + bookendMinutes;
 };
 
@@ -769,6 +791,23 @@ const buildExercise = (
   profile: GenerationProfile,
   idSuffix: string,
 ): Exercise => {
+  // A follow-along video (the abs) is watched and followed, not counted in
+  // sets: it is timed by its own length, like the cardio.
+  if (le.exerciseType === 'video') {
+    return {
+      id: `gex-${idSuffix}`,
+      name: le.name,
+      targetMuscle: le.targetMuscle || 'Full body',
+      slotIntentId: slot.id,
+      exerciseInstanceId: `${slot.id}:${le.id}`,
+      sets: 0,
+      reps: '',
+      isCardio: true,
+      cardioMinutes: videoMinutesOf(le),
+      equipmentId: le.equipmentId || 'manual',
+      libraryExerciseId: le.id,
+    };
+  }
   const { sets, reps, restSeconds } = prescriptionFor(slot, profile);
   const setDetails: SetDetail[] = Array.from({ length: sets }, () => ({
     reps: String(reps),
@@ -1127,6 +1166,7 @@ export const generatePlan = (
     let zoneMinutes = zoneLibraryExercise ? zoneTarget : 0;
     const availableForWeights = () => trainingBudget - zoneMinutes;
     const measure = () => estimateDayMinutes(picked.map(p => {
+      if (p.le.exerciseType === 'video') return { sets: 0, reps: 0, restSeconds: 0, fixedMinutes: videoMinutesOf(p.le) };
       const { sets, reps, restSeconds } = prescriptionFor(p.slot, profile);
       return { sets, reps, restSeconds };
     }), 0);
@@ -1357,8 +1397,8 @@ export const validatePlan = (
       if (seen.has(le.id)) errors.push(`"${le.name}" appears twice in "${day.name}"`);
       seen.add(le.id);
 
-      // A zone-2 block is timed, not counted in sets.
-      if (!ex.finisher && (!ex.setDetails || ex.setDetails.length === 0)) {
+      // A zone-2 block and a follow-along video are timed, not counted in sets.
+      if (!ex.finisher && !ex.isCardio && (!ex.setDetails || ex.setDetails.length === 0)) {
         errors.push(`"${ex.name}" in "${day.name}" has no sets`);
       }
     });
@@ -1378,6 +1418,7 @@ export const validatePlan = (
       sets: ex.setDetails?.length || ex.sets || 0,
       reps: parseInt(ex.setDetails?.[0]?.reps || '0', 10) || 0,
       restSeconds: ex.setDetails?.[0]?.restSec ?? 60,
+      ...(ex.isCardio ? { fixedMinutes: ex.cardioMinutes || 0 } : {}),
     })), warmupMinutes + cooldownMinutes + zoneMinutes);
     if (minutes > profile.sessionMinutes) {
       errors.push(`"${day.name}" is ${minutes} min, over the ${profile.sessionMinutes} min target`);

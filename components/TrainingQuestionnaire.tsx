@@ -371,7 +371,7 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
           </div>
           {chosenType && (
             <div>
-              <FieldLabel required hint={chosenType.goals.length > 1 ? 'pick one or both' : undefined}>What's your goal?</FieldLabel>
+              <FieldLabel required hint={chosenType.goals.length > 2 ? 'pick one or more' : chosenType.goals.length > 1 ? 'pick one or both' : undefined}>What's your goal?</FieldLabel>
               <div className="grid grid-cols-2 gap-2">
                 {chosenType.goals.map(g => (
                   <GoalCard key={g.aim} label={g.label} hint={g.hint} selected={form.goals.includes(g.aim)} onClick={() => toggleGoal(g.aim)} />

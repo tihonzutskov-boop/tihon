@@ -798,8 +798,9 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
         // The warm-up and cooldown ride along in the day so they can be found
         // on the map, but they are not training work: no progression, no
         // weekly volume, no add-set. Passed through exactly as authored. The
-        // zone-2 cardio block is timed rather than counted, so the same holds.
-        if (ex.bookend || ex.finisher) {
+        // zone-2 cardio block, and a follow-along video, are timed rather than
+        // counted, so the same holds.
+        if (ex.bookend || ex.finisher || ex.isCardio) {
           resolved.push({ dayIdx, key, muscles: [], baseSets: 0,
             decision: { action: 'maintain', rule: '', reason: '' }, build: () => ex });
           return;
