@@ -17,14 +17,20 @@ const RANGES: { key: Range; label: string }[] = [
   { key: 'all', label: 'All time' },
 ];
 
+// Name and bar stack on their own lines rather than sharing one row — a side
+// panel this narrow (320px) left the name only ~20px once the bar, uses and
+// trainees columns took their fixed widths, which is why "Functional zone"
+// and "Free Weights" both came out as "F...".
 const RankedRow: React.FC<{ name: string; uses: number; trainees: number; maxUses: number }> = ({ name, uses, trainees, maxUses }) => (
-  <div className="flex items-center gap-3 py-2">
-    <span className="flex-1 text-xs font-semibold text-slate-300 truncate">{name}</span>
-    <div className="w-24 h-1.5 rounded-full bg-slate-800 overflow-hidden flex-shrink-0">
+  <div className="py-2">
+    <div className="flex items-baseline justify-between gap-2 mb-1.5">
+      <span className="text-xs font-semibold text-slate-300 truncate min-w-0">{name}</span>
+      <span className="text-[11px] font-mono text-slate-400 flex-shrink-0">{uses} uses</span>
+    </div>
+    <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
       <div className="h-full rounded-full" style={{ width: `${maxUses > 0 ? (uses / maxUses) * 100 : 0}%`, backgroundColor: heatColor(maxUses > 0 ? uses / maxUses : 0) }} />
     </div>
-    <span className="text-[11px] font-mono text-slate-400 w-14 text-right flex-shrink-0">{uses} uses</span>
-    <span className="text-[10px] text-slate-600 w-20 text-right flex-shrink-0 hidden sm:inline">{trainees} {trainees === 1 ? 'trainee' : 'trainees'}</span>
+    <span className="block text-[10px] text-slate-600 mt-1">{trainees} {trainees === 1 ? 'trainee' : 'trainees'}</span>
   </div>
 );
 

@@ -932,28 +932,34 @@ const GymMap: React.FC<GymMapProps> = ({
                 weather heatmap), so a busy zone reads as a hot spot bleeding
                 into its surroundings instead of a block of solid color. */}
             {!isThumbnail && zoneHeat && (
-              <>
-                <filter id="heatGlow" x="-100%" y="-100%" width="300%" height="300%">
-                  <feGaussianBlur stdDeviation="18" />
-                </filter>
-                {/* Keeps a glow from a zone against the outer wall bleeding
-                    into the page outside the building, the way the overshoot
-                    otherwise would. */}
-                <clipPath id="heatFloorClip">
-                  <rect x={dimensions.x || 0} y={dimensions.y || 0} width={dimensions.width} height={dimensions.height} />
-                </clipPath>
-              </>
+              // Keeps a glow from a zone against the outer wall bleeding into
+              // the page outside the building, the way the overshoot otherwise
+              // would.
+              <clipPath id="heatFloorClip">
+                <rect x={dimensions.x || 0} y={dimensions.y || 0} width={dimensions.width} height={dimensions.height} />
+              </clipPath>
             )}
             {!isThumbnail && zoneHeat && zones.map(z => {
               const entry = zoneHeat[z.id];
               if (!entry) return null;
               const color = heatColor(entry.intensity);
+              // The blur has to scale with this zone's own size, not a fixed
+              // pixel radius — an admin draws every gym at whatever coordinate
+              // scale their floor plan happens to use, and a radius tuned for
+              // one gym's zone sizes is either imperceptible or big enough to
+              // swallow the zone whole on another's.
+              const blurRadius = Math.max(3, Math.min(z.width, z.height) * 0.1);
               return (
-                <radialGradient key={`heatgrad-${z.id}`} id={`heatgrad-${z.id}`}>
-                  <stop offset="0%" stopColor={color} stopOpacity="0.95" />
-                  <stop offset="55%" stopColor={color} stopOpacity="0.55" />
-                  <stop offset="100%" stopColor={color} stopOpacity="0" />
-                </radialGradient>
+                <React.Fragment key={`heatdefs-${z.id}`}>
+                  <filter id={`heatglow-${z.id}`} x="-100%" y="-100%" width="300%" height="300%">
+                    <feGaussianBlur stdDeviation={blurRadius} />
+                  </filter>
+                  <radialGradient id={`heatgrad-${z.id}`}>
+                    <stop offset="0%" stopColor={color} stopOpacity="0.95" />
+                    <stop offset="55%" stopColor={color} stopOpacity="0.55" />
+                    <stop offset="100%" stopColor={color} stopOpacity="0" />
+                  </radialGradient>
+                </React.Fragment>
               );
             })}
           </defs>
@@ -1623,7 +1629,7 @@ const GymMap: React.FC<GymMapProps> = ({
                             cx={zone.x + zone.width / 2} cy={zone.y + zone.height / 2}
                             rx={gw / 2} ry={gh / 2}
                             fill={`url(#heatgrad-${zone.id})`}
-                            filter="url(#heatGlow)"
+                            filter={`url(#heatglow-${zone.id})`}
                             clipPath="url(#heatFloorClip)"
                             style={{ mixBlendMode: 'screen', opacity: zoneOpacity }}
                             className="pointer-events-none transition-opacity duration-300"
