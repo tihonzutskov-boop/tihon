@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { LibraryExercise, TutorialStep } from '../types';
 import { api } from '../services/api';
-import { X, UploadCloud, Play, Pause, Plus, ArrowUp, ArrowDown, Trash2, Timer } from 'lucide-react';
+import { X, UploadCloud, Play, Pause, Plus, ArrowUp, ArrowDown, Trash2, Timer, AlertTriangle } from 'lucide-react';
+import { heavyVideoWarning } from '../utils/videoSize';
 
 interface EditTutorialModalProps {
   exercise: LibraryExercise;
@@ -335,6 +336,14 @@ const EditTutorialModal: React.FC<EditTutorialModalProps> = ({ exercise, onClose
               </div>
             )}
             <input type="file" ref={fileInputRef} onChange={e => handleVideoFile(e.target.files?.[0])} accept="video/*" className="hidden" />
+            {/* Said as soon as the file is chosen, before it is uploaded: a heavy video
+                is slow for every client who opens the tutorial, and cheaper to fix now. */}
+            {pendingFile && heavyVideoWarning(pendingFile.size) && (
+              <div role="alert" className="mt-2 flex gap-2 rounded-xl border border-orange-500/30 bg-orange-500/10 px-3 py-2.5">
+                <AlertTriangle className="w-4 h-4 text-orange-400 flex-shrink-0 mt-px" aria-hidden="true" />
+                <p className="text-[11px] text-orange-300 leading-relaxed">{heavyVideoWarning(pendingFile.size)}</p>
+              </div>
+            )}
             <p className="text-[10px] text-slate-500 leading-relaxed mt-1.5">
               Play or drag through the timeline, then hit &ldquo;Mark&rdquo; on a step below to set exactly where it should pause.
             </p>

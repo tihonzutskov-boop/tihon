@@ -8,6 +8,8 @@ import { selectBookendExercise } from '../utils/planGeneration';
 import { getExerciseRequiredEquipmentIds } from '../utils/equipmentMatcher';
 import { nearestMatPickup, zoneCentre, matPickupMessage } from '../utils/matPickup';
 import { getYouTubeEmbedUrl } from '../utils/youtubeEmbed';
+import { upcomingTutorialUrls } from '../utils/videoLoad';
+import NativeVideo, { VideoPreloader } from './NativeVideo';
 
 interface GuidedSessionProps {
   day: WorkoutDay;
@@ -545,6 +547,8 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
 
   return (
     <div className="fixed inset-0 z-[100] bg-slate-950 text-slate-200 flex flex-col overflow-hidden">
+      {/* The next exercise's tutorial video, loading while this one is read. */}
+      <VideoPreloader urls={upcomingTutorialUrls(exercises, libraryExercises, exIdx + 1, 1)} />
       {/* Locate full-screen map overlay */}
       {stage.key === 'locate' && (
         <div className="absolute inset-0 z-20 bg-slate-950 flex flex-col">
@@ -705,9 +709,9 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                   visible; only the compact step indicator stays as a
                   corner overlay since it doesn't obscure anything. */}
               <div className="relative aspect-video border-b border-slate-800 bg-black overflow-hidden">
-                <video
-                  ref={tutorialVideoRef}
-                  src={mediaExercise!.tutorialVideoUrl}
+                <NativeVideo
+                  videoRef={tutorialVideoRef}
+                  src={mediaExercise!.tutorialVideoUrl!}
                   muted
                   playsInline
                   className="w-full h-full object-cover"
@@ -1273,7 +1277,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
             <div className="flex-1 overflow-y-auto">
               <div className="relative aspect-video bg-black">
                 {media.source === 'native' ? (
-                  <video src={media.videoUrl} controls playsInline className="w-full h-full object-cover" />
+                  <NativeVideo src={media.videoUrl} controls playsInline className="w-full h-full object-cover" />
                 ) : (
                   <iframe
                     src={getYouTubeEmbedUrl(media.videoUrl)}

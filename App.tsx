@@ -12,6 +12,8 @@ import ExerciseLibrary from './components/ExerciseLibrary';
 import GuidedSession from './components/GuidedSession';
 import SessionCheckIn from './components/SessionCheckIn';
 import { isFirstWeek } from './utils/firstWeek';
+import { VideoPreloader } from './components/NativeVideo';
+import { upcomingTutorialUrls } from './utils/videoLoad';
 import ExerciseTutorials from './components/ExerciseTutorials';
 import { GymZone, WorkoutPlan, Exercise, Gym, GymMachine, User, Language, WorkoutDay, EquipmentItem, LibraryExercise, QuestionnaireAnswers } from './types';
 import { DEFAULT_GYM } from './constants';
@@ -437,6 +439,11 @@ const App: React.FC = () => {
            onOpenTutorials={() => setTutorialsOpen(true)}
            lang={lang}
          />
+         {/* The check-in and the first-week reminder take a while to read: the first
+             exercise's tutorial video loads in that time rather than after it. */}
+         {sessionPhase === 'pre' && workoutPlan.days[activeDayIndex] && (
+           <VideoPreloader urls={upcomingTutorialUrls(workoutPlan.days[activeDayIndex].exercises, libraryExercises, 0, 1)} />
+         )}
          {sessionPhase === 'pre' && workoutPlan.days[activeDayIndex] && (
            <SessionCheckIn
              phase="pre"

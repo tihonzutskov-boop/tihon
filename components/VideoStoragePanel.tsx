@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { HardDrive, Loader2, CloudUpload, AlertTriangle, Check, RefreshCw } from 'lucide-react';
 import { api } from '../services/api';
+import { heaviestVideos, formatVideoSize } from '../utils/videoSize';
 
 /**
  * Moving tutorial videos out of the database.
@@ -92,6 +93,7 @@ const VideoStoragePanel: React.FC = () => {
   }
 
   const onObjectStorage = state.storingNewVideosIn === 'object storage';
+  const heavy = heaviestVideos<StorageState['videos'][number]>(state.videos || []);
 
   return (
     <div className="m-5 bg-slate-900 border border-slate-800 rounded-2xl p-5">
@@ -139,6 +141,26 @@ const VideoStoragePanel: React.FC = () => {
         <div className="mb-4 p-3 rounded-xl bg-orange-500/10 border border-orange-500/30 text-[11px] text-orange-300">
           Object storage is not configured, so videos are still being written into the database — which is
           what filled its disk. Set the R2 variables before migrating.
+        </div>
+      )}
+
+      {heavy.length > 0 && (
+        <div className="mb-4 rounded-xl border border-orange-500/30 bg-orange-500/[0.06] p-3.5">
+          <p className="text-[11px] font-bold text-orange-300 mb-1">
+            {heavy.length === 1 ? '1 video is' : `${heavy.length} videos are`} too heavy for a phone
+          </p>
+          <p className="text-[10.5px] text-slate-400 leading-relaxed mb-2.5">
+            These take the longest to load for clients, wherever they are stored. Exporting each at 720p and
+            uploading it again makes them load much faster.
+          </p>
+          <ul className="space-y-1">
+            {heavy.map(v => (
+              <li key={v.id} className="flex items-baseline justify-between gap-3 text-[11px]">
+                <span className="text-slate-300 truncate">{v.name}</span>
+                <span className="font-bold text-orange-400 tabular-nums flex-shrink-0">{formatVideoSize(v.bytes)}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

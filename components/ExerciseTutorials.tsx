@@ -4,6 +4,7 @@ import { api } from '../services/api';
 import { getExerciseLocations } from '../utils/exerciseMatcher';
 import { muscleColor } from './ExerciseLibrary';
 import EditTutorialModal from './EditTutorialModal';
+import NativeVideo from './NativeVideo';
 import { ArrowLeft, Search, Play, X, MapPin, Edit3, Flame, ShieldCheck } from 'lucide-react';
 
 interface ExerciseTutorialsProps {
@@ -161,7 +162,9 @@ const ExerciseTutorials: React.FC<ExerciseTutorialsProps> = ({
             <div className="flex-1 overflow-y-auto md:flex">
               <div className="md:w-[46%] flex-shrink-0 border-b md:border-b-0 md:border-r border-slate-800 bg-slate-950/60">
                 {ex.tutorialVideoUrl ? (
-                  <video src={ex.tutorialVideoUrl} controls className="w-full aspect-video bg-black" />
+                  <div className="relative">
+                    <NativeVideo key={ex.id} src={ex.tutorialVideoUrl} controls className="w-full aspect-video bg-black" />
+                  </div>
                 ) : (
                   <div className="w-full aspect-video flex flex-col items-center justify-center gap-2.5 text-center px-6 bg-gradient-to-br from-slate-900 to-slate-950">
                     <div className="w-12 h-12 rounded-full bg-lime-500/10 border border-lime-500/40 flex items-center justify-center text-lime-400">
