@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { nextVideoLoadPhase, canPreload, describeVideoError, SLOW_AFTER_MS, type VideoLoadPhase, type VideoLoadEvent } from '../utils/videoLoad';
+import { diagnoseVideo, summariseDiagnosis } from '../utils/videoDiagnose';
 
 interface NativeVideoProps extends Omit<React.VideoHTMLAttributes<HTMLVideoElement>, 'ref' | 'src'> {
   src: string;
@@ -19,6 +20,13 @@ const NativeVideo: React.FC<NativeVideoProps> = ({ src, videoRef, className, ...
   const [phase, setPhase] = useState<VideoLoadPhase>('loading');
   // Why it failed, as the browser reports it, so a screenshot says what went wrong.
   const [errorCode, setErrorCode] = useState<number | null>(null);
+  // What the server actually returned for the file, looked up on request so a
+  // failure can be told apart: missing, refused, not a video, or unplayable.
+  const [details, setDetails] = useState<string[] | 'checking' | null>(null);
+  const showDetails = async () => {
+    setDetails('checking');
+    setDetails(summariseDiagnosis(await diagnoseVideo(src, window.location.origin)));
+  };
   // Bumped to run the effect again on a retry, which restarts the slow timer.
   const [attempt, setAttempt] = useState(0);
 
@@ -52,6 +60,7 @@ const NativeVideo: React.FC<NativeVideoProps> = ({ src, videoRef, className, ...
   }, [src, attempt, ref]);
 
   const retry = () => {
+    setDetails(null);
     setPhase(p => nextVideoLoadPhase(p, 'retry'));
     setAttempt(a => a + 1);
     ref.current?.load();
@@ -87,6 +96,17 @@ const NativeVideo: React.FC<NativeVideoProps> = ({ src, videoRef, className, ...
             >
               <RefreshCw className="w-3 h-3" aria-hidden="true" /> Try again
             </button>
+          )}
+          {phase === 'error' && details === null && (
+            <button type="button" onClick={showDetails} className="text-[10.5px] font-semibold text-slate-400 hover:text-slate-200 underline">
+              Details
+            </button>
+          )}
+          {phase === 'error' && details === 'checking' && <p className="text-[10.5px] text-slate-400">Checking the file…</p>}
+          {phase === 'error' && Array.isArray(details) && (
+            <ul className="mt-1 max-w-[300px] space-y-0.5 text-left font-mono text-[10px] leading-snug text-slate-400">
+              {details.map((line, i) => <li key={i} className={line.startsWith('So:') ? 'text-lime-300 font-bold' : ''}>{line}</li>)}
+            </ul>
           )}
         </div>
       )}
