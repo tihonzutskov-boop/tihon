@@ -85,6 +85,69 @@ describe('sendDataUri', () => {
     expect(res.headers['Cache-Control']).toContain('immutable');
   });
 
+  describe('byte ranges, which Safari needs before it will play a video', () => {
+    // 'abcdefghij' as a video data URI: ten bytes make the arithmetic readable.
+    const TEN = 'data:video/mp4;base64,' + Buffer.from('abcdefghij').toString('base64');
+    const send = (range) => { const res = fakeRes(); sendDataUri(res, TEN, range); return res; };
+
+    it('answers a range with 206, the slice, and a Content-Range', () => {
+      const res = send('bytes=2-5');
+      expect(res.statusCode).toBe(206);
+      expect(res.body.toString()).toBe('cdef');
+      expect(res.headers['Content-Range']).toBe('bytes 2-5/10');
+      expect(res.headers['Content-Length']).toBe('4');
+    });
+
+    it("answers Safari's first probe, bytes=0-1, with two bytes and a 206", () => {
+      const res = send('bytes=0-1');
+      expect(res.statusCode).toBe(206);
+      expect(res.body.toString()).toBe('ab');
+      expect(res.headers['Content-Range']).toBe('bytes 0-1/10');
+    });
+
+    it('answers an open-ended range from the start point to the end', () => {
+      const res = send('bytes=7-');
+      expect(res.statusCode).toBe(206);
+      expect(res.body.toString()).toBe('hij');
+      expect(res.headers['Content-Range']).toBe('bytes 7-9/10');
+    });
+
+    it('answers a suffix range with the last bytes', () => {
+      const res = send('bytes=-3');
+      expect(res.body.toString()).toBe('hij');
+      expect(res.headers['Content-Range']).toBe('bytes 7-9/10');
+    });
+
+    it('stops a range that runs past the end at the end', () => {
+      const res = send('bytes=8-500');
+      expect(res.body.toString()).toBe('ij');
+      expect(res.headers['Content-Range']).toBe('bytes 8-9/10');
+    });
+
+    it('refuses a range that starts past the end with 416 and the size', () => {
+      const res = send('bytes=50-60');
+      expect(res.statusCode).toBe(416);
+      expect(res.headers['Content-Range']).toBe('bytes */10');
+      expect(res.body).toBeUndefined();
+    });
+
+    it('sends the whole thing with a 200 when no range is asked for, and says ranges are accepted', () => {
+      const res = send(undefined);
+      expect(res.statusCode).toBe(200);
+      expect(res.body.toString()).toBe('abcdefghij');
+      expect(res.headers['Accept-Ranges']).toBe('bytes');
+      expect(res.headers['Content-Range']).toBeUndefined();
+    });
+
+    it('sends the whole thing when the range is one it does not understand', () => {
+      for (const bad of ['bytes=0-1,4-5', 'items=0-1', 'bytes=', 'garbage']) {
+        const res = send(bad);
+        expect(res.statusCode, bad).toBe(200);
+        expect(res.body.toString(), bad).toBe('abcdefghij');
+      }
+    });
+  });
+
   it('404s on an empty or malformed column instead of serving garbage', () => {
     for (const bad of ['', null, undefined, 'not-a-data-uri', 'data:image/gif,notbase64']) {
       const res = fakeRes();

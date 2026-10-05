@@ -9,6 +9,21 @@
 export type VideoLoadPhase = 'loading' | 'ready' | 'slow' | 'error';
 export type VideoLoadEvent = 'start' | 'canplay' | 'waiting' | 'slowTimer' | 'error' | 'retry';
 
+/**
+ * A plain reason for a failed video, from the browser's error code. Safari
+ * reports "not supported" (4) for a file it cannot open at all, which includes
+ * one the server would not hand over properly, so it is worded to match.
+ */
+export const describeVideoError = (code: number | null | undefined): string | null => {
+  switch (code) {
+    case 1: return 'The download was stopped.';
+    case 2: return 'A network problem interrupted the download.';
+    case 3: return 'The video file could not be read.';
+    case 4: return 'The file could not be opened here. It may be missing, or in a format this browser cannot play.';
+    default: return null;
+  }
+};
+
 /** How long a video may load before the player says it is taking longer than usual. */
 export const SLOW_AFTER_MS = 6000;
 

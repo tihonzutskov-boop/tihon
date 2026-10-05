@@ -14,13 +14,31 @@
 // the long cache lifetime below can never serve a stale one.
 export const mediaUrl = (kind, idPath, version) => `/api/${kind}/${idPath}?v=${version}`;
 
-export const sendDataUri = (res, dataUri) => {
+// Honours a Range request. Safari will not play a video from a server that
+// answers its "bytes=0-1" probe with the whole file and a 200: it needs a 206 and
+// a Content-Range, or it reports the video as unplayable. Chrome tolerates the
+// whole file, which is how every video stored this way kept working for anyone
+// not on Safari. An image is never sent a Range, so for one nothing changes.
+export const sendDataUri = (res, dataUri, rangeHeader) => {
   const match = /^data:([\w.+-]+\/[\w.+-]+);base64,(.*)$/s.exec(dataUri || '');
   if (!match) return res.status(404).json({ error: 'Media not found' });
   const buffer = Buffer.from(match[2], 'base64');
   res.set('Content-Type', match[1]);
-  res.set('Content-Length', String(buffer.length));
+  res.set('Accept-Ranges', 'bytes');
   res.set('Cache-Control', 'private, max-age=31536000, immutable');
+
+  const range = parseRange(rangeHeader, buffer.length);
+  if (range?.unsatisfiable) {
+    res.set('Content-Range', `bytes */${buffer.length}`);
+    return res.status(416).end();
+  }
+  if (range) {
+    res.set('Content-Range', `bytes ${range.start}-${range.end}/${buffer.length}`);
+    res.set('Content-Length', String(range.end - range.start + 1));
+    res.status(206);
+    return res.end(buffer.subarray(range.start, range.end + 1));
+  }
+  res.set('Content-Length', String(buffer.length));
   return res.end(buffer);
 };
 
@@ -36,7 +54,7 @@ export const serveMediaColumn = (pool, table, column) => async (req, res) => {
       [req.params.id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
-    return sendDataUri(res, result.rows[0].media);
+    return sendDataUri(res, result.rows[0].media, req.headers?.range);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Database error fetching media' });
@@ -205,7 +223,7 @@ export const serveBinaryColumn = (pool, table, dataColumn, typeColumn, fallbackT
         `SELECT ${fallbackTextColumn} AS media FROM ${table} WHERE id = $1`,
         [req.params.id]
       );
-      return sendDataUri(res, legacy.rows[0]?.media);
+      return sendDataUri(res, legacy.rows[0]?.media, req.headers?.range);
     }
 
     const contentType = meta.rows[0].mime || 'application/octet-stream';

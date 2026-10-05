@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
-import { nextVideoLoadPhase, canPreload, SLOW_AFTER_MS, type VideoLoadPhase, type VideoLoadEvent } from '../utils/videoLoad';
+import { nextVideoLoadPhase, canPreload, describeVideoError, SLOW_AFTER_MS, type VideoLoadPhase, type VideoLoadEvent } from '../utils/videoLoad';
 
 interface NativeVideoProps extends Omit<React.VideoHTMLAttributes<HTMLVideoElement>, 'ref' | 'src'> {
   src: string;
@@ -17,6 +17,8 @@ const NativeVideo: React.FC<NativeVideoProps> = ({ src, videoRef, className, ...
   const ownRef = useRef<HTMLVideoElement>(null);
   const ref = videoRef ?? ownRef;
   const [phase, setPhase] = useState<VideoLoadPhase>('loading');
+  // Why it failed, as the browser reports it, so a screenshot says what went wrong.
+  const [errorCode, setErrorCode] = useState<number | null>(null);
   // Bumped to run the effect again on a retry, which restarts the slow timer.
   const [attempt, setAttempt] = useState(0);
 
@@ -29,6 +31,8 @@ const NativeVideo: React.FC<NativeVideoProps> = ({ src, videoRef, className, ...
       timer = setTimeout(() => setPhase(p => nextVideoLoadPhase(p, 'slowTimer')), SLOW_AFTER_MS);
     };
     const on = (event: VideoLoadEvent) => () => {
+      if (event === 'error') setErrorCode(video.error?.code ?? null);
+      else if (event === 'start' || event === 'canplay') setErrorCode(null);
       setPhase(p => nextVideoLoadPhase(p, event));
       if (event === 'start' || event === 'waiting') arm();
       if (event === 'canplay' || event === 'error') clearTimeout(timer);
@@ -63,7 +67,10 @@ const NativeVideo: React.FC<NativeVideoProps> = ({ src, videoRef, className, ...
           className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/70 px-6 text-center"
         >
           {phase === 'error' ? (
-            <p className="text-xs font-bold text-red-300">Couldn't load this video.</p>
+            <>
+              <p className="text-xs font-bold text-red-300">Couldn't load this video.</p>
+              {describeVideoError(errorCode) && <p className="text-[10.5px] text-slate-400 max-w-[260px] leading-snug">{describeVideoError(errorCode)}</p>}
+            </>
           ) : (
             <>
               <Loader2 className="w-6 h-6 text-lime-400 animate-spin" aria-hidden="true" />

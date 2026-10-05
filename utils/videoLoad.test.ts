@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { nextVideoLoadPhase, canPreload, upcomingTutorialUrls, SLOW_AFTER_MS, type VideoLoadPhase, type VideoLoadEvent } from './videoLoad';
+import { nextVideoLoadPhase, canPreload, upcomingTutorialUrls, describeVideoError, SLOW_AFTER_MS, type VideoLoadPhase, type VideoLoadEvent } from './videoLoad';
 
 const run = (events: VideoLoadEvent[], from: VideoLoadPhase = 'loading') =>
   events.reduce(nextVideoLoadPhase, from);
@@ -95,5 +95,17 @@ describe('which videos to load ahead', () => {
   it('copes with a negative start and an empty plan', () => {
     expect(upcomingTutorialUrls(exercises, library, -3, 1)).toEqual(['/v/a']);
     expect(upcomingTutorialUrls([], library, 0, 2)).toEqual([]);
+  });
+});
+
+describe('the reason a video failed', () => {
+  it('says something plain for each error the browser reports', () => {
+    for (const code of [1, 2, 3, 4]) expect(describeVideoError(code)!.length, String(code)).toBeGreaterThan(15);
+    expect(describeVideoError(2)).toMatch(/network/i);
+    expect(describeVideoError(4)).toMatch(/missing|format/i);
+  });
+
+  it('says nothing when there is no code to go on', () => {
+    for (const code of [0, 5, null, undefined]) expect(describeVideoError(code as any), String(code)).toBeNull();
   });
 });
