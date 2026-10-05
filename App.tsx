@@ -11,6 +11,7 @@ import EquipmentLibrary from './components/EquipmentLibrary';
 import ExerciseLibrary from './components/ExerciseLibrary';
 import GuidedSession from './components/GuidedSession';
 import SessionCheckIn from './components/SessionCheckIn';
+import { isFirstWeek } from './utils/firstWeek';
 import ExerciseTutorials from './components/ExerciseTutorials';
 import { GymZone, WorkoutPlan, Exercise, Gym, GymMachine, User, Language, WorkoutDay, EquipmentItem, LibraryExercise, QuestionnaireAnswers } from './types';
 import { DEFAULT_GYM } from './constants';
@@ -87,10 +88,11 @@ const App: React.FC = () => {
   // they should see is the plan plus whatever their training log justifies
   // changing. The stored plan is the authored intent and stays untouched.
   const loadMyPlan = async () => {
-    const { plan, needsReview } = await api.fetchMyAdaptedPlan();
+    const { plan, needsReview, weeksTrained } = await api.fetchMyAdaptedPlan();
     if (plan && plan.days.length > 0) {
       setWorkoutPlan(prev => ({ ...prev, name: plan.name, days: plan.days }));
       setPlanNeedsReview(needsReview);
+      setPlanWeeksTrained(weeksTrained);
       return;
     }
     // Falls back to the stored plan if adaptation is unavailable — a client
@@ -132,6 +134,9 @@ const App: React.FC = () => {
   // H-1: past week 12 the beginner rules are no longer evidenced, so the engine
   // stops adapting and asks for a decision rather than extrapolating.
   const [planNeedsReview, setPlanNeedsReview] = useState(false);
+  // Whole weeks since the plan began; null until the server has said, so the
+  // first-week note is never shown on a guess.
+  const [planWeeksTrained, setPlanWeeksTrained] = useState<number | null>(null);
   const [tutorialsOpen, setTutorialsOpen] = useState(false);
   // A write that fails has to say so. Silence reads as success, and by the
   // time the client notices, the thing they did is gone.
@@ -437,6 +442,7 @@ const App: React.FC = () => {
              phase="pre"
              dayName={workoutPlan.days[activeDayIndex].name}
              planDayId={workoutPlan.days[activeDayIndex].id}
+             firstWeek={isFirstWeek(planWeeksTrained)}
              saving={savingCheckIn}
              onCancel={() => setSessionPhase('idle')}
              onProceed={async (checkIn, verdict) => {

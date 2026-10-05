@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Clock, Loader2, ShieldAlert, Sunrise } from 'lucide-react';
 import { describeCompleted } from '../utils/whenDone';
+import { FIRST_WEEK_REMINDER } from '../utils/firstWeek';
 import {
   verdictForCheckIn,
   type IllnessState, type SleepQuality, type Soreness,
@@ -12,6 +13,8 @@ interface Props {
   phase: 'pre' | 'post';
   dayName: string;
   planDayId?: string | null;
+  /** Pre-session only: the plan is in its first week, so a short reminder comes just before the exercises. */
+  firstWeek?: boolean;
   /** Post-session only: when the server recorded the session as finished. */
   completedAt?: string | null;
   /** Post-session only: what the session logged, shown back before asking. */
@@ -72,7 +75,7 @@ const Shell: React.FC<{ dayName: string; badge: string; children: React.ReactNod
 );
 
 const SessionCheckIn: React.FC<Props> = ({
-  phase, dayName, planDayId, completedAt, summary, onProceed, onSubmitPost, onCancel, saving,
+  phase, dayName, planDayId, firstWeek, completedAt, summary, onProceed, onSubmitPost, onCancel, saving,
 }) => {
   // Pre-session. Defaults sit at the middle of each scale so a client with
   // nothing to report never has to answer anything — they just start.
@@ -82,6 +85,15 @@ const SessionCheckIn: React.FC<Props> = ({
   const [wasIll, setWasIll] = useState(false);
   const [illness, setIllness] = useState<IllnessState>('recovered');
   const [verdict, setVerdict] = useState<ReadinessVerdict | null>(null);
+  // The check-in is done and the exercises are next. In the first week a
+  // reminder comes between the two, so it is read when it is about to matter.
+  // The reminder is one point at a time, so each is read rather than skimmed.
+  const [reminderFor, setReminderFor] = useState<{ pre: PreSessionCheckIn; verdict: ReadinessVerdict } | null>(null);
+  const [reminderStep, setReminderStep] = useState(0);
+  const proceed = (pre: PreSessionCheckIn, v: ReadinessVerdict) => {
+    if (firstWeek) { setReminderStep(0); setReminderFor({ pre, verdict: v }); }
+    else onProceed?.(pre, v);
+  };
 
   // Post-session.
   const [effort, setEffort] = useState<SessionEffort>('hard');
@@ -212,6 +224,54 @@ const SessionCheckIn: React.FC<Props> = ({
     );
   }
 
+  // --- pre: the first-week reminder, last thing before the exercises --------
+
+  if (reminderFor) {
+    const points = FIRST_WEEK_REMINDER.points;
+    const isLast = reminderStep === points.length - 1;
+    return (
+      <Shell dayName={dayName} badge="First week">
+        <p className="text-[9.5px] font-extrabold uppercase tracking-[0.13em] text-lime-400 mb-1.5">Reminder</p>
+        <h2 className="text-xl font-extrabold text-white mb-1">{FIRST_WEEK_REMINDER.title}</h2>
+        <p className="text-xs text-slate-500 mb-4">{reminderStep + 1} of {points.length}</p>
+        <div
+          className="flex gap-1.5 mb-5"
+          role="progressbar"
+          aria-valuemin={1}
+          aria-valuemax={points.length}
+          aria-valuenow={reminderStep + 1}
+        >
+          {points.map((_, i) => (
+            <span key={i} className={`h-1 flex-1 rounded-full ${i <= reminderStep ? 'bg-lime-500' : 'bg-slate-800'}`} />
+          ))}
+        </div>
+        <p
+          key={reminderStep}
+          className="rounded-2xl border border-lime-500/25 bg-lime-500/[0.06] px-4 py-6 text-[16px] font-semibold text-white leading-relaxed mb-6 min-h-[132px] flex items-center animate-in fade-in duration-200"
+        >
+          {points[reminderStep]}
+        </p>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => (isLast ? onProceed?.(reminderFor.pre, reminderFor.verdict) : setReminderStep(s => s + 1))}
+          className="w-full rounded-xl bg-lime-500 hover:bg-lime-400 disabled:opacity-50 text-slate-950 font-extrabold text-[13.5px] py-3.5 transition-colors flex items-center justify-center gap-2"
+        >
+          {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+          {isLast ? 'Start exercises →' : 'Next →'}
+        </button>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => (reminderStep === 0 ? setReminderFor(null) : setReminderStep(s => s - 1))}
+          className="w-full mt-1 text-[11px] font-semibold text-slate-500 hover:text-slate-300 py-2 transition-colors"
+        >
+          {reminderStep === 0 ? 'Back to check-in' : 'Back'}
+        </button>
+      </Shell>
+    );
+  }
+
   // --- pre: the verdict, once illness has been reported --------------------
 
   if (verdict && verdict.verdict !== 'train') {
@@ -271,7 +331,7 @@ const SessionCheckIn: React.FC<Props> = ({
                 which costs the data the rule depends on. */}
             <button
               type="button"
-              onClick={() => onProceed?.(buildPre(), verdict)}
+              onClick={() => proceed(buildPre(), verdict)}
               className="w-full mt-1 text-[11px] font-semibold text-slate-500 hover:text-slate-300 py-2 transition-colors"
             >
               Train anyway
@@ -282,7 +342,7 @@ const SessionCheckIn: React.FC<Props> = ({
             <button
               type="button"
               disabled={saving}
-              onClick={() => onProceed?.(buildPre(), verdict)}
+              onClick={() => proceed(buildPre(), verdict)}
               className="w-full rounded-xl bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-slate-950 font-extrabold text-[13.5px] py-3.5 transition-colors flex items-center justify-center gap-2"
             >
               {saving && <Loader2 className="w-4 h-4 animate-spin" />}
@@ -310,7 +370,7 @@ const SessionCheckIn: React.FC<Props> = ({
     // as a fatigue signal and starts the session immediately — DELOAD-5 needs
     // persistence before anything acts, so one rough night must not shrink a
     // session the client can perfectly well do.
-    if (v.verdict === 'train') onProceed?.(pre, v);
+    if (v.verdict === 'train') proceed(pre, v);
     else setVerdict(v);
   };
 
