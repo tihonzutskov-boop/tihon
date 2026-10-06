@@ -9,6 +9,7 @@ import { getExerciseRequiredEquipmentIds } from '../utils/equipmentMatcher';
 import { nearestMatPickup, zoneCentre, matPickupMessage } from '../utils/matPickup';
 import { getYouTubeEmbedUrl } from '../utils/youtubeEmbed';
 import { upcomingTutorialUrls } from '../utils/videoLoad';
+import { missingBeforeNext as missingBeforeNextExercise } from '../utils/sessionGate';
 import NativeVideo, { VideoPreloader } from './NativeVideo';
 
 interface GuidedSessionProps {
@@ -446,15 +447,13 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
   // no sets and no effort rating to give, so requiring one would trap the
   // client on a screen with nothing on it to satisfy the requirement.
   //
-  // Bodyweight counts as a weight: the field accepts 0, and asking for it is
-  // the point — "did you add weight to that pull-up" is exactly the thing the
-  // progression rules cannot infer from a blank.
-  const missingBeforeNext: string[] = [];
-  if (stage.key === 'tutorial' && !exercise.isCardio && !exercise.bookend) {
-    if (!allSetsDone) missingBeforeNext.push('tick every set you finished');
-    if (rows.some(r => r.weight.trim() === '')) missingBeforeNext.push('enter the weight for every set (0 if bodyweight)');
-    if (!effortState[exIdx]) missingBeforeNext.push('rate how hard it was');
-  }
+  // The weight is not required. A client who ticks their sets without typing one
+  // has still done the exercise, and the session should not stop for it; with no
+  // weight the log just gets no weight suggestion next time (see sessionGate).
+  const missingBeforeNext: string[] =
+    stage.key === 'tutorial' && !exercise.isCardio && !exercise.bookend
+      ? missingBeforeNextExercise(rows, !!effortState[exIdx])
+      : [];
   const canLeaveExercise = missingBeforeNext.length === 0;
 
   // A Harder/Easier variation can carry its own tutorial two ways: a quick
