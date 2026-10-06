@@ -1,4 +1,4 @@
-import { S3Client, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, DeleteObjectCommand, HeadObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 
 /**
@@ -101,6 +101,25 @@ export const putVideo = async (key, body, contentType) => {
 
   await upload.done();
   return key;
+};
+
+/**
+ * Reads a video (or a byte range of one) through the bucket's own API, with the
+ * server's credentials. This is the way in that does not depend on the public
+ * r2.dev address, which Cloudflare treats as a development address, and which a
+ * network can block: the browser asks the app, and the app asks the bucket.
+ * Returns null when object storage is not configured.
+ */
+export const getVideo = async (key, range) => {
+  const s3 = getClient();
+  if (!s3) return null;
+  const out = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: key, ...(range ? { Range: range } : {}) }));
+  return {
+    body: out.Body,
+    contentLength: out.ContentLength,
+    contentRange: out.ContentRange,
+    contentType: out.ContentType,
+  };
 };
 
 /** Best-effort: a leftover object costs storage, a thrown error costs the request. */

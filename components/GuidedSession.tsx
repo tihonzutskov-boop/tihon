@@ -470,7 +470,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
     if (linkedId) {
       const linked = libraryExercises.find(le => le.id === linkedId);
       if (linked?.tutorialVideoUrl) {
-        return { source: 'native' as const, videoUrl: linked.tutorialVideoUrl, steps: (linked.steps || []).map(s => s.text), name: linked.name };
+        return { source: 'native' as const, videoUrl: linked.tutorialVideoUrl, fallbackUrl: linked.tutorialVideoFallbackUrl, steps: (linked.steps || []).map(s => s.text), name: linked.name };
       }
       if (linked?.videoUrl) {
         return { source: 'youtube' as const, videoUrl: linked.videoUrl, steps: [] as string[], name: linked.name };
@@ -712,6 +712,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                 <NativeVideo
                   videoRef={tutorialVideoRef}
                   src={mediaExercise!.tutorialVideoUrl!}
+                  fallbackSrc={mediaExercise!.tutorialVideoFallbackUrl}
                   muted
                   playsInline
                   className="w-full h-full object-cover"
@@ -1277,7 +1278,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
             <div className="flex-1 overflow-y-auto">
               <div className="relative aspect-video bg-black">
                 {media.source === 'native' ? (
-                  <NativeVideo src={media.videoUrl} controls playsInline className="w-full h-full object-cover" />
+                  <NativeVideo src={media.videoUrl} fallbackSrc={'fallbackUrl' in media ? media.fallbackUrl : undefined} controls playsInline className="w-full h-full object-cover" />
                 ) : (
                   <iframe
                     src={getYouTubeEmbedUrl(media.videoUrl)}

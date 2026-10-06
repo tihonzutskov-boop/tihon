@@ -344,6 +344,7 @@ export interface LibraryExercise {
   imageUrl?: string;         // Uploaded GIF demonstrating the movement
   makeHarder?: string;       // Instructions for increasing difficulty (tempo, load, ROM, stance)
   makeEasier?: string;       // Instructions for regressing difficulty (assistance, bands, ROM, load)
+  tutorialVideoFallbackUrl?: string; // The same video by way of the app, for when tutorialVideoUrl (object storage) cannot be reached
   tutorialVideoUrl?: string;      // Uploaded tutorial video file (data URI) — a real <video>, separate from videoUrl, so it supports timestamp-based seeking
   tutorialVideoFileName?: string; // Original filename of the uploaded tutorial video
   steps?: TutorialStep[];         // Step-by-step tutorial breakdown, each optionally pinned to a tutorialVideoUrl timestamp

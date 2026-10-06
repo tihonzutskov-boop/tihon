@@ -85,6 +85,10 @@ describe('what it means', () => {
     expect(text).toMatch(/File type: webm\/mkv/);
     expect(text).toMatch(/cannot play what is inside/);
   });
-  it('says so when it could not check', () => expect(lines({ blocked: true })).toMatch(/blocked the request/));
+  it('says so when it could not check, and says what to do instead', () => {
+    const text = lines({ blocked: true });
+    expect(text).toMatch(/does not let this page read it/);
+    expect(text).toMatch(/open the file directly/);
+  });
   it('always says where it came from', () => expect(lines({ status: 404 })).toContain('From: this app/api/v'));
 });

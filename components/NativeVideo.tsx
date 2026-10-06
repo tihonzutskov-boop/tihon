@@ -5,6 +5,13 @@ import { diagnoseVideo, summariseDiagnosis } from '../utils/videoDiagnose';
 
 interface NativeVideoProps extends Omit<React.VideoHTMLAttributes<HTMLVideoElement>, 'ref' | 'src'> {
   src: string;
+  /**
+   * The same video by another way in, tried once if `src` fails to load. For a
+   * video in object storage this is the app's own address: where someone cannot
+   * reach the storage address (a network that blocks it, an address that stops
+   * working) the video still plays, and the failure message only appears if both fail.
+   */
+  fallbackSrc?: string;
   /** For a caller that drives playback itself (the step-by-step tutorial seeks and plays it). */
   videoRef?: React.RefObject<HTMLVideoElement | null>;
 }
@@ -14,9 +21,14 @@ interface NativeVideoProps extends Omit<React.VideoHTMLAttributes<HTMLVideoEleme
 // shows a black box, and a video that takes ten seconds looks the same as one that
 // will never come; this shows a spinner, then says it is taking longer than usual
 // and offers another try, and says so plainly when it fails.
-const NativeVideo: React.FC<NativeVideoProps> = ({ src, videoRef, className, ...rest }) => {
+const NativeVideo: React.FC<NativeVideoProps> = ({ src: primarySrc, fallbackSrc, videoRef, className, ...rest }) => {
   const ownRef = useRef<HTMLVideoElement>(null);
   const ref = videoRef ?? ownRef;
+  // Whether the first address failed and the other is being used. A different
+  // video starts again from its first address.
+  const [onFallback, setOnFallback] = useState(false);
+  useEffect(() => { setOnFallback(false); }, [primarySrc]);
+  const src = onFallback && fallbackSrc ? fallbackSrc : primarySrc;
   const [phase, setPhase] = useState<VideoLoadPhase>('loading');
   // Why it failed, as the browser reports it, so a screenshot says what went wrong.
   const [errorCode, setErrorCode] = useState<number | null>(null);
@@ -39,6 +51,13 @@ const NativeVideo: React.FC<NativeVideoProps> = ({ src, videoRef, className, ...
       timer = setTimeout(() => setPhase(p => nextVideoLoadPhase(p, 'slowTimer')), SLOW_AFTER_MS);
     };
     const on = (event: VideoLoadEvent) => () => {
+      // The first address failed: try the other before telling anyone.
+      if (event === 'error' && fallbackSrc && !onFallback) {
+        clearTimeout(timer);
+        setOnFallback(true);
+        setPhase('loading');
+        return;
+      }
       if (event === 'error') setErrorCode(video.error?.code ?? null);
       else if (event === 'start' || event === 'canplay') setErrorCode(null);
       setPhase(p => nextVideoLoadPhase(p, event));
@@ -57,10 +76,17 @@ const NativeVideo: React.FC<NativeVideoProps> = ({ src, videoRef, className, ...
       clearTimeout(timer);
       handlers.forEach(([name, fn]) => video.removeEventListener(name, fn));
     };
-  }, [src, attempt, ref]);
+  }, [src, attempt, ref, fallbackSrc, onFallback]);
 
   const retry = () => {
     setDetails(null);
+    // Still waiting on an address that is not answering: the other one is a better
+    // second try than asking the same one again.
+    if (phase === 'slow' && fallbackSrc && !onFallback) {
+      setPhase('loading');
+      setOnFallback(true);
+      return;
+    }
     setPhase(p => nextVideoLoadPhase(p, 'retry'));
     setAttempt(a => a + 1);
     ref.current?.load();
@@ -104,9 +130,16 @@ const NativeVideo: React.FC<NativeVideoProps> = ({ src, videoRef, className, ...
           )}
           {phase === 'error' && details === 'checking' && <p className="text-[10.5px] text-slate-400">Checking the file…</p>}
           {phase === 'error' && Array.isArray(details) && (
-            <ul className="mt-1 max-w-[300px] space-y-0.5 text-left font-mono text-[10px] leading-snug text-slate-400">
-              {details.map((line, i) => <li key={i} className={line.startsWith('So:') ? 'text-lime-300 font-bold' : ''}>{line}</li>)}
-            </ul>
+            <>
+              <ul className="mt-1 max-w-[300px] space-y-0.5 text-left font-mono text-[10px] leading-snug text-slate-400">
+                {details.map((line, i) => <li key={i} className={line.startsWith('So:') ? 'text-lime-300 font-bold' : ''}>{line}</li>)}
+              </ul>
+              {/* The raw file in its own tab: if it plays there the file is fine, and if
+                  it shows an error page or will not play, that says what is wrong. */}
+              <a href={src} target="_blank" rel="noopener noreferrer" className="text-[10.5px] font-semibold text-lime-300 hover:text-lime-200 underline">
+                Open the file in a new tab
+              </a>
+            </>
           )}
         </div>
       )}

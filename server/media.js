@@ -82,6 +82,38 @@ export const blobWrite = (value) =>
 // happens anywhere in this path, so what is served is byte-identical to what
 // was uploaded.
 
+// Sends a video that lives in object storage, passing the browser's byte range
+// through to it and its answer back, so Safari gets the 206 it insists on and
+// nothing larger than a chunk is held in memory. `getObject(range)` is supplied
+// by the caller and returns { body (a readable stream), contentLength,
+// contentRange, contentType }, or null. A range it cannot use is dropped and the
+// whole file sent, as everywhere else here.
+export const streamObject = async (res, rangeHeader, getObject) => {
+  const range = typeof rangeHeader === 'string' && /^bytes=\d*-\d*$/.test(rangeHeader.trim()) ? rangeHeader.trim() : undefined;
+  try {
+    const object = await getObject(range);
+    if (!object) return res.status(404).json({ error: 'Not found' });
+    res.set('Content-Type', object.contentType || 'application/octet-stream');
+    res.set('Accept-Ranges', 'bytes');
+    res.set('Cache-Control', 'private, max-age=31536000, immutable');
+    if (object.contentLength != null) res.set('Content-Length', String(object.contentLength));
+    if (object.contentRange) {
+      res.set('Content-Range', object.contentRange);
+      res.status(206);
+    }
+    // A viewer who leaves mid-video must not leave the download running.
+    res.on?.('close', () => object.body?.destroy?.());
+    return object.body.pipe(res);
+  } catch (err) {
+    console.error('Error reading video from object storage:', err?.name, err?.message);
+    if (res.headersSent) return res.end();
+    const status = err?.$metadata?.httpStatusCode;
+    if (status === 404 || err?.name === 'NoSuchKey' || err?.name === 'NotFound') return res.status(404).json({ error: 'Not found' });
+    if (status === 416 || err?.name === 'InvalidRange') return res.status(416).end();
+    return res.status(502).json({ error: 'Could not read the video from storage' });
+  }
+};
+
 // Parses a single-range "bytes=start-end" header. Returns null for absent,
 // malformed, or multi-range requests, which callers answer with a full body.
 export const parseRange = (header, size) => {

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { mediaUrl, sendDataUri, serveMediaColumn, serveBinaryColumn, parseRange, blobWrite } from './media.js';
+import { PassThrough, Readable } from 'stream';
+import { mediaUrl, sendDataUri, serveMediaColumn, serveBinaryColumn, streamObject, parseRange, blobWrite } from './media.js';
 
 const GIF = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
 const MP4 = 'data:video/mp4;base64,AAAAIGZ0eXBpc29t';
@@ -311,5 +312,95 @@ describe('serveBinaryColumn', () => {
       { params: { id: 'nope' }, headers: {} }, res
     );
     expect(res.statusCode).toBe(404);
+  });
+});
+
+describe('streamObject (a video in object storage, sent through the app)', () => {
+  // A real writable, so piping is exercised; the rest is what Express adds.
+  const streamingRes = () => {
+    const res = new PassThrough();
+    res.headers = {}; res.statusCode = 200; res.jsonBody = undefined; res.headersSent = false;
+    res.set = (k, v) => { res.headers[k] = v; return res; };
+    res.status = (c) => { res.statusCode = c; return res; };
+    res.json = (b) => { res.jsonBody = b; res.end(); return res; };
+    const chunks = [];
+    res.on('data', c => chunks.push(c));
+    res.bodyText = async () => { await new Promise(r => res.once('end', r)); return Buffer.concat(chunks).toString(); };
+    return res;
+  };
+  const object = (text, extra = {}) => ({
+    body: Readable.from([Buffer.from(text)]), contentLength: text.length, contentType: 'video/mp4', ...extra,
+  });
+
+  it('streams the whole file with its type, a length, and a note that ranges are accepted', async () => {
+    const res = streamingRes();
+    await streamObject(res, undefined, async () => object('abcdefghij'));
+    expect(await res.bodyText()).toBe('abcdefghij');
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['Content-Type']).toBe('video/mp4');
+    expect(res.headers['Content-Length']).toBe('10');
+    expect(res.headers['Accept-Ranges']).toBe('bytes');
+    expect(res.headers['Cache-Control']).toContain('immutable');
+  });
+
+  it("answers Safari's first probe with a 206 and the Content-Range the storage gave", async () => {
+    const res = streamingRes();
+    let asked;
+    await streamObject(res, 'bytes=0-1', async (range) => { asked = range; return object('ab', { contentRange: 'bytes 0-1/10' }); });
+    expect(asked).toBe('bytes=0-1');
+    expect(await res.bodyText()).toBe('ab');
+    expect(res.statusCode).toBe(206);
+    expect(res.headers['Content-Range']).toBe('bytes 0-1/10');
+    expect(res.headers['Content-Length']).toBe('2');
+  });
+
+  it('passes open-ended and suffix ranges on', async () => {
+    for (const range of ['bytes=5-', 'bytes=-4', 'bytes=2-6']) {
+      let asked;
+      await streamObject(streamingRes(), range, async (r) => { asked = r; return object('x', { contentRange: 'bytes 0-0/1' }); });
+      expect(asked).toBe(range);
+    }
+  });
+
+  it('drops a range it does not understand and sends the whole file', async () => {
+    for (const bad of ['bytes=0-1,4-5', 'items=0-1', 'garbage', '', undefined, 42]) {
+      let asked = 'unset';
+      const res = streamingRes();
+      await streamObject(res, bad, async (r) => { asked = r; return object('whole'); });
+      expect(asked, String(bad)).toBeUndefined();
+      expect(await res.bodyText(), String(bad)).toBe('whole');
+      expect(res.statusCode, String(bad)).toBe(200);
+    }
+  });
+
+  it('is a 404 when there is no such object', async () => {
+    const none = streamingRes();
+    await streamObject(none, undefined, async () => null);
+    expect(none.statusCode).toBe(404);
+
+    const missing = streamingRes();
+    await streamObject(missing, undefined, async () => { const e = new Error('nope'); e.name = 'NoSuchKey'; throw e; });
+    expect(missing.statusCode).toBe(404);
+  });
+
+  it('is a 416 for a range the storage refuses', async () => {
+    const res = streamingRes();
+    await streamObject(res, 'bytes=999-', async () => { const e = new Error('bad range'); e.name = 'InvalidRange'; e.$metadata = { httpStatusCode: 416 }; throw e; });
+    expect(res.statusCode).toBe(416);
+  });
+
+  it('is a 502 when storage itself fails, not a bare crash', async () => {
+    const res = streamingRes();
+    await streamObject(res, undefined, async () => { throw new Error('connect ETIMEDOUT'); });
+    expect(res.statusCode).toBe(502);
+    expect(res.jsonBody).toEqual({ error: 'Could not read the video from storage' });
+  });
+
+  it('stops reading from storage when the viewer goes away', async () => {
+    const res = streamingRes();
+    const body = new PassThrough();
+    await streamObject(res, undefined, async () => ({ body, contentLength: 5, contentType: 'video/mp4' }));
+    res.emit('close');
+    expect(body.destroyed).toBe(true);
   });
 });

@@ -65,7 +65,10 @@ export const diagnoseVideo = async (
 export const summariseDiagnosis = (d: VideoDiagnosis): string[] => {
   const lines = [`From: ${d.source}`];
   if (d.blocked || d.status === undefined) {
-    lines.push('Could not check the file: the browser blocked the request.');
+    // Storage on another address has to allow this site to read it, and R2 does
+    // not until it is told to. The file can still be opened directly.
+    lines.push('Could not check the file from here: its storage does not let this page read it.');
+    lines.push('So: open the file directly to see whether it plays.');
     return lines;
   }
   lines.push(`Server answered ${d.status}${d.contentType ? `, ${d.contentType}` : ''}`);

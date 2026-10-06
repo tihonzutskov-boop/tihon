@@ -19,7 +19,7 @@ import {
 } from './validate.js';
 import { createRateLimiter, createJsonBodyParser, byUserOrIp } from './limits.js';
 import { computeStreak, timeZoneFromRequest, todayIn } from './stats.js';
-import { mediaUrl, sendDataUri, serveMediaColumn, serveVideo, blobWrite } from './media.js';
+import { mediaUrl, sendDataUri, serveMediaColumn, serveVideo, streamObject, blobWrite } from './media.js';
 import * as r2 from './r2.js';
 // Compiled from utils/planGeneration.ts by `npm run build:engine` — the same
 // engine the frontend and the test suite use, so there is exactly one
@@ -1872,6 +1872,11 @@ app.get('/api/exercises', requireAuth, async (req, res) => {
         : row.tutorial_v
           ? mediaUrl('exercises', `${row.id}/tutorial-video`, row.tutorial_v)
           : '',
+      // For a video in storage, the same file by way of the app: used when the
+      // storage address cannot be reached from where someone is.
+      tutorialVideoFallbackUrl: row.tutorial_video_key
+        ? mediaUrl('exercises', `${row.id}/tutorial-video`, row.tutorial_v)
+        : '',
       tutorialVideoFileName: row.tutorial_video_file_name || '',
       steps: row.steps || [],
       exerciseType: row.exercise_type || 'standard',
@@ -1906,11 +1911,24 @@ app.get('/api/exercises', requireAuth, async (req, res) => {
 });
 
 app.get('/api/exercises/:id/image', requireAuth, serveMediaColumn(pool, 'exercises', 'image_url'));
-app.get(
-  '/api/exercises/:id/tutorial-video',
-  requireAuth,
-  serveVideo(pool, 'exercises', 'tutorial_video', 'tutorial_video_type', 'tutorial_video_size', 'tutorial_video_url')
-);
+const serveVideoFromDatabase =
+  serveVideo(pool, 'exercises', 'tutorial_video', 'tutorial_video_type', 'tutorial_video_size', 'tutorial_video_url');
+// A video in object storage is also served from here, streamed through the app.
+// The list hands out the storage address for speed, and this one as the way
+// around it: it works from any network that can reach the app, whatever it
+// makes of the storage address.
+app.get('/api/exercises/:id/tutorial-video', requireAuth, async (req, res) => {
+  let key = null;
+  try {
+    const found = await pool.query('SELECT tutorial_video_key FROM exercises WHERE id = $1', [req.params.id]);
+    key = found.rows[0]?.tutorial_video_key || null;
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Database error fetching media' });
+  }
+  if (key && r2.isConfigured()) return streamObject(res, req.headers.range, (range) => r2.getVideo(key, range));
+  return serveVideoFromDatabase(req, res);
+});
 
 // Raw-body upload: the video never passes through JSON, so it is not subject
 // to the JSON body limit and is stored exactly as uploaded — no base64, no

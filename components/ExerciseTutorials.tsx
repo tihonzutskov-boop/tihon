@@ -163,7 +163,7 @@ const ExerciseTutorials: React.FC<ExerciseTutorialsProps> = ({
               <div className="md:w-[46%] flex-shrink-0 border-b md:border-b-0 md:border-r border-slate-800 bg-slate-950/60">
                 {ex.tutorialVideoUrl ? (
                   <div className="relative">
-                    <NativeVideo key={ex.id} src={ex.tutorialVideoUrl} controls className="w-full aspect-video bg-black" />
+                    <NativeVideo key={ex.id} src={ex.tutorialVideoUrl} fallbackSrc={ex.tutorialVideoFallbackUrl} controls className="w-full aspect-video bg-black" />
                   </div>
                 ) : (
                   <div className="w-full aspect-video flex flex-col items-center justify-center gap-2.5 text-center px-6 bg-gradient-to-br from-slate-900 to-slate-950">
