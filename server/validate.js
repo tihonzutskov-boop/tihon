@@ -256,3 +256,33 @@ export const validateCheckinText = (raw) => {
   if (!note.ok) return note;
   return ok({ planDayId: planDayId.value || null, note: note.value || null });
 };
+
+// --- gym details --------------------------------------------------------------
+
+export const MAX_GYM_NAME = 120;
+export const MAX_CHAIN_NAME = 120;
+
+const tidy = (s) => s.trim().replace(/\s+/g, ' ');
+
+// A location's name and chain, as an admin edits them on its card. Either may
+// come alone. A name cannot be blank; a blank chain means the location stands
+// alone.
+export const validateGymDetails = (raw) => {
+  const b = isObject(raw) ? raw : {};
+  const value = {};
+  if (b.name !== undefined) {
+    if (!isString(b.name)) return fail('The name must be text.');
+    const name = tidy(b.name);
+    if (!name) return fail('Give the location a name.');
+    if (name.length > MAX_GYM_NAME) return fail(`Keep the name to ${MAX_GYM_NAME} characters.`);
+    value.name = name;
+  }
+  if (b.chain !== undefined) {
+    if (b.chain !== null && !isString(b.chain)) return fail('The chain must be text.');
+    const chain = b.chain === null ? '' : tidy(b.chain);
+    if (chain.length > MAX_CHAIN_NAME) return fail(`Keep the chain name to ${MAX_CHAIN_NAME} characters.`);
+    value.chain = chain;
+  }
+  if (!('name' in value) && !('chain' in value)) return fail('Nothing to change.');
+  return ok(value);
+};

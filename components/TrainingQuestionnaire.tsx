@@ -162,7 +162,11 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
   // location needs no second question. Answers from before chains were asked
   // carry only a location, and its chain is taken as theirs.
   const chains = chainsOf(gyms);
-  const formChainName = form.gymChain || (gyms.find(g => g.id === form.gymId) ? chainOf(gyms.find(g => g.id === form.gymId)!) : '');
+  // A chain that is no longer there (renamed, or a location that was its own
+  // chain renamed) gives way to the chain of their usual location.
+  const savedUsual = gyms.find(g => g.id === form.gymId);
+  const formChainName = (form.gymChain && chains.some(c => sameChain(c.name, form.gymChain)) ? form.gymChain : '')
+    || (savedUsual ? chainOf(savedUsual) : '');
   const chosenChain = chains.find(c => sameChain(c.name, formChainName)) || null;
   const usualGym = chosenChain
     ? (chosenChain.locations.length === 1 ? chosenChain.locations[0] : chosenChain.locations.find(g => g.id === form.gymId) || null)

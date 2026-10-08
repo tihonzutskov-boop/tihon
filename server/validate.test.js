@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   validateQuestionnaire, validatePlanPayload, validateExerciseLogs,
-  validateCompletedWorkout, validateCheckinText, AIMS, TRAINING_TYPES, FOCUS_AREAS, MAX_FOCUS_AREAS,
+  validateCompletedWorkout, validateCheckinText, validateGymDetails, AIMS, TRAINING_TYPES, FOCUS_AREAS, MAX_FOCUS_AREAS,
   LOG_MAX_ENTRIES, LOG_MAX_SETS,
   PLAN_MAX_DAYS, PLAN_MAX_EXERCISES_PER_DAY,
 } from './validate.js';
@@ -257,5 +257,35 @@ describe('smaller writes', () => {
     expect(validateCheckinText({ planDayId: 'x'.repeat(101) }).ok).toBe(false);
     expect(validateCheckinText({ note: 'tired', planDayId: 'd1' }).value).toEqual({ planDayId: 'd1', note: 'tired' });
     expect(validateCheckinText({}).value).toEqual({ planDayId: null, note: null });
+  });
+});
+
+describe('a location\'s name and chain', () => {
+  it('takes a new name, tidied', () => {
+    expect(validateGymDetails({ name: '  MyFitness   Ülemiste ' })).toEqual({ ok: true, value: { name: 'MyFitness Ülemiste' } });
+  });
+
+  it('takes a chain alone, and a blank or null chain as none', () => {
+    expect(validateGymDetails({ chain: ' MyFitness ' })).toEqual({ ok: true, value: { chain: 'MyFitness' } });
+    expect(validateGymDetails({ chain: '' })).toEqual({ ok: true, value: { chain: '' } });
+    expect(validateGymDetails({ chain: null })).toEqual({ ok: true, value: { chain: '' } });
+  });
+
+  it('takes both at once', () => {
+    expect(validateGymDetails({ name: 'A', chain: 'B' })).toEqual({ ok: true, value: { name: 'A', chain: 'B' } });
+  });
+
+  it('refuses a blank name, rather than leave a location with none', () => {
+    for (const name of ['', '   ', null, 42]) expect(validateGymDetails({ name }).ok, String(name)).toBe(false);
+  });
+
+  it('refuses names that are too long', () => {
+    expect(validateGymDetails({ name: 'x'.repeat(121) }).ok).toBe(false);
+    expect(validateGymDetails({ name: 'x'.repeat(120) }).ok).toBe(true);
+    expect(validateGymDetails({ chain: 'x'.repeat(121) }).ok).toBe(false);
+  });
+
+  it('refuses a request that changes nothing', () => {
+    for (const body of [{}, null, 'MyFitness', { other: 'x' }]) expect(validateGymDetails(body).ok).toBe(false);
   });
 });

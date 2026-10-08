@@ -15,7 +15,7 @@ import {
 } from './auth.js';
 import {
   validateQuestionnaire, validatePlanPayload, validateExerciseLogs,
-  validateCompletedWorkout, validateCheckinText, FOCUS_AREAS,
+  validateCompletedWorkout, validateCheckinText, validateGymDetails, FOCUS_AREAS,
 } from './validate.js';
 import { createRateLimiter, createJsonBodyParser, byUserOrIp } from './limits.js';
 import { computeStreak, timeZoneFromRequest, todayIn } from './stats.js';
@@ -1737,18 +1737,24 @@ app.put('/api/gyms/:id', requireAdmin, async (req, res) => {
 });
 
 // DELETE Gym
-// Only the chain, so naming a location's brand can never rewrite its floor plan
-// the way a full save does.
-app.patch('/api/gyms/:id/chain', requireAdmin, async (req, res) => {
-  const chain = cleanChainName(req.body?.chain);
+// A location's name and chain, set from its card. Only those columns, so a rename
+// can never rewrite the floor plan the way a full save does.
+app.patch('/api/gyms/:id', requireAdmin, async (req, res) => {
+  const details = validateGymDetails(req.body);
+  if (!details.ok) return res.status(400).json({ error: details.error });
+  const params = [req.params.id];
+  const sets = [];
+  if ('name' in details.value) { params.push(details.value.name); sets.push(`name = $${params.length}`); }
+  if ('chain' in details.value) { params.push(details.value.chain || null); sets.push(`chain = $${params.length}`); }
   try {
     const result = await pool.query(
-      'UPDATE gyms SET chain = $2 WHERE id = $1 RETURNING id, chain', [req.params.id, chain || null]
+      `UPDATE gyms SET ${sets.join(', ')} WHERE id = $1 RETURNING id, name, chain`, params
     );
     if (result.rowCount === 0) return res.status(404).json({ error: 'Gym not found' });
-    return res.json({ id: result.rows[0].id, chain: result.rows[0].chain || '' });
+    const row = result.rows[0];
+    return res.json({ id: row.id, name: row.name, chain: row.chain || '' });
   } catch (err) {
-    console.error('Failed to set gym chain:', err.message);
+    console.error('Failed to update gym details:', err.message);
     return res.status(500).json({ error: 'Database error' });
   }
 });

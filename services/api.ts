@@ -680,17 +680,21 @@ export const api = {
     localStorage.setItem('gym_locations', JSON.stringify(gyms));
   },
 
-  // Only the chain a location belongs to; its floor plan is left alone.
-  async setGymChain(gymId: string, chain: string): Promise<{ ok: boolean; chain?: string; error?: string }> {
+  // A location's name or chain; its floor plan is left alone. Comes back with
+  // both as the server stored them (tidied).
+  async updateGymDetails(
+    gymId: string,
+    details: { name?: string; chain?: string },
+  ): Promise<{ ok: boolean; name?: string; chain?: string; error?: string }> {
     try {
-      const response = await fetch(`${API_BASE}/gyms/${encodeURIComponent(gymId)}/chain`, {
+      const response = await fetch(`${API_BASE}/gyms/${encodeURIComponent(gymId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chain }),
+        body: JSON.stringify(details),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) return { ok: false, error: body.error || `Server responded with ${response.status}` };
-      return { ok: true, chain: body.chain ?? '' };
+      return { ok: true, name: body.name, chain: body.chain ?? '' };
     } catch (err: any) {
       return { ok: false, error: err?.message || 'Could not save' };
     }

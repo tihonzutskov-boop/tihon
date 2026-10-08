@@ -12,7 +12,7 @@ import UsageHeatmap from './UsageHeatmap';
 import { api, DEFAULT_EQUIPMENT } from '../services/api';
 import { evaluateZoneExercises, getZoneEquipmentIds, floorSpaceIsAssumed } from '../utils/equipmentMatcher';
 import { getExerciseLocations } from '../utils/exerciseMatcher';
-import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Eraser, Eye, EyeOff, Footprints, MapPin, LayoutTemplate, DoorOpen, Lock, Bath, Droplets, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle, Copy, ClipboardPaste, Dumbbell, Activity, Zap, Target, Layers, Box, Wind, RotateCcw, ArrowUpRight, ArrowUpLeft, ArrowDownRight, ArrowDownLeft, ArrowRight, ArrowUp, ArrowDown, MoveDown, Circle, Waves, Timer, Sparkles, Search, Video, Play, Film, Filter, X, ExternalLink, Compass, SlidersHorizontal, ChevronRight, Bookmark, BookmarkCheck, Camera, Users, Flame } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Eraser, Eye, EyeOff, Footprints, MapPin, LayoutTemplate, DoorOpen, Lock, Bath, Droplets, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle, Copy, ClipboardPaste, Dumbbell, Activity, Zap, Target, Layers, Box, Wind, RotateCcw, ArrowUpRight, ArrowUpLeft, ArrowDownRight, ArrowDownLeft, ArrowRight, ArrowUp, ArrowDown, MoveDown, Circle, Waves, Timer, Sparkles, Search, Video, Play, Film, Filter, X, ExternalLink, Compass, SlidersHorizontal, ChevronRight, Bookmark, BookmarkCheck, Camera, Users, Flame, Pencil } from 'lucide-react';
 import { MACHINE_ICONS_LIST as MACHINE_ICONS, ICON_GROUPS } from '../utils/equipmentIcons';
 import { snapWallEndpoint } from '../utils/wallSnapping';
 
@@ -33,12 +33,22 @@ const useGymHistory = (initialGym: Gym) => {
   // across the switch) — when that happens, reset history to the newly
   // selected gym instead of keeping the previous gym's undo stack.
   const prevInitialIdRef = useRef(initialGym.id);
+  // A rename from the Locations card reaches this copy too, undo history and
+  // all, or saving the layout afterwards would put the old name back.
+  const prevNameRef = useRef(initialGym.name);
   useEffect(() => {
     if (initialGym.id !== prevInitialIdRef.current) {
       prevInitialIdRef.current = initialGym.id;
+      prevNameRef.current = initialGym.name;
       setPresent(initialGym);
       setPast([]);
       setFuture([]);
+    } else if (initialGym.name !== prevNameRef.current) {
+      prevNameRef.current = initialGym.name;
+      const renamed = (g: Gym) => ({ ...g, name: initialGym.name });
+      setPresent(renamed);
+      setPast(prev => prev.map(renamed));
+      setFuture(prev => prev.map(renamed));
     }
   }, [initialGym]);
 
@@ -74,6 +84,61 @@ const useGymHistory = (initialGym: Gym) => {
   }, [future, present]);
 
   return { gym: present, update, snapshot, undo, redo, canUndo: past.length > 0, canRedo: future.length > 0 };
+};
+
+// A location's name, changed on its card. Saved on its own, straight away.
+const NameField: React.FC<{
+  gym: Gym;
+  onSave: (name: string) => Promise<{ ok: boolean; error?: string }>;
+}> = ({ gym, onSave }) => {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(gym.name);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const save = async () => {
+    if (!value.trim()) { setError('Give the location a name.'); return; }
+    if (value.trim() === gym.name) { setEditing(false); return; }
+    setSaving(true);
+    setError('');
+    const result = await onSave(value);
+    setSaving(false);
+    if (result.ok) setEditing(false); else setError(result.error || 'Could not save');
+  };
+  if (!editing) {
+    return (
+      <div className="flex items-center gap-1.5 min-w-0">
+        <h3 className="text-xl font-bold text-white leading-tight truncate">{gym.name}</h3>
+        <button
+          onClick={() => { setValue(gym.name); setError(''); setEditing(true); }}
+          className="p-1 text-slate-500 hover:text-white hover:bg-slate-800 rounded-md transition-colors flex-shrink-0"
+          title="Rename"
+          aria-label={`Rename ${gym.name}`}
+        >
+          <Pencil className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="flex-1 min-w-0">
+      <div className="flex items-center gap-1.5">
+        <input
+          autoFocus
+          value={value}
+          onChange={e => { setValue(e.target.value); setError(''); }}
+          onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false); }}
+          maxLength={120}
+          aria-label="Location name"
+          className="flex-1 min-w-0 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm font-bold text-white focus:outline-none focus:border-lime-500"
+        />
+        <button onClick={save} disabled={saving} className="px-2.5 py-1.5 rounded-lg bg-lime-500 hover:bg-lime-400 disabled:opacity-50 text-slate-950 text-[11px] font-extrabold">
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Save'}
+        </button>
+        <button onClick={() => setEditing(false)} className="px-2 py-1.5 rounded-lg text-slate-400 hover:text-white text-[11px] font-bold">Cancel</button>
+      </div>
+      {error && <p className="text-[10.5px] text-red-400 mt-1">{error}</p>}
+    </div>
+  );
 };
 
 // The chain a location belongs to, set on its card: a name typed or picked from
@@ -138,7 +203,7 @@ const ChainField: React.FC<{
 
 const GymDashboard: React.FC<{
   gyms: Gym[],
-  onSetChain?: (id: string, chain: string) => Promise<{ ok: boolean; error?: string }>,
+  onUpdateGym?: (id: string, details: { name?: string; chain?: string }) => Promise<{ ok: boolean; error?: string }>,
   onCreate: () => void,
   onEdit: (id: string) => void,
   onDelete: (id: string) => void,
@@ -148,7 +213,7 @@ const GymDashboard: React.FC<{
   // "Locations" tab), this renders without its own full-page header/back
   // button — that chrome now lives one level up.
   embedded?: boolean
-}> = ({ gyms, onSetChain, onCreate, onEdit, onDelete, onExit, onPreviewAsUser, embedded = false }) => {
+}> = ({ gyms, onUpdateGym, onCreate, onEdit, onDelete, onExit, onPreviewAsUser, embedded = false }) => {
   const chainNames = [...new Set(gyms.map(g => (g.chain || '').trim()).filter(Boolean))].sort();
   return (
     <div className={embedded ? 'h-full flex flex-col animate-in fade-in duration-300' : 'min-h-screen bg-slate-950 text-slate-200 flex flex-col animate-in fade-in duration-500'}>
@@ -192,16 +257,18 @@ const GymDashboard: React.FC<{
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent pointer-events-none" />
                </div>
                <div className="p-6 flex-1 flex flex-col">
-                 <div className="flex justify-between items-start mb-4">
-                   <h3 className="text-xl font-bold text-white leading-tight">{gym.name}</h3>
-                   <div className="flex space-x-1">
+                 <div className="flex justify-between items-start gap-2 mb-4">
+                   {onUpdateGym
+                     ? <NameField key={`${gym.id}:${gym.name}`} gym={gym} onSave={name => onUpdateGym(gym.id, { name })} />
+                     : <h3 className="text-xl font-bold text-white leading-tight">{gym.name}</h3>}
+                   <div className="flex space-x-1 flex-shrink-0">
                       <button onClick={() => onPreviewAsUser(gym.id)} className="p-1.5 text-slate-400 hover:text-lime-400 hover:bg-slate-800 rounded-lg transition-colors" title="View as User"><Eye className="w-4 h-4" /></button>
                       <button onClick={() => onEdit(gym.id)} className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"><Edit3 className="w-4 h-4" /></button>
                       <button onClick={() => onDelete(gym.id)} className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-950/30 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
                    </div>
                  </div>
-                 {onSetChain && (
-                   <ChainField key={`${gym.id}:${gym.chain || ''}`} gym={gym} chains={chainNames} onSave={chain => onSetChain(gym.id, chain)} />
+                 {onUpdateGym && (
+                   <ChainField key={`${gym.id}:${gym.chain || ''}`} gym={gym} chains={chainNames} onSave={chain => onUpdateGym(gym.id, { chain })} />
                  )}
                  <div className="flex items-center text-sm text-slate-400 mb-6 mt-auto">
                     <MapPin className="w-4 h-4 mr-1.5 text-slate-500" />
@@ -228,7 +295,7 @@ type AdminSection = 'gyms' | 'layout' | 'equipment' | 'exercises' | 'coaching' |
 interface GymLayoutEditorProps {
   initialGym: Gym;
   gyms: Gym[];
-  onSetChain: (id: string, chain: string) => Promise<{ ok: boolean; error?: string }>;
+  onUpdateGym: (id: string, details: { name?: string; chain?: string }) => Promise<{ ok: boolean; error?: string }>;
   onSave: (updatedGym: Gym) => Promise<void>;
   onSwitchGym: (id: string) => void;
   onCreateGym: () => void;
@@ -334,7 +401,7 @@ const ToolButton = ({ active, onClick, icon: Icon, label, description, disabled 
   );
 };
 
-const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onSetChain, onSave, onSwitchGym, onCreateGym, onDeleteGymRequest, onPreviewAsUser, onExit, initialSection }) => {
+const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onUpdateGym, onSave, onSwitchGym, onCreateGym, onDeleteGymRequest, onPreviewAsUser, onExit, initialSection }) => {
   const { gym, update, snapshot, undo, redo, canUndo, canRedo } = useGymHistory(initialGym);
   const zones = gym.zones;
   const dimensions = gym.dimensions || { width: 780, height: 580 };
@@ -1564,7 +1631,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onS
           <GymDashboard
             embedded
             gyms={gyms}
-            onSetChain={onSetChain}
+            onUpdateGym={onUpdateGym}
             onCreate={onCreateGym}
             onEdit={(id) => { onSwitchGym(id); setActiveTab('layout'); }}
             onDelete={onDeleteGymRequest}
@@ -2860,9 +2927,11 @@ const AdminPage: React.FC<AdminPageProps> = ({ gyms, setGyms, onExit, onPreviewA
     await api.saveGym(updatedGym);
     setGyms(prev => prev.map(g => g.id === updatedGym.id ? { ...updatedGym, chain: g.chain } : g));
   };
-  const setGymChain = async (id: string, chain: string) => {
-    const result = await api.setGymChain(id, chain);
-    if (result.ok) setGyms(prev => prev.map(g => g.id === id ? { ...g, chain: result.chain || undefined } : g));
+  const updateGym = async (id: string, details: { name?: string; chain?: string }) => {
+    const result = await api.updateGymDetails(id, details);
+    if (result.ok) {
+      setGyms(prev => prev.map(g => g.id === id ? { ...g, name: result.name || g.name, chain: result.chain || undefined } : g));
+    }
     return result;
   };
 
@@ -2883,7 +2952,7 @@ const AdminPage: React.FC<AdminPageProps> = ({ gyms, setGyms, onExit, onPreviewA
     <GymLayoutEditor
       initialGym={activeGym}
       gyms={gyms}
-      onSetChain={setGymChain}
+      onUpdateGym={updateGym}
       initialSection={editingGymId ? 'layout' : 'gyms'}
       onSave={saveGymChanges}
       onSwitchGym={setEditingGymId}
