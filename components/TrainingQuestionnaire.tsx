@@ -4,6 +4,7 @@ import RankList from './RankList';
 import { moveItem } from '../utils/reorder';
 import { QuestionnaireAnswers, ALL_JOINT_STRESS_AREAS, FocusArea } from '../types';
 import { SESSION_LENGTHS } from '../constants';
+import { chainsOf, chainOf, locationsInChain, sameChain } from '../utils/gymChains';
 import {
   TRAINING_TYPES, FOCUS_AREAS, MAX_FOCUS_AREAS, trainingTypeFor, goalLabel,
   goalsFromAnswers, describeGoals,
@@ -12,7 +13,7 @@ import {
 interface TrainingQuestionnaireProps {
   existing: QuestionnaireAnswers | null;
   userName: string;
-  gyms?: { id: string; name: string }[];
+  gyms?: { id: string; name: string; chain?: string }[];
   // Resolves once the answers have been saved (or not). The questionnaire stays
   // open until then, so a failure can be shown here with everything still filled in.
   onSubmit: (answers: QuestionnaireAnswers) => Promise<{ ok: boolean; error?: string }>;
@@ -48,7 +49,7 @@ interface FormState {
   age: string; heightCm: string; weightKg: string; sex: string;
   trainingType: string; goals: string[]; focusAreas: FocusArea[]; level: string;
   daysPerWeek: string; minutesPerSession: string;
-  gymId: string;
+  gymId: string; gymChain: string;
   equipment: string; avoidExercises: string;
   injuryAreas: string[]; injuryNotes: string;
   medicalClearance: string; consent: boolean;
@@ -58,7 +59,7 @@ const blankForm = (): FormState => ({
   age: '', heightCm: '', weightKg: '', sex: '',
   trainingType: '', goals: [], focusAreas: [], level: DEFAULT_LEVEL,
   daysPerWeek: '', minutesPerSession: '',
-  gymId: '',
+  gymId: '', gymChain: '',
   equipment: '', avoidExercises: '',
   injuryAreas: [], injuryNotes: '',
   medicalClearance: '', consent: false,
@@ -78,6 +79,7 @@ const toFormState = (existing: QuestionnaireAnswers | null): FormState => {
     // picked again rather than saved back unchanged.
     minutesPerSession: SESSION_LENGTHS.includes(existing.minutesPerSession) ? existing.minutesPerSession : '',
     gymId: existing.gymId || '',
+    gymChain: existing.gymChain || '',
     equipment: existing.equipment || '',
     avoidExercises: existing.avoidExercises || '',
     injuryAreas: existing.injuryAreas || [],
@@ -155,6 +157,21 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm(prev => ({ ...prev, [key]: value }));
+
+  // The chain is asked first, then the usual location in it. A chain with one
+  // location needs no second question. Answers from before chains were asked
+  // carry only a location, and its chain is taken as theirs.
+  const chains = chainsOf(gyms);
+  const formChainName = form.gymChain || (gyms.find(g => g.id === form.gymId) ? chainOf(gyms.find(g => g.id === form.gymId)!) : '');
+  const chosenChain = chains.find(c => sameChain(c.name, formChainName)) || null;
+  const usualGym = chosenChain
+    ? (chosenChain.locations.length === 1 ? chosenChain.locations[0] : chosenChain.locations.find(g => g.id === form.gymId) || null)
+    : null;
+  const pickChain = (name: string) => setForm(prev => {
+    const locations = locationsInChain(gyms, name);
+    const keep = locations.some(g => g.id === prev.gymId);
+    return { ...prev, gymChain: name, gymId: keep ? prev.gymId : locations.length === 1 ? locations[0].id : '' };
+  });
   const toggleMulti = (key: 'injuryAreas', value: string) => {
     setForm(prev => {
       const arr = prev[key];
@@ -196,7 +213,7 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
     if (key === 'about') return !!(form.age && form.heightCm && form.weightKg && form.sex && form.level);
     if (key === 'goal') return !!trainingTypeFor(form.trainingType) && form.goals.length > 0;
     if (key === 'schedule') return !!(form.daysPerWeek && form.minutesPerSession);
-    if (key === 'preferences') return !!form.equipment && (gyms.length === 0 || !!form.gymId);
+    if (key === 'preferences') return !!form.equipment && (gyms.length === 0 || (!!chosenChain && !!usualGym));
     if (key === 'health') return !hasHealthInfo || !!(form.medicalClearance && form.consent);
     return true;
   };
@@ -218,7 +235,8 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
         level: form.level,
         daysPerWeek: form.daysPerWeek,
         minutesPerSession: form.minutesPerSession,
-        gymId: form.gymId || undefined,
+        gymId: usualGym?.id || undefined,
+        gymChain: chosenChain?.name || undefined,
         equipment: form.equipment,
         avoidExercises: form.avoidExercises || undefined,
         injuryAreas: form.injuryAreas,
@@ -441,14 +459,36 @@ const TrainingQuestionnaire: React.FC<TrainingQuestionnaireProps> = ({ existing,
         <div className="space-y-5">
           {gyms.length > 0 && (
             <div>
-              <FieldLabel required>Which gym do you train at?</FieldLabel>
+              <FieldLabel required>Which gym chain do you train at?</FieldLabel>
               <div className="flex flex-wrap gap-2">
-                {gyms.map(g => <Pill key={g.id} label={g.name} selected={form.gymId === g.id} onClick={() => set('gymId', g.id)} />)}
+                {chains.map(c => (
+                  <Pill
+                    key={c.name}
+                    label={c.name}
+                    tag={c.locations.length > 1 ? `${c.locations.length} locations` : undefined}
+                    selected={chosenChain?.name === c.name}
+                    onClick={() => pickChain(c.name)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+          {chosenChain && chosenChain.locations.length > 1 && (
+            <div>
+              <FieldLabel required>Which location do you usually go to?</FieldLabel>
+              <div className="flex flex-wrap gap-2">
+                {chosenChain.locations.map(g => <Pill key={g.id} label={g.name} selected={usualGym?.id === g.id} onClick={() => set('gymId', g.id)} />)}
               </div>
               <p className="text-[10.5px] text-slate-500 mt-2 leading-relaxed">
-                Your plan only uses equipment this gym actually has.
+                Your plan is built from the equipment this one has. Each time you train you pick which {chosenChain.name} location
+                you're at, and anything it doesn't have is swapped for something similar.
               </p>
             </div>
+          )}
+          {chosenChain && chosenChain.locations.length === 1 && (
+            <p className="text-[10.5px] text-slate-500 -mt-2 leading-relaxed">
+              Your plan only uses equipment this gym actually has.
+            </p>
           )}
           <div>
             <FieldLabel required>Equipment comfort</FieldLabel>

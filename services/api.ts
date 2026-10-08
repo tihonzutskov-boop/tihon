@@ -283,18 +283,28 @@ export const api = {
   // log justifies changing. Use this wherever a client is about to train;
   // fetchMyPlan returns the unadapted plan, which is the authored intent rather
   // than what today's session should actually be.
-  async fetchMyAdaptedPlan(): Promise<{
+  //
+  // With a gymId, the plan as it can be done at that location: anything it has
+  // no equipment for is swapped for the closest thing it can do, and `gym.changes`
+  // says what changed (an entry with no `to` was left out).
+  async fetchMyAdaptedPlan(gymId?: string): Promise<{
     plan: { id: number; name: string; days: WorkoutDay[] } | null;
     weeksTrained: number;
     needsReview: boolean;
+    gym?: { id: string; name: string; changes: { dayId: string; from: string; to?: string; part?: 'warmup' | 'cooldown' | 'zone2' }[] };
+    ok: boolean;
   }> {
     try {
-      const response = await fetch(`${API_BASE}/plans/me/adapted`);
+      const query = gymId ? `?gymId=${encodeURIComponent(gymId)}` : '';
+      const response = await fetch(`${API_BASE}/plans/me/adapted${query}`);
       if (!response.ok) throw new Error(`Status: ${response.status}`);
       const body = await response.json();
-      return { plan: body.plan ?? null, weeksTrained: body.weeksTrained ?? 0, needsReview: body.needsReview ?? false };
+      return {
+        plan: body.plan ?? null, weeksTrained: body.weeksTrained ?? 0, needsReview: body.needsReview ?? false,
+        gym: body.gym, ok: true,
+      };
     } catch {
-      return { plan: null, weeksTrained: 0, needsReview: false };
+      return { plan: null, weeksTrained: 0, needsReview: false, ok: false };
     }
   },
 
@@ -668,6 +678,22 @@ export const api = {
     let gyms: Gym[] = cached ? JSON.parse(cached) : [DEFAULT_GYM];
     gyms.push(gym);
     localStorage.setItem('gym_locations', JSON.stringify(gyms));
+  },
+
+  // Only the chain a location belongs to; its floor plan is left alone.
+  async setGymChain(gymId: string, chain: string): Promise<{ ok: boolean; chain?: string; error?: string }> {
+    try {
+      const response = await fetch(`${API_BASE}/gyms/${encodeURIComponent(gymId)}/chain`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chain }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) return { ok: false, error: body.error || `Server responded with ${response.status}` };
+      return { ok: true, chain: body.chain ?? '' };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Could not save' };
+    }
   },
 
   async saveGym(gym: Gym): Promise<void> {

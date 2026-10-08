@@ -138,6 +138,10 @@ export interface GymDimensions {
 export interface Gym {
   id: string;
   name: string;
+  // The brand this location belongs to, when it is one of several (e.g. every
+  // "MyFitness" club). A client picks the chain for their plan and one of its
+  // locations each session. Absent: the location is a chain of its own.
+  chain?: string;
   zones: GymZone[];
   dimensions?: GymDimensions;
   entrance?: GymEntrance;
@@ -436,7 +440,8 @@ export interface QuestionnaireAnswers {
   daysPerWeek: string;        // '1'..'4'
   preferredDays?: Weekday[];  // legacy: answers from before the questionnaire stopped asking which days
   minutesPerSession: string;  // '45 min' | '60 min' | '75 min' (older answers may hold '30 min' or '90 min')
-  gymId?: string;             // which gym they train at — determines the equipment pool available to plan generation
+  gymId?: string;             // their usual location — the plan is built from the equipment it has
+  gymChain?: string;          // the chain they train with; each session they pick one of its locations
   equipment: string;
   avoidExercises?: string;
   injuryAreas: string[];      // multi-select common areas

@@ -19,7 +19,8 @@ interface UserDashboardProps {
   onEnterGym: (gymId: string) => void;
   // The gym map is admin-only for now; without it these cards go nowhere.
   canOpenGymMap?: boolean;
-  onStartWorkout: (dayIndex: number, gymId: string) => void;
+  // Which location comes next: the session opens by asking (SessionLocationPicker).
+  onStartWorkout: (dayIndex: number) => void;
   questionnaire: QuestionnaireAnswers | null;
   onSubmitQuestionnaire: (answers: QuestionnaireAnswers) => Promise<{ ok: boolean; error?: string }>;
   onOpenTutorials: () => void;
@@ -50,11 +51,6 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, 
   // Which session's detail is open. Until the client picks one it follows the
   // plan: the next session they have not done this week.
   const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
-  // Which physical gym the trainee is training at today — a plan's exercises
-  // are located against one specific gym's floor plan (zone ids aren't
-  // shared across locations), so starting a session at the wrong gym is
-  // exactly why "equipment can't be found on the map" happens.
-  const [sessionGymId, setSessionGymId] = useState(activeGymId);
   const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
@@ -152,28 +148,13 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, 
             </div>
             {hasPlan && nextSession && (
               <button
-                onClick={() => onStartWorkout(nextSession.dayIndex, sessionGymId)}
+                onClick={() => onStartWorkout(nextSession.dayIndex)}
                 className="flex-shrink-0 bg-lime-500 hover:bg-lime-400 text-slate-950 font-bold text-xs sm:text-sm px-5 py-3 rounded-xl transition-colors whitespace-nowrap"
               >
                 Start next session
               </button>
             )}
           </div>
-          {gyms.length > 1 && (
-            <div className="relative mt-5 flex items-center gap-2.5">
-              <MapPin className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide flex-shrink-0">Training at</label>
-              <select
-                value={sessionGymId}
-                onChange={e => setSessionGymId(e.target.value)}
-                className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-white focus:outline-none focus:border-lime-500 cursor-pointer"
-              >
-                {gyms.map(g => (
-                  <option key={g.id} value={g.id}>{getGymTranslation(g.name, lang)}</option>
-                ))}
-              </select>
-            </div>
-          )}
         </div>
 
         {/* Stats Grid */}
@@ -332,7 +313,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, gyms, activeGymId, 
                   ))}
                 </div>
                 <button
-                  onClick={() => onStartWorkout(selected.dayIndex, sessionGymId)}
+                  onClick={() => onStartWorkout(selected.dayIndex)}
                   className="w-full mt-4 py-2.5 bg-lime-500 hover:bg-lime-400 text-slate-950 font-bold rounded-xl text-xs uppercase tracking-wider transition-colors"
                 >
                   {selected.status === 'done' ? 'Redo this session' : 'Start coaching session'}

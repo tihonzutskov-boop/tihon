@@ -192,6 +192,11 @@ ALTER TABLE plan_templates ADD COLUMN IF NOT EXISTS min_experience VARCHAR(20);
 -- Which gym a user's plan was generated against, so changing gyms can flag
 -- plans whose exercises the new gym may not support.
 ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS generated_for_gym_id VARCHAR(100);
+
+-- The brand a location belongs to, when it is one of several. A client picks the
+-- chain for their plan and one of its locations each session; NULL means the
+-- location is a chain of its own.
+ALTER TABLE gyms ADD COLUMN IF NOT EXISTS chain VARCHAR(120);
 -- Provenance: what produced this plan, and which rule/data versions were in
 -- effect — so a plan can be explained (and reproduced) long after the fact.
 ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS generation_meta JSONB;

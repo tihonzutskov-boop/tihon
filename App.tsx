@@ -11,6 +11,9 @@ import EquipmentLibrary from './components/EquipmentLibrary';
 import ExerciseLibrary from './components/ExerciseLibrary';
 import GuidedSession from './components/GuidedSession';
 import SessionCheckIn from './components/SessionCheckIn';
+import SessionLocationPicker from './components/SessionLocationPicker';
+import type { LocationCheck } from './components/SessionLocationPicker';
+import { clientLocations } from './utils/gymChains';
 import { isFirstWeek } from './utils/firstWeek';
 import { VideoPreloader } from './components/NativeVideo';
 import { upcomingTutorialUrls } from './utils/videoLoad';
@@ -124,7 +127,14 @@ const App: React.FC = () => {
   // guided workout, then the check-in after. A boolean could only express the
   // middle one, and the pre-session check-in has to be able to end the session
   // before it starts (ILLNESS-4).
-  const [sessionPhase, setSessionPhase] = useState<'idle' | 'pre' | 'training' | 'post'>('idle');
+  // It opens by asking which location the client is at, since the chain's
+  // locations do not all have the same equipment.
+  const [sessionPhase, setSessionPhase] = useState<'idle' | 'location' | 'pre' | 'training' | 'post'>('idle');
+  // Today's session as it can be done at the chosen location: the plan's day
+  // with anything that location lacks swapped. Null until a location is checked,
+  // when the plan's own day stands in.
+  const [sessionDay, setSessionDay] = useState<WorkoutDay | null>(null);
+  const checkedDayRef = React.useRef<{ gymId: string; day: WorkoutDay } | null>(null);
   // When the server recorded the session that was just finished, for the
   // "Session complete" screen. Null until the recording comes back — and if it
   // fails, nothing is shown rather than a time that was never stored.
@@ -417,13 +427,14 @@ const App: React.FC = () => {
            onLogout={handleLogout}
            onEnterGym={handleGymSelect}
            canOpenGymMap={canOpenGymMap}
-           onStartWorkout={(dayIndex, gymId) => {
-             setActiveGymId(gymId);
+           onStartWorkout={(dayIndex) => {
              setActiveDayIndex(dayIndex);
-             // ILLNESS-1 asks for recovery status *before* the workout is
-             // generated, so the check-in stands in front of the session
-             // rather than alongside it.
-             setSessionPhase('pre');
+             setSessionDay(null);
+             checkedDayRef.current = null;
+             // Where first, since it decides what the session is; then the
+             // check-in (ILLNESS-1 asks for recovery status before the workout),
+             // then the session.
+             setSessionPhase('location');
            }}
            questionnaire={questionnaire}
            onSubmitQuestionnaire={async (answers) => {
@@ -439,10 +450,38 @@ const App: React.FC = () => {
            onOpenTutorials={() => setTutorialsOpen(true)}
            lang={lang}
          />
+         {sessionPhase === 'location' && workoutPlan.days[activeDayIndex] && (() => {
+           const where = clientLocations(gyms, questionnaire);
+           const planDay = workoutPlan.days[activeDayIndex];
+           const check = async (gymId: string): Promise<LocationCheck> => {
+             const result = await api.fetchMyAdaptedPlan(gymId);
+             const day = result.plan?.days.find(d => d.id === planDay.id);
+             if (!result.ok || !day) return { ok: false, error: 'Could not reach the server' };
+             checkedDayRef.current = { gymId, day };
+             return { ok: true, changes: (result.gym?.changes || []).filter(c => c.dayId === planDay.id) };
+           };
+           return (
+             <SessionLocationPicker
+               dayName={planDay.name}
+               chainName={where.chain}
+               locations={where.locations}
+               usualId={where.usualId}
+               initialId={where.locations.some(g => g.id === activeGymId) ? activeGymId : where.usualId}
+               onCancel={() => setSessionPhase('idle')}
+               check={check}
+               onContinue={(gymId, checked) => {
+                 setActiveGymId(gymId);
+                 const checkedDay = checkedDayRef.current;
+                 setSessionDay(checked && checkedDay?.gymId === gymId ? checkedDay.day : null);
+                 setSessionPhase('pre');
+               }}
+             />
+           );
+         })()}
          {/* The check-in and the first-week reminder take a while to read: the first
              exercise's tutorial video loads in that time rather than after it. */}
          {sessionPhase === 'pre' && workoutPlan.days[activeDayIndex] && (
-           <VideoPreloader urls={upcomingTutorialUrls(workoutPlan.days[activeDayIndex].exercises, libraryExercises, 0, 1)} />
+           <VideoPreloader urls={upcomingTutorialUrls((sessionDay || workoutPlan.days[activeDayIndex]).exercises, libraryExercises, 0, 1)} />
          )}
          {sessionPhase === 'pre' && workoutPlan.days[activeDayIndex] && (
            <SessionCheckIn
@@ -465,13 +504,13 @@ const App: React.FC = () => {
          )}
          {sessionPhase === 'training' && activeGym && workoutPlan.days[activeDayIndex] && (
            <GuidedSession
-             day={workoutPlan.days[activeDayIndex]}
+             day={sessionDay || workoutPlan.days[activeDayIndex]}
              gym={activeGym}
              equipmentList={equipmentList}
              libraryExercises={libraryExercises}
              onClose={() => setSessionPhase('idle')}
              onFinish={() => {
-               const d = workoutPlan.days[activeDayIndex];
+               const d = sessionDay || workoutPlan.days[activeDayIndex];
                setFinishedAt(null);
                recordCompletedWorkout(d.name, d.exercises.length, d.id);
                setSessionPhase('post');

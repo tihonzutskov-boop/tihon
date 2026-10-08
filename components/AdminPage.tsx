@@ -76,8 +76,69 @@ const useGymHistory = (initialGym: Gym) => {
   return { gym: present, update, snapshot, undo, redo, canUndo: past.length > 0, canRedo: future.length > 0 };
 };
 
+// The chain a location belongs to, set on its card: a name typed or picked from
+// the chains other locations already use, so "MyFitness" is not spelled two ways.
+const ChainField: React.FC<{
+  gym: Gym;
+  chains: string[];
+  onSave: (chain: string) => Promise<{ ok: boolean; error?: string }>;
+}> = ({ gym, chains, onSave }) => {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(gym.chain || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const listId = `chains-${gym.id}`;
+  const save = async () => {
+    setSaving(true);
+    setError('');
+    const result = await onSave(value);
+    setSaving(false);
+    if (result.ok) setEditing(false); else setError(result.error || 'Could not save');
+  };
+  if (!editing) {
+    return (
+      <button
+        onClick={() => { setValue(gym.chain || ''); setEditing(true); }}
+        className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white mb-4 transition-colors"
+        title="Locations with the same chain name are offered to the same clients"
+      >
+        <Layers className="w-3.5 h-3.5 text-slate-500" />
+        {gym.chain ? <>Chain: <span className="font-bold text-slate-200">{gym.chain}</span></> : <span className="italic">No chain. Add one</span>}
+        <Edit3 className="w-3 h-3 text-slate-600" />
+      </button>
+    );
+  }
+  return (
+    <div className="mb-4">
+      <div className="flex items-center gap-1.5">
+        <input
+          autoFocus
+          list={listId}
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false); }}
+          placeholder="e.g. MyFitness"
+          maxLength={120}
+          aria-label={`Chain for ${gym.name}`}
+          className="flex-1 min-w-0 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-lime-500"
+        />
+        <datalist id={listId}>{chains.map(c => <option key={c} value={c} />)}</datalist>
+        <button onClick={save} disabled={saving} className="px-2.5 py-1.5 rounded-lg bg-lime-500 hover:bg-lime-400 disabled:opacity-50 text-slate-950 text-[11px] font-extrabold">
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Save'}
+        </button>
+        <button onClick={() => setEditing(false)} className="px-2 py-1.5 rounded-lg text-slate-400 hover:text-white text-[11px] font-bold">Cancel</button>
+      </div>
+      <p className="text-[10.5px] text-slate-500 mt-1.5 leading-relaxed">
+        Locations with the same chain name are one chain: clients pick the chain for their plan and one of its locations each session. Leave empty if it stands alone.
+      </p>
+      {error && <p className="text-[10.5px] text-red-400 mt-1">{error}</p>}
+    </div>
+  );
+};
+
 const GymDashboard: React.FC<{
   gyms: Gym[],
+  onSetChain?: (id: string, chain: string) => Promise<{ ok: boolean; error?: string }>,
   onCreate: () => void,
   onEdit: (id: string) => void,
   onDelete: (id: string) => void,
@@ -87,7 +148,8 @@ const GymDashboard: React.FC<{
   // "Locations" tab), this renders without its own full-page header/back
   // button — that chrome now lives one level up.
   embedded?: boolean
-}> = ({ gyms, onCreate, onEdit, onDelete, onExit, onPreviewAsUser, embedded = false }) => {
+}> = ({ gyms, onSetChain, onCreate, onEdit, onDelete, onExit, onPreviewAsUser, embedded = false }) => {
+  const chainNames = [...new Set(gyms.map(g => (g.chain || '').trim()).filter(Boolean))].sort();
   return (
     <div className={embedded ? 'h-full flex flex-col animate-in fade-in duration-300' : 'min-h-screen bg-slate-950 text-slate-200 flex flex-col animate-in fade-in duration-500'}>
       {!embedded && (
@@ -138,6 +200,9 @@ const GymDashboard: React.FC<{
                       <button onClick={() => onDelete(gym.id)} className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-950/30 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
                    </div>
                  </div>
+                 {onSetChain && (
+                   <ChainField key={`${gym.id}:${gym.chain || ''}`} gym={gym} chains={chainNames} onSave={chain => onSetChain(gym.id, chain)} />
+                 )}
                  <div className="flex items-center text-sm text-slate-400 mb-6 mt-auto">
                     <MapPin className="w-4 h-4 mr-1.5 text-slate-500" />
                     <span>{gym.zones.length} Active Zones</span>
@@ -163,6 +228,7 @@ type AdminSection = 'gyms' | 'layout' | 'equipment' | 'exercises' | 'coaching' |
 interface GymLayoutEditorProps {
   initialGym: Gym;
   gyms: Gym[];
+  onSetChain: (id: string, chain: string) => Promise<{ ok: boolean; error?: string }>;
   onSave: (updatedGym: Gym) => Promise<void>;
   onSwitchGym: (id: string) => void;
   onCreateGym: () => void;
@@ -268,7 +334,7 @@ const ToolButton = ({ active, onClick, icon: Icon, label, description, disabled 
   );
 };
 
-const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onSave, onSwitchGym, onCreateGym, onDeleteGymRequest, onPreviewAsUser, onExit, initialSection }) => {
+const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onSetChain, onSave, onSwitchGym, onCreateGym, onDeleteGymRequest, onPreviewAsUser, onExit, initialSection }) => {
   const { gym, update, snapshot, undo, redo, canUndo, canRedo } = useGymHistory(initialGym);
   const zones = gym.zones;
   const dimensions = gym.dimensions || { width: 780, height: 580 };
@@ -1498,6 +1564,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onS
           <GymDashboard
             embedded
             gyms={gyms}
+            onSetChain={onSetChain}
             onCreate={onCreateGym}
             onEdit={(id) => { onSwitchGym(id); setActiveTab('layout'); }}
             onDelete={onDeleteGymRequest}
@@ -2787,7 +2854,17 @@ const AdminPage: React.FC<AdminPageProps> = ({ gyms, setGyms, onExit, onPreviewA
       if (editingGymId === id) setEditingGymId(null);
     }
   };
-  const saveGymChanges = async (updatedGym: Gym) => { await api.saveGym(updatedGym); setGyms(prev => prev.map(g => g.id === updatedGym.id ? updatedGym : g)); };
+  // The floor editor works on its own copy of the gym, which knows nothing of a
+  // chain set since it was opened: the chain already in the list is kept.
+  const saveGymChanges = async (updatedGym: Gym) => {
+    await api.saveGym(updatedGym);
+    setGyms(prev => prev.map(g => g.id === updatedGym.id ? { ...updatedGym, chain: g.chain } : g));
+  };
+  const setGymChain = async (id: string, chain: string) => {
+    const result = await api.setGymChain(id, chain);
+    if (result.ok) setGyms(prev => prev.map(g => g.id === id ? { ...g, chain: result.chain || undefined } : g));
+    return result;
+  };
 
   const activeGym = gyms.find(g => g.id === editingGymId) || gyms[0] || null;
   if (!activeGym) {
@@ -2806,6 +2883,7 @@ const AdminPage: React.FC<AdminPageProps> = ({ gyms, setGyms, onExit, onPreviewA
     <GymLayoutEditor
       initialGym={activeGym}
       gyms={gyms}
+      onSetChain={setGymChain}
       initialSection={editingGymId ? 'layout' : 'gyms'}
       onSave={saveGymChanges}
       onSwitchGym={setEditingGymId}

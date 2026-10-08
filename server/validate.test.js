@@ -23,6 +23,18 @@ describe('questionnaire answers', () => {
     expect(r.value.secondaryGoals).toEqual(['Mobility']);
   });
 
+  it('keeps the gym chain and the usual location in it', () => {
+    const r = validateQuestionnaire(answers({ gymChain: 'MyFitness', gymId: 'g1' }));
+    expect(r.ok).toBe(true);
+    expect(r.value).toMatchObject({ gymChain: 'MyFitness', gymId: 'g1' });
+    expect('gymChain' in validateQuestionnaire(answers({ gymId: 'g1' })).value).toBe(false);
+  });
+
+  it('refuses a gym chain that is not a short piece of text', () => {
+    expect(bad({ gymChain: 'x'.repeat(121) }).ok).toBe(false);
+    expect(bad({ gymChain: 42 }).ok).toBe(false);
+  });
+
   it('accepts the training type and focus areas the app sends, and keeps them', () => {
     const r = validateQuestionnaire(answers({ trainingType: 'Strength', focusAreas: ['Glutes', 'Arms'] }));
     expect(r.ok).toBe(true);

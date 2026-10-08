@@ -29,6 +29,8 @@ import { generatePlan, validatePlan, buildCombinedBlueprint, eligibleExercises, 
          selectBookendExercise, buildBookendExercise } from './generated/utils/planGeneration.js';
 import { shapeFor, bookendsFor } from './generated/utils/sessionShape.js';
 import { withBookendVideos } from './generated/utils/storedPlanVideos.js';
+import { adaptDaysToGym } from './generated/utils/gymSwap.js';
+import { cleanChainName } from './generated/utils/gymChains.js';
 // The same priority chain the frontend and tests run: pain, then failure, then
 // stall, then progression.
 import { evaluateExercise, needsProgramReview, selectSubstitute, applyWeeklyVolumeCeiling, applySubstitution } from './generated/utils/planAdaptation.js';
@@ -682,8 +684,14 @@ app.get('/api/plans/me', requireAuth, async (req, res) => {
 // mis-logged set immediately corrects the plan, and no adaptation is ever
 // unrecoverable, because nothing it replaced was destroyed.
 app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
+  // The location the client is about to train at, when they have picked one.
+  // The plan is then checked against that location's equipment, and anything it
+  // cannot do is swapped for the closest thing it can (GYM-1).
+  const sessionGymId = typeof req.query.gymId === 'string' && req.query.gymId.length <= 100 ? req.query.gymId : null;
   let client;
   try {
+    const sessionGym = sessionGymId ? await loadGymForGeneration(sessionGymId) : null;
+    if (sessionGymId && !sessionGym) return res.status(404).json({ error: 'Gym not found' });
     client = await pool.connect();
 
     const planRes = await client.query('SELECT * FROM user_plans WHERE user_id = $1', [req.user.id]);
@@ -729,7 +737,7 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
     // plan trains, whether or not anything is withdrawn.
     const libRes = await client.query(
       `SELECT id, name, target_muscle, movement_pattern, exercise_category, bookend_roles, warmup_note, cooldown_note,
-              min_experience, joint_stress, primary_muscles, generation_enabled,
+              min_experience, joint_stress, primary_muscles, secondary_muscles, generation_enabled,
               equipment_id, video_url, required_equipment_ids, exercise_type, video_duration_label
          FROM exercises`
     );
@@ -745,6 +753,7 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
       minExperience: r.min_experience,
       jointStress: r.joint_stress || [],
       primaryMuscles: r.primary_muscles || [],
+      secondaryMuscles: r.secondary_muscles || [],
       generationEnabled: r.generation_enabled !== false,
       // Carried so a substitute can take its own location and tutorial with it.
       equipmentId: r.equipment_id,
@@ -771,12 +780,15 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
     const planGym = planRow.generated_for_gym_id
       ? await loadGymForGeneration(planRow.generated_for_gym_id)
       : null;
+    // Everything chosen today is chosen for where the client is today: a pain
+    // substitute, a swap for missing equipment, a stretching video.
+    const equipmentGym = sessionGym || planGym;
     // Falls back to the unfiltered library only when we genuinely have no
     // profile to filter against — a client with no questionnaire on file.
     const substitutionPool = genProfile
       ? eligibleExercises([...libraryById.values()], {
           profile: genProfile,
-          availableEquipmentIds: gymEquipmentIds(planGym),
+          availableEquipmentIds: gymEquipmentIds(equipmentGym),
         })
       : [...libraryById.values()];
 
@@ -965,16 +977,30 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
     // way a fresh plan would choose them. Only against a pool filtered for this
     // client's gym, injuries and experience: with no questionnaire there is
     // nothing to filter by, and nothing is added.
+    // GYM-1: at a location other than the one the plan was built for (or the
+    // same one after its equipment changed), whatever it cannot do is swapped for
+    // the closest thing it can, and the client is told what changed.
+    const gymResult = sessionGym
+      ? adaptDaysToGym(adaptedDays, {
+          library: libraryById,
+          pool: substitutionPool,
+          availableEquipmentIds: gymEquipmentIds(sessionGym),
+          gymName: sessionGym.name,
+          withdrawnIds: new Set(withdrawals.keys()),
+        })
+      : { days: adaptedDays, changes: [] };
+
     const planDays = genProfile
-      ? withBookendVideos(adaptedDays, {
+      ? withBookendVideos(gymResult.days, {
           sessionMinutes: genProfile.sessionMinutes || 60,
           pool: substitutionPool,
           library: libraryById,
         })
-      : adaptedDays;
+      : gymResult.days;
 
     return res.json({
       plan: { id: planRow.id, name: planRow.name, days: planDays },
+      ...(sessionGym ? { gym: { id: sessionGym.id, name: sessionGym.name, changes: gymResult.changes } } : {}),
       weeksTrained,
       // H-1: every rule in the beginner spec is evidenced to 12 weeks. Past
       // that the engine stops rather than extrapolating.
@@ -1596,7 +1622,7 @@ app.get('/api/gyms', requireAuth, async (req, res) => {
 
 // POST Create Gym
 app.post('/api/gyms', requireAdmin, async (req, res) => {
-  const { id, name, dimensions, entrance, floorColor, zones, annexes } = req.body;
+  const { id, name, dimensions, entrance, floorColor, zones, annexes, chain } = req.body;
   let client;
 
   try {
@@ -1604,8 +1630,8 @@ app.post('/api/gyms', requireAdmin, async (req, res) => {
     await client.query('BEGIN');
 
     await client.query(
-      'INSERT INTO gyms (id, name, dimensions, entrance, floor_color) VALUES ($1, $2, $3, $4, $5)',
-      [id, name, JSON.stringify(dimensions), JSON.stringify(entrance), floorColor]
+      'INSERT INTO gyms (id, name, dimensions, entrance, floor_color, chain) VALUES ($1, $2, $3, $4, $5, $6)',
+      [id, name, JSON.stringify(dimensions), JSON.stringify(entrance), floorColor, cleanChainName(chain) || null]
     );
 
     // Insert Zones if any provided initially
@@ -1656,7 +1682,10 @@ app.put('/api/gyms/:id', requireAdmin, async (req, res) => {
     await client.query('BEGIN');
 
     // 1. Update Gym Details (upsert — the gym being "updated" may be the
-    // client-side DEFAULT_GYM that was never actually inserted yet)
+    // client-side DEFAULT_GYM that was never actually inserted yet). The chain
+    // is not touched: it is set on its own (PATCH .../chain), and the floor
+    // editor saving a copy of the gym it loaded earlier must not put back an
+    // older chain.
     await client.query(
       `INSERT INTO gyms (id, name, dimensions, entrance, floor_color)
        VALUES ($1, $2, $3, $4, $5)
@@ -1708,6 +1737,22 @@ app.put('/api/gyms/:id', requireAdmin, async (req, res) => {
 });
 
 // DELETE Gym
+// Only the chain, so naming a location's brand can never rewrite its floor plan
+// the way a full save does.
+app.patch('/api/gyms/:id/chain', requireAdmin, async (req, res) => {
+  const chain = cleanChainName(req.body?.chain);
+  try {
+    const result = await pool.query(
+      'UPDATE gyms SET chain = $2 WHERE id = $1 RETURNING id, chain', [req.params.id, chain || null]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Gym not found' });
+    return res.json({ id: result.rows[0].id, chain: result.rows[0].chain || '' });
+  } catch (err) {
+    console.error('Failed to set gym chain:', err.message);
+    return res.status(500).json({ error: 'Database error' });
+  }
+});
+
 app.delete('/api/gyms/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
   try {

@@ -97,6 +97,9 @@ export const validateQuestionnaire = (raw) => {
   if (!equipment.value) return fail('Please say how comfortable you are with equipment.');
   const gymId = optionalString(a.gymId, 'Gym', 100);
   if (!gymId.ok) return gymId;
+  // The chain the client trains with; gymId is then their usual location in it.
+  const gymChain = optionalString(a.gymChain, 'Gym chain', 120);
+  if (!gymChain.ok) return gymChain;
   const avoid = optionalString(a.avoidExercises, 'Exercises to avoid', 500);
   if (!avoid.ok) return avoid;
   const injuryNotes = optionalString(a.injuryNotes, 'Injury notes', 1000);
@@ -124,6 +127,7 @@ export const validateQuestionnaire = (raw) => {
   if (focusAreas) value.focusAreas = focusAreas;
   if (secondaryGoals) value.secondaryGoals = secondaryGoals;
   if (gymId.value) value.gymId = gymId.value;
+  if (gymChain.value) value.gymChain = gymChain.value;
   if (avoid.value) value.avoidExercises = avoid.value;
   if (injuryNotes.value) value.injuryNotes = injuryNotes.value;
   if (clearance.value) value.medicalClearance = clearance.value;
