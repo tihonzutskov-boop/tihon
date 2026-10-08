@@ -10,6 +10,8 @@ import { isBookendExercise } from '../utils/planGeneration';
 import { deriveMuscleGroups, deriveExerciseCategory, suggestEquipmentIds, suggestMovementPattern } from '../utils/exerciseTagDerivation';
 import EditTutorialModal from './EditTutorialModal';
 import BulkTaggingTable from './BulkTaggingTable';
+import BookendVideosPanel from './BookendVideosPanel';
+import { videoUseOf } from '../utils/bookendVideos';
 import VariationTutorialField, { VariationState, blankVariationState, variationStateFromExercise } from './VariationTutorialField';
 import {
   Search, MapPin, Dumbbell, Edit3, Trash2, Plus, X, Loader2, KeyRound, Box, Sparkles, Globe, Layers, Check, Flame, ShieldCheck, Film, Info
@@ -335,7 +337,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
   const [selectedEquipmentFilter, setSelectedEquipmentFilter] = useState('All');
   const [selectedMappedFilter, setSelectedMappedFilter] = useState<'All' | 'mapped' | 'unmapped'>('All');
   const [groupMode, setGroupMode] = useState<'muscle' | 'category' | 'name'>('muscle');
-  const [libView, setLibView] = useState<'browse' | 'tagging'>('browse');
+  const [libView, setLibView] = useState<'browse' | 'tagging' | 'videos'>('browse');
   const [isLoadingExercises, setIsLoadingExercises] = useState(false);
 
   const [previewExercise, setPreviewExercise] = useState<LibraryExercise | null>(null);
@@ -630,6 +632,20 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
               : null;
           })()}
         </button>
+        <button
+          onClick={() => setLibView('videos')}
+          className={`px-4 py-2 rounded-lg text-[11.5px] font-bold transition-colors flex items-center gap-1.5 ${
+            libView === 'videos' ? 'bg-slate-800 text-lime-400' : 'text-slate-500 hover:text-slate-300'
+          }`}
+        >
+          Warm-up &amp; cool-down videos
+          {(() => {
+            const unset = libraryExercises.filter(e => e.exerciseType === 'video' && videoUseOf(e) === 'none').length;
+            return unset > 0
+              ? <span className="px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 text-[9px] font-extrabold">{unset}</span>
+              : null;
+          })()}
+        </button>
       </div>
 
       {/* Intro Header info */}
@@ -746,7 +762,20 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({
 
       {/* Scrollable exercise grid — the only part of this view that scrolls */}
       <div className="flex-1 overflow-y-auto px-6 pb-6">
-      {libView === 'tagging' ? (
+      {libView === 'videos' ? (
+        <BookendVideosPanel
+          exercises={libraryExercises}
+          onSave={async (updated) => {
+            for (const ex of updated) {
+              const result = await api.saveExercise(ex);
+              if (!result.ok) {
+                throw new Error(result.error ? `"${ex.name}" not saved: ${result.error}` : `"${ex.name}" not saved — check your connection.`);
+              }
+            }
+            setLibraryExercises(prev => prev.map(e => updated.find(u => u.id === e.id) || e));
+          }}
+        />
+      ) : libView === 'tagging' ? (
         <BulkTaggingTable
           exercises={libraryExercises}
           equipmentList={equipmentList}

@@ -20,6 +20,7 @@ import {
 import { createRateLimiter, createJsonBodyParser, byUserOrIp } from './limits.js';
 import { computeStreak, timeZoneFromRequest, todayIn } from './stats.js';
 import { mediaUrl, sendDataUri, serveMediaColumn, serveVideo, streamObject, blobWrite } from './media.js';
+import { GENERATION_COLUMNS, rowToGenerationExercise } from './library.js';
 import * as r2 from './r2.js';
 // Compiled from utils/planGeneration.ts by `npm run build:engine` — the same
 // engine the frontend and the test suite use, so there is exactly one
@@ -27,6 +28,7 @@ import * as r2 from './r2.js';
 import { generatePlan, validatePlan, buildCombinedBlueprint, eligibleExercises, gymEquipmentIds,
          selectBookendExercise, buildBookendExercise } from './generated/utils/planGeneration.js';
 import { shapeFor, bookendsFor } from './generated/utils/sessionShape.js';
+import { withBookendVideos } from './generated/utils/storedPlanVideos.js';
 // The same priority chain the frontend and tests run: pain, then failure, then
 // stall, then progression.
 import { evaluateExercise, needsProgramReview, selectSubstitute, applyWeeklyVolumeCeiling, applySubstitution } from './generated/utils/planAdaptation.js';
@@ -728,7 +730,7 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
     const libRes = await client.query(
       `SELECT id, name, target_muscle, movement_pattern, exercise_category, bookend_roles, warmup_note, cooldown_note,
               min_experience, joint_stress, primary_muscles, generation_enabled,
-              equipment_id, video_url
+              equipment_id, video_url, required_equipment_ids, exercise_type, video_duration_label
          FROM exercises`
     );
     const libraryById = new Map(libRes.rows.map(r => [r.id, {
@@ -747,6 +749,11 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
       // Carried so a substitute can take its own location and tutorial with it.
       equipmentId: r.equipment_id,
       videoUrl: r.video_url,
+      // What a warm-up or cool-down video needs to be recognised and fitted: that
+      // it is a video, how long it runs, and what the gym must have for it.
+      requiredEquipmentIds: r.required_equipment_ids || [],
+      exerciseType: r.exercise_type === 'video' ? 'video' : 'standard',
+      videoDurationLabel: r.video_duration_label || '',
     }]));
 
     // A substitute has to clear the same bar a generated exercise does. Without
@@ -952,8 +959,22 @@ app.get('/api/plans/me/adapted', requireAuth, async (req, res) => {
       };
     });
 
+    // A plan generated before the library had any warm-up or cool-down videos
+    // (or before this server could tell which exercises were videos) has its
+    // stretching written out. Shown as the library's videos instead, chosen the
+    // way a fresh plan would choose them. Only against a pool filtered for this
+    // client's gym, injuries and experience: with no questionnaire there is
+    // nothing to filter by, and nothing is added.
+    const planDays = genProfile
+      ? withBookendVideos(adaptedDays, {
+          sessionMinutes: genProfile.sessionMinutes || 60,
+          pool: substitutionPool,
+          library: libraryById,
+        })
+      : adaptedDays;
+
     return res.json({
-      plan: { id: planRow.id, name: planRow.name, days: adaptedDays },
+      plan: { id: planRow.id, name: planRow.name, days: planDays },
       weeksTrained,
       // H-1: every rule in the beginner spec is evidenced to 12 weeks. Past
       // that the engine stops rather than extrapolating.
@@ -1043,34 +1064,10 @@ const loadGymForGeneration = async (gymId) => {
 
 const loadLibraryForGeneration = async () => {
   // Explicit column list: the generator needs none of the media columns, and
-  // SELECT * pulled every base64 blob into memory just to drop it here.
-  const result = await pool.query(
-    `SELECT id, name, target_muscle, equipment_required, required_equipment_ids,
-            category, instructions, equipment_id, movement_pattern, bookend_roles, warmup_note, cooldown_note,
-            exercise_category, min_experience, joint_stress,
-            primary_muscles, secondary_muscles, generation_enabled
-     FROM exercises`
-  );
-  return result.rows.map(row => ({
-    id: row.id,
-    name: row.name,
-    targetMuscle: row.target_muscle || '',
-    equipmentRequired: row.equipment_required || '',
-    requiredEquipmentIds: row.required_equipment_ids || [],
-    category: row.category || '',
-    instructions: row.instructions || '',
-    equipmentId: row.equipment_id || '',
-    movementPattern: row.movement_pattern || undefined,
-    bookendRoles: row.bookend_roles || [],
-    warmupNote: row.warmup_note || '',
-    cooldownNote: row.cooldown_note || '',
-    exerciseCategory: row.exercise_category || undefined,
-    minExperience: row.min_experience || undefined,
-    jointStress: row.joint_stress || [],
-    primaryMuscles: row.primary_muscles || [],
-    secondaryMuscles: row.secondary_muscles || [],
-    generationEnabled: row.generation_enabled === true,
-  }));
+  // SELECT * pulled every base64 blob into memory just to drop it here. The list
+  // and the mapping live together in library.js so neither can drift from the other.
+  const result = await pool.query(`SELECT ${GENERATION_COLUMNS} FROM exercises`);
+  return result.rows.map(rowToGenerationExercise);
 };
 
 const recordGenerationFailure = async (userId, templateId, gymId, reason, detail) => {
