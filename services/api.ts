@@ -883,6 +883,34 @@ export const api = {
     }
   },
 
+  // The stored tutorial, fetched through the app rather than from object storage
+  // directly: the storage address is not reachable from every network, the app is.
+  async fetchTutorialVideo(
+    exerciseId: string,
+    onProgress?: (receivedBytes: number, totalBytes: number | null) => void,
+  ): Promise<{ ok: boolean; video?: Blob; error?: string }> {
+    try {
+      const response = await fetch(`${API_BASE}/exercises/${encodeURIComponent(exerciseId)}/tutorial-video`);
+      if (!response.ok) return { ok: false, error: `Server responded with ${response.status}` };
+      const type = response.headers.get('Content-Type') || 'video/mp4';
+      const total = Number(response.headers.get('Content-Length')) || null;
+      if (!response.body || !onProgress) return { ok: true, video: new Blob([await response.blob()], { type }) };
+      const reader = response.body.getReader();
+      const parts: Uint8Array[] = [];
+      let received = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        parts.push(value);
+        received += value.length;
+        onProgress(received, total);
+      }
+      return { ok: true, video: new Blob(parts as BlobPart[], { type }) };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Download failed' };
+    }
+  },
+
   async deleteTutorialVideo(exerciseId: string): Promise<{ ok: boolean; error?: string }> {
     try {
       const response = await fetch(`${API_BASE}/exercises/${encodeURIComponent(exerciseId)}/tutorial-video`, {

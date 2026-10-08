@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { HardDrive, Loader2, CloudUpload, AlertTriangle, Check, RefreshCw } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { HardDrive, Loader2, CloudUpload, AlertTriangle, Check, RefreshCw, Minimize2 } from 'lucide-react';
 import { api } from '../services/api';
 import { heaviestVideos, formatVideoSize } from '../utils/videoSize';
+import { shrinkVideo, canShrinkVideo } from '../services/videoShrink';
 
 /**
  * Moving tutorial videos out of the database.
@@ -26,6 +27,16 @@ interface StorageState {
   videos: { id: string; name: string; bytes: number; migrated: boolean; stillInDatabase: boolean }[];
 }
 
+// Where one heavy video is in being shrunk. The shrunk copy is shown to the admin
+// before anything is replaced: replacing deletes the original.
+type ShrinkStep =
+  | { stage: 'downloading'; received: number; total: number | null }
+  | { stage: 'shrinking'; fraction: number }
+  | { stage: 'ready'; file: File; previewUrl: string; originalBytes: number; width: number; height: number }
+  | { stage: 'uploading' }
+  | { stage: 'done'; name: string; from: number; to: number }
+  | { stage: 'failed'; reason: string };
+
 const VideoStoragePanel: React.FC = () => {
   const [state, setState] = useState<StorageState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -33,6 +44,59 @@ const VideoStoragePanel: React.FC = () => {
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmPurge, setConfirmPurge] = useState(false);
+  const [shrinks, setShrinks] = useState<Record<string, ShrinkStep>>({});
+  const previewUrls = useRef<Set<string>>(new Set());
+
+  useEffect(() => () => { previewUrls.current.forEach(u => URL.revokeObjectURL(u)); }, []);
+
+  const setShrink = (id: string, step: ShrinkStep | null) =>
+    setShrinks(prev => {
+      const next = { ...prev };
+      const old = prev[id];
+      if (old?.stage === 'ready' && (!step || step.stage !== 'ready')) {
+        URL.revokeObjectURL(old.previewUrl);
+        previewUrls.current.delete(old.previewUrl);
+      }
+      if (step) next[id] = step; else delete next[id];
+      return next;
+    });
+
+  // One at a time: each holds the whole video in memory, twice, while it works.
+  const shrinkBusy = (Object.values(shrinks) as ShrinkStep[]).some(s => s.stage === 'downloading' || s.stage === 'shrinking' || s.stage === 'uploading');
+
+  const startShrink = async (v: { id: string; name: string }) => {
+    setShrink(v.id, { stage: 'downloading', received: 0, total: null });
+    const download = await api.fetchTutorialVideo(v.id, (received, total) =>
+      setShrink(v.id, { stage: 'downloading', received, total }));
+    if (!download.ok || !download.video) {
+      setShrink(v.id, { stage: 'failed', reason: `Could not download it: ${download.error || 'unknown error'}` });
+      return;
+    }
+    setShrink(v.id, { stage: 'shrinking', fraction: 0 });
+    let shown = 0;
+    const outcome = await shrinkVideo(download.video, v.name, fraction => {
+      // Every frame reports progress; a re-render per whole percent is plenty.
+      if (fraction - shown >= 0.01 || fraction === 1) { shown = fraction; setShrink(v.id, { stage: 'shrinking', fraction }); }
+    });
+    if (outcome.ok === false) { setShrink(v.id, { stage: 'failed', reason: outcome.reason }); return; }
+    const previewUrl = URL.createObjectURL(outcome.file);
+    previewUrls.current.add(previewUrl);
+    setShrink(v.id, {
+      stage: 'ready', file: outcome.file, previewUrl, originalBytes: outcome.originalBytes,
+      width: outcome.width, height: outcome.height,
+    });
+  };
+
+  const useShrunk = async (v: { id: string; name: string }, step: Extract<ShrinkStep, { stage: 'ready' }>) => {
+    setShrink(v.id, { stage: 'uploading' });
+    const upload = await api.uploadTutorialVideo(v.id, step.file);
+    if (!upload.ok) {
+      setShrink(v.id, { stage: 'failed', reason: `Could not upload the smaller copy, so the original is still in place: ${upload.error || 'unknown error'}` });
+      return;
+    }
+    setShrink(v.id, { stage: 'done', name: v.name, from: step.originalBytes, to: step.file.size });
+    await load();
+  };
 
   const load = async () => {
     setLoading(true);
@@ -144,22 +208,102 @@ const VideoStoragePanel: React.FC = () => {
         </div>
       )}
 
+      {(Object.values(shrinks) as ShrinkStep[]).some(st => st.stage === 'done') && (
+        <div className="mb-4 rounded-xl border border-lime-500/30 bg-lime-500/[0.06] p-3.5 space-y-1">
+          {(Object.entries(shrinks) as [string, ShrinkStep][]).map(([id, st]) => st.stage === 'done' ? (
+            <p key={id} className="text-[11px] text-slate-300 flex items-center gap-1.5">
+              <Check className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
+              <span className="truncate">{st.name}</span>
+              <span className="text-slate-500 tabular-nums flex-shrink-0">{formatVideoSize(st.from)} → <b className="text-lime-400">{formatVideoSize(st.to)}</b></span>
+            </p>
+          ) : null)}
+        </div>
+      )}
+
       {heavy.length > 0 && (
         <div className="mb-4 rounded-xl border border-orange-500/30 bg-orange-500/[0.06] p-3.5">
           <p className="text-[11px] font-bold text-orange-300 mb-1">
             {heavy.length === 1 ? '1 video is' : `${heavy.length} videos are`} too heavy for a phone
           </p>
           <p className="text-[10.5px] text-slate-400 leading-relaxed mb-2.5">
-            These take the longest to load for clients, wherever they are stored. Exporting each at 720p and
-            uploading it again makes them load much faster.
+            These take the longest to load for clients. Shrink makes a 720p copy right here in your browser and
+            shows it to you before anything is replaced.
           </p>
-          <ul className="space-y-1">
-            {heavy.map(v => (
-              <li key={v.id} className="flex items-baseline justify-between gap-3 text-[11px]">
-                <span className="text-slate-300 truncate">{v.name}</span>
-                <span className="font-bold text-orange-400 tabular-nums flex-shrink-0">{formatVideoSize(v.bytes)}</span>
-              </li>
-            ))}
+          {!canShrinkVideo() && (
+            <p className="text-[10.5px] text-slate-500 mb-2.5">This browser cannot shrink videos here. Safari, Chrome or Edge can.</p>
+          )}
+          <ul className="space-y-2">
+            {heavy.map(v => {
+              const step = shrinks[v.id];
+              return (
+                <li key={v.id} className="text-[11px]">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-300 truncate">{v.name}</span>
+                    <span className="flex items-center gap-2.5 flex-shrink-0">
+                      <span className="font-bold text-orange-400 tabular-nums">{formatVideoSize(v.bytes)}</span>
+                      {canShrinkVideo() && (!step || step.stage === 'failed') && (
+                        <button
+                          onClick={() => startShrink(v)}
+                          disabled={shrinkBusy}
+                          className="flex items-center gap-1 px-2 py-1 rounded-md bg-lime-500/10 border border-lime-500/30 text-lime-400 text-[10.5px] font-extrabold hover:bg-lime-500/20 disabled:opacity-40 transition-colors"
+                        >
+                          <Minimize2 className="w-3 h-3" /> {step?.stage === 'failed' ? 'Try again' : 'Shrink'}
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                  {step?.stage === 'downloading' && (
+                    <p className="mt-1 flex items-center gap-1.5 text-slate-400">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Downloading
+                      {step.total ? ` ${Math.round((step.received / step.total) * 100)}%` : ` ${formatVideoSize(step.received)}`}…
+                    </p>
+                  )}
+                  {step?.stage === 'shrinking' && (
+                    <div className="mt-1.5">
+                      <div className="h-1.5 rounded-full bg-slate-950 overflow-hidden">
+                        <div className="h-full bg-lime-500 transition-all" style={{ width: `${Math.round(step.fraction * 100)}%` }} />
+                      </div>
+                      <p className="mt-1 text-slate-400">Shrinking to 720p… {Math.round(step.fraction * 100)}%</p>
+                    </div>
+                  )}
+                  {step?.stage === 'ready' && (
+                    <div className="mt-2 p-2.5 rounded-lg bg-slate-950/70 border border-slate-800 flex flex-wrap gap-3">
+                      <video src={step.previewUrl} controls muted playsInline className="w-56 max-w-full rounded-md bg-black" />
+                      <div className="flex-1 min-w-[180px] space-y-2">
+                        <p className="text-slate-300">
+                          <span className="font-bold text-orange-400">{formatVideoSize(step.originalBytes)}</span>
+                          {' → '}
+                          <span className="font-bold text-lime-400">{formatVideoSize(step.file.size)}</span>
+                          <span className="text-slate-500"> · {step.width}×{step.height}</span>
+                        </p>
+                        <p className="text-slate-500 leading-relaxed">
+                          Play it through first. Using it replaces the original, which is then deleted. The steps keep their timestamps.
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => useShrunk(v, step)}
+                            disabled={shrinkBusy}
+                            className="px-3 py-1.5 rounded-md bg-lime-500 hover:bg-lime-400 disabled:opacity-40 text-slate-950 text-[10.5px] font-extrabold transition-colors"
+                          >
+                            Use the smaller one
+                          </button>
+                          <button
+                            onClick={() => setShrink(v.id, null)}
+                            className="px-3 py-1.5 rounded-md border border-slate-700 bg-slate-800 text-slate-300 text-[10.5px] font-bold"
+                          >
+                            Keep the original
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {step?.stage === 'uploading' && (
+                    <p className="mt-1 flex items-center gap-1.5 text-slate-400"><Loader2 className="w-3 h-3 animate-spin" /> Replacing the original…</p>
+                  )}
+                  {step?.stage === 'failed' && <p className="mt-1 text-red-400 leading-relaxed">{step.reason}</p>}
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { LibraryExercise, TutorialStep } from '../types';
 import { api } from '../services/api';
-import { X, UploadCloud, Play, Pause, Plus, ArrowUp, ArrowDown, Trash2, Timer, AlertTriangle } from 'lucide-react';
-import { heavyVideoWarning } from '../utils/videoSize';
+import { X, UploadCloud, Play, Pause, Plus, ArrowUp, ArrowDown, Trash2, Timer, AlertTriangle, Minimize2, Loader2 } from 'lucide-react';
+import { heavyVideoWarning, formatVideoSize } from '../utils/videoSize';
+import { shrinkVideo, canShrinkVideo } from '../services/videoShrink';
 
 interface EditTutorialModalProps {
   exercise: LibraryExercise;
@@ -42,6 +43,10 @@ const EditTutorialModal: React.FC<EditTutorialModalProps> = ({ exercise, onClose
   const captionFadingRef = useRef(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // Shrinking a chosen video before it is uploaded. Nothing is replaced on the
+  // server until Save, so the admin sees the smaller copy in the player first.
+  const [shrinkProgress, setShrinkProgress] = useState<number | null>(null);
+  const [shrinkNote, setShrinkNote] = useState<{ ok: boolean; text: string } | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -82,10 +87,29 @@ const EditTutorialModal: React.FC<EditTutorialModalProps> = ({ exercise, onClose
     const preview = URL.createObjectURL(file);
     objectUrlRef.current = preview;
     setPendingFile(file);
+    setShrinkNote(null);
     setVideoUrl(preview);
     setVideoFileName(file.name);
     setDuration(0);
     setCurrentTime(0);
+  };
+
+  const shrinkPending = async () => {
+    if (!pendingFile || shrinkProgress !== null) return;
+    const original = pendingFile;
+    setShrinkNote(null);
+    setShrinkProgress(0);
+    let shown = 0;
+    const outcome = await shrinkVideo(original, original.name, f => {
+      if (f - shown >= 0.01 || f === 1) { shown = f; setShrinkProgress(f); }
+    });
+    setShrinkProgress(null);
+    if (outcome.ok === false) { setShrinkNote({ ok: false, text: outcome.reason }); return; }
+    handleVideoFile(outcome.file);
+    setShrinkNote({
+      ok: true,
+      text: `Shrunk from ${formatVideoSize(original.size)} to ${formatVideoSize(outcome.file.size)} at ${outcome.width}×${outcome.height}. Play it through, then save.`,
+    });
   };
 
   const removeVideo = () => {
@@ -341,8 +365,26 @@ const EditTutorialModal: React.FC<EditTutorialModalProps> = ({ exercise, onClose
             {pendingFile && heavyVideoWarning(pendingFile.size) && (
               <div role="alert" className="mt-2 flex gap-2 rounded-xl border border-orange-500/30 bg-orange-500/10 px-3 py-2.5">
                 <AlertTriangle className="w-4 h-4 text-orange-400 flex-shrink-0 mt-px" aria-hidden="true" />
-                <p className="text-[11px] text-orange-300 leading-relaxed">{heavyVideoWarning(pendingFile.size)}</p>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] text-orange-300 leading-relaxed">{heavyVideoWarning(pendingFile.size)}</p>
+                  {canShrinkVideo() && (shrinkProgress === null ? (
+                    <button
+                      type="button"
+                      onClick={shrinkPending}
+                      className="mt-2 flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-lime-500 hover:bg-lime-400 text-slate-950 text-[10.5px] font-extrabold transition-colors"
+                    >
+                      <Minimize2 className="w-3 h-3" /> Shrink it to 720p for me
+                    </button>
+                  ) : (
+                    <p className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-300">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Shrinking… {Math.round(shrinkProgress * 100)}%
+                    </p>
+                  ))}
+                </div>
               </div>
+            )}
+            {shrinkNote && (
+              <p role="status" className={`mt-2 text-[11px] leading-relaxed ${shrinkNote.ok ? 'text-lime-400' : 'text-red-400'}`}>{shrinkNote.text}</p>
             )}
             <p className="text-[10px] text-slate-500 leading-relaxed mt-1.5">
               Play or drag through the timeline, then hit &ldquo;Mark&rdquo; on a step below to set exactly where it should pause.
@@ -402,7 +444,7 @@ const EditTutorialModal: React.FC<EditTutorialModalProps> = ({ exercise, onClose
 
         <div className="p-4 border-t border-slate-800 bg-slate-900 flex justify-end space-x-3 flex-shrink-0">
           <button type="button" onClick={onClose} className="px-5 py-2.5 bg-slate-950 hover:bg-slate-800 rounded-xl text-xs font-bold text-slate-400 border border-slate-800 transition-colors min-h-[44px]">Cancel</button>
-          <button type="button" disabled={saving} onClick={handleSave} className="px-5 py-2.5 bg-lime-500 hover:bg-lime-400 rounded-xl text-xs font-bold text-slate-950 shadow-md shadow-lime-500/20 min-h-[44px] disabled:opacity-60">
+          <button type="button" disabled={saving || shrinkProgress !== null} onClick={handleSave} className="px-5 py-2.5 bg-lime-500 hover:bg-lime-400 rounded-xl text-xs font-bold text-slate-950 shadow-md shadow-lime-500/20 min-h-[44px] disabled:opacity-60">
             {saving ? 'Saving…' : 'Save Tutorial'}
           </button>
         </div>
