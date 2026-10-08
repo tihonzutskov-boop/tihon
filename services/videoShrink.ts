@@ -7,6 +7,14 @@
 // utils/videoShrink.ts; this only does the work.
 
 import { planShrink, checkShrunk } from '../utils/videoShrink';
+// The library's own prebuilt file, copied into the build as it is and loaded
+// only when someone shrinks a video. Bundling it from its source made the build
+// need more memory than Render allows it, and the deploy failed. Imported by
+// path because the package does not export this file.
+import mediabunnyUrl from '../node_modules/mediabunny/dist/bundles/mediabunny.min.mjs?url';
+
+type Mediabunny = typeof import('mediabunny');
+const loadMediabunny = (): Promise<Mediabunny> => import(/* @vite-ignore */ mediabunnyUrl);
 
 export type ShrinkOutcome =
   | { ok: true; file: File; width: number; height: number; seconds: number; originalBytes: number }
@@ -32,7 +40,7 @@ export const shrinkVideo = async (
     return { ok: false, reason: 'This browser cannot shrink videos. Safari, Chrome or Edge can.' };
   }
   try {
-    const { Input, Output, Conversion, BlobSource, BufferTarget, Mp4OutputFormat, ALL_FORMATS } = await import('mediabunny');
+    const { Input, Output, Conversion, BlobSource, BufferTarget, Mp4OutputFormat, ALL_FORMATS } = await loadMediabunny();
 
     const input = new Input({ source: new BlobSource(video), formats: ALL_FORMATS });
     const track = await input.getPrimaryVideoTrack();
