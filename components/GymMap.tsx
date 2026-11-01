@@ -5,6 +5,8 @@ import { isExerciseAvailableInZone } from '../utils/exerciseMatcher';
 import { ZoomOut, Settings, Dumbbell, Activity, Zap, Target, Cpu, Layers, Box, Wind, RotateCcw, ArrowUpRight, MoveDown, Circle, Waves, Timer, ZoomIn, Minus, Plus, Maximize2, Search, X, MapPin, Play, Sparkles, Filter, ChevronRight, ChevronLeft, DoorOpen, Lock, Bath, Droplets, ShieldCheck, Sprout, Anchor, Repeat, ChevronsRight } from 'lucide-react';
 import { ICON_MAP, getEquipmentIcon, getTaxonomyColor, isBeginnerFriendly, isAmenityZone, getAmenityStyleConfig, getZoneVisualCategory, VISUAL_CATEGORY_STYLES, ZoneVisualCategory, getZoneThemeStyle } from '../utils/equipmentIcons';
 import { heatColor, type HeatEntry } from '../utils/equipmentUsage';
+import type { RoutePoint } from '../utils/sessionRoute';
+import type { Rect } from '../utils/walkingRoute';
 
 const NEUTRAL_ZONE_STYLE = { fill: '#334155', stroke: '#475569', dashStroke: '#475569', textColor: '#cbd5e1' };
 
@@ -133,6 +135,86 @@ function renderElevator(x1: number, y1: number, x2: number, y2: number, thicknes
   );
 }
 
+// The walk to the next exercise, drawn over the floor plan.
+export interface WalkOverlay {
+  /** Corners of the walk. Empty draws no line: already there, or no way through. */
+  points: RoutePoint[];
+  /** "You are here": the entrance, or the machine the last exercise used. */
+  start: RoutePoint | null;
+  /** The middle of the machine (or area) being walked to. */
+  pin: RoutePoint;
+  /** Shown beside the pin. */
+  label: string;
+  /** Other copies of the same machine, for when this one is taken. */
+  spares?: Rect[];
+  /** The area they are walking from, kept in view so "you are here" has its surroundings. */
+  startArea?: Rect | null;
+}
+
+// Screen pixels: room around the walk when the map fits itself to it, with
+// more above for the pin and its name.
+const WALK_PAD_X = 28;
+const WALK_PAD_TOP = 70;
+const WALK_PAD_BOTTOM = 28;
+// Map units (10 to a metre): never zoom in so far that a short walk loses the
+// floor around it.
+const WALK_MIN_SPAN = 260;
+
+// Drawn in map coordinates but sized in screen pixels (`unit` map units to a
+// pixel), so the line, dot and pin look the same however big the walk is.
+// Keyed by the walk in the parent, so each new one plays its animation afresh.
+const WalkLayer: React.FC<{ walk: WalkOverlay; unit: number; visibleRight: number }> = ({ walk, unit, visibleRight }) => {
+  const { points, start, pin, label, spares = [] } = walk;
+  const d = points.length > 1 ? `M ${points.map(p => `${p.x} ${p.y}`).join(' L ')}` : '';
+  const length = points.slice(1).reduce((sum, p, k) => sum + Math.hypot(p.x - points[k].x, p.y - points[k].y), 0);
+  const dotGap = 10 * unit;
+  const labelWidth = Math.max(44, label.length * 6.6 + 22);
+  // The name sits to the right of the pin, or to its left near the right edge.
+  const flip = pin.x + (16 + labelWidth) * unit > visibleRight;
+  const line = { fill: 'none', strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+  return (
+    <g className={`pointer-events-none ${d ? '' : 'walk-arrived'}`}>
+      {spares.map((r, i) => (
+        <rect
+          key={`spare-${i}`}
+          x={r.x - 4 * unit} y={r.y - 4 * unit} width={r.width + 8 * unit} height={r.height + 8 * unit}
+          rx={5 * unit} fill="none" stroke="#a3e635" strokeWidth={1.5 * unit}
+          strokeDasharray={`${4 * unit} ${3 * unit}`} className="walk-spare"
+        />
+      ))}
+      {d && (
+        <>
+          <path d={d} {...line} stroke="#020617" strokeOpacity={0.55} strokeWidth={8 * unit} className="walk-draw" style={{ strokeDasharray: length, strokeDashoffset: length }} />
+          <path d={d} {...line} stroke="#a3e635" strokeOpacity={0.45} strokeWidth={4 * unit} className="walk-draw" style={{ strokeDasharray: length, strokeDashoffset: length }} />
+          {/* Dots flowing along it, so the way to walk is never in doubt. */}
+          <path
+            d={d} {...line} stroke="#a3e635" strokeWidth={4 * unit}
+            strokeDasharray={`${0.5 * unit} ${dotGap - 0.5 * unit}`}
+            className="walk-flow" style={{ ['--walk-dot-gap' as string]: `${-dotGap}px` }}
+          />
+        </>
+      )}
+      {start && (
+        <>
+          <circle cx={start.x} cy={start.y} r={7 * unit} fill="none" stroke="#38bdf8" strokeWidth={2 * unit} className="walk-ring" />
+          <circle cx={start.x} cy={start.y} r={7 * unit} fill="#38bdf8" stroke="#020617" strokeWidth={2.5 * unit} />
+        </>
+      )}
+      <g transform={`translate(${pin.x} ${pin.y}) scale(${unit})`}>
+        <ellipse rx="7" ry="2.6" fill="#000" className="walk-shadow" />
+        <g className="walk-pin">
+          <path d="M0 0 C-11 -13 -11 -32 0 -32 C11 -32 11 -13 0 0Z" fill="#a3e635" stroke="#020617" strokeWidth="1.8" />
+          <circle cy="-20" r="4.5" fill="#020617" />
+        </g>
+        <g className="walk-label" transform={`translate(${flip ? -(14 + labelWidth) : 14} -38)`}>
+          <rect width={labelWidth} height="22" rx="11" fill="#020617" stroke="#a3e635" strokeWidth="1.2" />
+          <text x={labelWidth / 2} y="15" textAnchor="middle" fontSize="11.5" fontWeight="700" fill="#ecfccb">{label}</text>
+        </g>
+      </g>
+    </g>
+  );
+};
+
 export interface ViewParams {
   viewBox: string;
   offsetX: number;
@@ -197,6 +279,9 @@ interface GymMapProps {
   manualView?: ViewParams;
   lang?: Language;
   hideSearch?: boolean;
+  // The walk to the next exercise. The map fits itself to it, and draws it
+  // over everything else.
+  walkRoute?: WalkOverlay | null;
 }
 
 // Traces the outer boundary of the union of a set of axis-aligned rectangles
@@ -329,9 +414,26 @@ const GymMap: React.FC<GymMapProps> = ({
   isThumbnail = false,
   manualView,
   lang = 'en' as Language,
-  hideSearch = false
+  hideSearch = false,
+  walkRoute = null,
 }) => {
   const containerRef = React.useRef<HTMLDivElement>(null);
+
+  // The drawing area's size in pixels, so a walk can be fitted to it and drawn
+  // at a constant size on screen. Only watched when there is a walk.
+  const drawingRef = React.useRef<HTMLDivElement>(null);
+  const [drawingSize, setDrawingSize] = React.useState<{ w: number; h: number } | null>(null);
+  const hasWalk = !!walkRoute && !isThumbnail && !isEditable;
+  React.useEffect(() => {
+    const el = drawingRef.current;
+    if (!hasWalk || !el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      if (width > 0 && height > 0) setDrawingSize({ w: width, h: height });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasWalk]);
 
   // Exercise & Equipment Locating State
   const [mapSearchQuery, setMapSearchQuery] = React.useState('');
@@ -674,6 +776,18 @@ const GymMap: React.FC<GymMapProps> = ({
 
   const focusedZone = zones.find(z => z.id === (focusedZoneId || selectedZoneId));
 
+  // A new walk starts from the fitted view, not wherever the last one was pinched to.
+  const walkKey = hasWalk
+    ? `${walkRoute!.start?.x},${walkRoute!.start?.y}>${walkRoute!.pin.x},${walkRoute!.pin.y}`
+    : '';
+  React.useEffect(() => {
+    if (walkKey) {
+      setPanX(0);
+      setPanY(0);
+      setZoomScale(1);
+    }
+  }, [walkKey]);
+
   // Reset zoom & pan to center when focused zone or selected zone changes
   React.useEffect(() => {
     if (focusedZoneId || selectedZoneId) {
@@ -716,6 +830,26 @@ const GymMap: React.FC<GymMapProps> = ({
     viewBoxHeight = manualView.height;
     offsetX = manualView.offsetX;
     offsetY = manualView.offsetY;
+  } else if (hasWalk) {
+    // Fit the whole walk — where they are, the way, and the machine's area —
+    // matching the drawing area's shape so none of it is spent on margins.
+    const walk = walkRoute!;
+    const pts = [...walk.points, walk.pin, ...(walk.start ? [walk.start] : [])];
+    let minX = Math.min(...pts.map(p => p.x)), maxX = Math.max(...pts.map(p => p.x));
+    let minY = Math.min(...pts.map(p => p.y)), maxY = Math.max(...pts.map(p => p.y));
+    for (const r of [focusedZone, walk.startArea]) {
+      if (!r) continue;
+      minX = Math.min(minX, r.x); maxX = Math.max(maxX, r.x + r.width);
+      minY = Math.min(minY, r.y); maxY = Math.max(maxY, r.y + r.height);
+    }
+    const { w, h } = drawingSize || { w: 360, h: 480 };
+    const availW = Math.max(80, w - 2 * WALK_PAD_X);
+    const availH = Math.max(80, h - WALK_PAD_TOP - WALK_PAD_BOTTOM);
+    const unitsPerPx = Math.max((maxX - minX) / availW, (maxY - minY) / availH, WALK_MIN_SPAN / w);
+    viewBoxWidth = w * unitsPerPx;
+    viewBoxHeight = h * unitsPerPx;
+    offsetX = (viewBoxWidth - (maxX - minX)) / 2 - minX;
+    offsetY = WALK_PAD_TOP * unitsPerPx + (availH * unitsPerPx - (maxY - minY)) / 2 - minY;
   } else if (focusedZone && (!isEditable || editMode === 'machine')) {
     const ZOOM_PADDING = 40;
     const MIN_VIEW_SIZE = 500;
@@ -854,6 +988,33 @@ const GymMap: React.FC<GymMapProps> = ({
           fill: none;
           pointer-events: none;
         }
+        @keyframes walkDraw { to { stroke-dashoffset: 0; } }
+        .walk-draw { animation: walkDraw 1.5s 0.4s ease-in-out forwards; }
+        @keyframes walkFlow { to { stroke-dashoffset: var(--walk-dot-gap); } }
+        @keyframes walkShow { from { opacity: 0; } to { opacity: 1; } }
+        .walk-flow { opacity: 0; animation: walkShow 0.2s 1.9s forwards, walkFlow 1s 1.9s linear infinite; }
+        @keyframes walkRing { 0% { transform: scale(0.6); opacity: 0.9; } 100% { transform: scale(3); opacity: 0; } }
+        .walk-ring { transform-box: fill-box; transform-origin: center; animation: walkRing 1.8s ease-out infinite; }
+        @keyframes walkDrop {
+          0% { opacity: 0; transform: translateY(-46px) scale(0.9); }
+          60% { opacity: 1; }
+          100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .walk-pin { transform-box: fill-box; transform-origin: 50% 100%; animation: walkDrop 0.7s 1.75s cubic-bezier(0.3, 1.6, 0.5, 1) both; }
+        @keyframes walkShadow { from { opacity: 0; transform: scale(0.3); } to { opacity: 0.5; transform: scale(1); } }
+        .walk-shadow { transform-box: fill-box; transform-origin: center; animation: walkShadow 0.7s 1.75s ease-out both; }
+        .walk-label { animation: walkShow 0.4s 2.35s both; }
+        .walk-spare { animation: walkShow 0.4s 2.6s both; }
+        /* Nothing to walk: the pin comes straight down. */
+        .walk-arrived .walk-pin, .walk-arrived .walk-shadow { animation-delay: 0.2s; }
+        .walk-arrived .walk-label { animation-delay: 0.8s; }
+        .walk-arrived .walk-spare { animation-delay: 1s; }
+        @media (prefers-reduced-motion: reduce) {
+          .walk-draw { animation: none; stroke-dashoffset: 0 !important; }
+          .walk-flow, .walk-pin, .walk-label, .walk-spare { animation: none; opacity: 1; }
+          .walk-shadow { animation: none; opacity: 0.5; }
+          .walk-ring { animation: none; opacity: 0; }
+        }
       `}</style>
 
       {!isThumbnail && (
@@ -873,7 +1034,7 @@ const GymMap: React.FC<GymMapProps> = ({
         </>
       )}
       
-      <div className="w-full flex-1 relative overflow-hidden flex items-center justify-center">
+      <div ref={drawingRef} className="w-full flex-1 relative overflow-hidden flex items-center justify-center">
         <svg
           viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
           className={`w-full h-full select-none ${isThumbnail ? '' : 'touch-none'} ${
@@ -1869,7 +2030,8 @@ const GymMap: React.FC<GymMapProps> = ({
                                 )}
                               </g>
 
-                              {showUserGlow && (
+                              {/* With a walk drawn, the pin carries the target's name. */}
+                              {showUserGlow && !(hasWalk && isUserTarget && !isHovered) && (
                                 <g transform={`translate(${machine.width / 2}, -8)`} className="pointer-events-none animate-in fade-in duration-150">
                                   {(() => {
                                     const label = getGymTranslation(machine.name, lang);
@@ -1936,6 +2098,17 @@ const GymMap: React.FC<GymMapProps> = ({
                 );
               })}
             </g>
+
+            {hasWalk && (
+              <WalkLayer
+                key={walkKey}
+                walk={walkRoute!}
+                // Map units to a screen pixel: the viewBox is fitted to the
+                // drawing area's shape, then zoomed.
+                unit={viewBoxWidth / (drawingSize?.w || 360) / zoomScale}
+                visibleRight={(viewBoxWidth - panX) / zoomScale - offsetX}
+              />
+            )}
           </g>
         </svg>
       </div>
@@ -1944,7 +2117,8 @@ const GymMap: React.FC<GymMapProps> = ({
       {!isThumbnail && !isEditable && (
         <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-10 flex items-start pointer-events-none">
           {/* Back-to-map pill, shown whenever a zone is focused/zoomed in */}
-          {focusedZoneId && (
+          {/* A walk's view is its own; there is no zone to back out of. */}
+          {focusedZoneId && !hasWalk && (
             <button
               onClick={(e) => {
                 e.stopPropagation();

@@ -33,12 +33,19 @@ const ex = (id: string, name: string): Exercise => ({
 });
 
 describe('entrancePoint', () => {
-  it('places the entrance on the side it is set to', () => {
+  // The offset is a percentage along the wall, as the admin slider sets it and
+  // the map draws it — not a distance.
+  it('places the entrance on the side it is set to, the offset a percentage along it', () => {
     const dims = { width: 100, height: 50, x: 0, y: 0 };
-    expect(entrancePoint({ side: 'left', offset: 10, width: 10 }, dims)).toEqual({ x: 0, y: 15 });
-    expect(entrancePoint({ side: 'right', offset: 10, width: 10 }, dims)).toEqual({ x: 100, y: 15 });
-    expect(entrancePoint({ side: 'top', offset: 10, width: 10 }, dims)).toEqual({ x: 15, y: 0 });
-    expect(entrancePoint({ side: 'bottom', offset: 10, width: 10 }, dims)).toEqual({ x: 15, y: 50 });
+    expect(entrancePoint({ side: 'left', offset: 10, width: 10 }, dims)).toEqual({ x: 0, y: 5 });
+    expect(entrancePoint({ side: 'right', offset: 10, width: 10 }, dims)).toEqual({ x: 100, y: 5 });
+    expect(entrancePoint({ side: 'top', offset: 10, width: 10 }, dims)).toEqual({ x: 10, y: 0 });
+    expect(entrancePoint({ side: 'bottom', offset: 10, width: 10 }, dims)).toEqual({ x: 10, y: 50 });
+  });
+
+  it('centres a door on the middle of the wall at 50%, wherever the room starts', () => {
+    const dims = { width: 750, height: 490, x: -20, y: 10 };
+    expect(entrancePoint({ side: 'bottom', offset: 50, width: 100 }, dims)).toEqual({ x: 355, y: 500 });
   });
 
   it('returns null when the gym has no entrance or dimensions set', () => {
@@ -49,8 +56,8 @@ describe('entrancePoint', () => {
 
 describe('optionPoint', () => {
   // Machine coordinates are relative to the zone, which is easy to get wrong.
-  it('offsets a machine by its zone position', () => {
-    expect(optionPoint({ zone: zone('z', 100, 50), machine: machine('m', 5, 5) })).toEqual({ x: 105, y: 55 });
+  it('offsets a machine by its zone position and points at its middle', () => {
+    expect(optionPoint({ zone: zone('z', 100, 50), machine: machine('m', 5, 5) })).toEqual({ x: 110, y: 60 });
   });
 
   it('falls back to the centre of a zone with no specific machine', () => {

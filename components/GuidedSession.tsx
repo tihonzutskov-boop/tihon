@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { X, ArrowLeft, Check, Plus, Minus, Dumbbell, PlayCircle } from 'lucide-react';
+import { X, ArrowLeft, Check, Plus, Minus, Dumbbell, PlayCircle, MapPin } from 'lucide-react';
 import { WorkoutDay, Gym, EquipmentItem, LibraryExercise, Exercise, EffortRating, ExerciseLog, EFFORT_SCALE, JointStressArea, ALL_JOINT_STRESS_AREAS } from '../types';
 import { api } from '../services/api';
-import GymMap from './GymMap';
-import { planSessionRoute } from '../utils/sessionRoute';
+import GymMap, { WalkOverlay } from './GymMap';
+import { planSessionRoute, entrancePoint, optionPoint } from '../utils/sessionRoute';
+import { planWalkingRoute, machineRect, RoutePlace } from '../utils/walkingRoute';
 import { selectBookendExercise } from '../utils/planGeneration';
 import { getExerciseRequiredEquipmentIds } from '../utils/equipmentMatcher';
 import { nearestMatPickup, zoneCentre, matPickupMessage } from '../utils/matPickup';
@@ -255,6 +256,45 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
     if (direct) return direct;
     return routeStop?.machine || undefined;
   }, [zone, exercise, routeStop]);
+
+  // Where the client is standing when this exercise's Locate screen opens:
+  // where the last exercise they were sent somewhere for was done, or the
+  // entrance for the first. A follow-along video sends them nowhere, so it is
+  // skipped. The same choice as each exercise's own Locate screen made.
+  const walkFrom = useMemo((): (RoutePlace & { name: string | null }) | null => {
+    for (let j = exIdx - 1; j >= 0; j--) {
+      if (!stagesByExIdx[j]?.some(s => s.key === 'locate' || s.key === 'bookend')) continue;
+      const ex = exercises[j];
+      const placeZone = gym.zones.find(z => z.id === ex.equipmentId) || route[j]?.zone;
+      if (!placeZone) continue;
+      const placeMachine = placeZone.machines?.find(m => m.id === ex.machineId)
+        || (route[j]?.zone?.id === placeZone.id ? route[j]?.machine : null)
+        || null;
+      const place = { zone: placeZone, machine: placeMachine };
+      return { ...place, point: optionPoint(place), name: placeMachine?.name || placeZone.name };
+    }
+    // The map draws a door at the bottom middle when none is set; start there too.
+    const door = entrancePoint(gym.entrance || { side: 'bottom', offset: 50, width: 80 }, gym.dimensions);
+    return door ? { point: door, name: null } : null;
+  }, [exIdx, exercises, gym, route, stagesByExIdx]);
+
+  const sameSpot = !!walkFrom?.zone && walkFrom.zone.id === zone?.id && (walkFrom.machine?.id ?? null) === (machine?.id ?? null);
+
+  // The walk drawn on the Locate map: from where they are to the machine
+  // itself, with the pin on it. Only worked out while that screen is showing.
+  const walk = useMemo((): WalkOverlay | null => {
+    if (stage.key !== 'locate' || !zone || !walkFrom) return null;
+    const planned = planWalkingRoute(gym, walkFrom, { zone, machine: machine || null });
+    if (!planned) return null;
+    return {
+      points: planned.points,
+      start: sameSpot ? null : walkFrom.point,
+      pin: planned.pin,
+      label: machine?.name || zone.name,
+      spares: (routeStop?.alternatives || []).flatMap(a => (a.machine ? [machineRect(a.zone, a.machine)] : [])),
+      startArea: !sameSpot && walkFrom.zone ? walkFrom.zone : null,
+    };
+  }, [stage.key, zone, machine, walkFrom, gym, routeStop, sameSpot]);
 
   // Where to pick up a mat, for an exercise done on open floor. Advisory: the
   // exercise is offered because the gym has floor space, and whether anyone
@@ -563,8 +603,10 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
               <p className="text-sm font-extrabold">{displayName(exercise)}</p>
             </div>
           </div>
-          <div className="flex-1 relative m-4 rounded-2xl border border-slate-800 overflow-hidden bg-slate-900">
+          <div className="flex-1 relative m-4 rounded-2xl border border-slate-800 overflow-hidden bg-slate-900 flex flex-col">
             {zone ? (
+              <>
+              <div className="flex-1 min-h-0 relative">
               <GymMap
                 zones={gym.zones}
                 dimensions={gym.dimensions}
@@ -580,7 +622,31 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                 pickupZoneId={matPickup?.zone.id ?? null}
                 pickupMachineId={matPickup?.machine.id ?? null}
                 hideSearch
+                walkRoute={walk}
               />
+              </div>
+              {walk && (
+                <div className="flex-shrink-0 border-t border-slate-800 bg-slate-900 px-3.5 py-2.5 space-y-1.5 text-[11.5px] leading-snug text-slate-400">
+                  <p className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-sky-400 flex-shrink-0" />
+                    <span>
+                      {sameSpot
+                        ? 'Same place as your last exercise. Stay where you are.'
+                        : walkFrom?.name
+                          ? <>You are here: {walkFrom.name}, your last exercise</>
+                          : 'You are here: the entrance'}
+                    </span>
+                  </p>
+                  <p className="flex items-center gap-2">
+                    <MapPin className="w-2.5 h-2.5 text-lime-400 flex-shrink-0" />
+                    <span>
+                      Go to <span className="font-bold text-lime-100">{machine?.name || zone.name}</span>
+                      {machine && <>, in {zone.name}</>}
+                    </span>
+                  </p>
+                </div>
+              )}
+              </>
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center text-center px-6 gap-2 text-slate-500">
                 <Dumbbell className="w-8 h-8 opacity-50" />

@@ -40,10 +40,15 @@ export interface RouteStop {
   alternatives: RouteOption[];
 }
 
-// Machine coordinates are relative to their zone; zone coordinates are absolute.
+// The middle of the machine, or of the zone when there is no single machine.
+// Machine coordinates are relative to their zone and name its top-left corner;
+// zone coordinates are absolute.
 export const optionPoint = (option: RouteOption): RoutePoint =>
   option.machine
-    ? { x: option.zone.x + option.machine.x, y: option.zone.y + option.machine.y }
+    ? {
+        x: option.zone.x + option.machine.x + option.machine.width / 2,
+        y: option.zone.y + option.machine.y + option.machine.height / 2,
+      }
     : { x: option.zone.x + option.zone.width / 2, y: option.zone.y + option.zone.height / 2 };
 
 // Squared distance is enough to rank by — the square root would change nothing
@@ -61,12 +66,15 @@ export const entrancePoint = (
   if (!entrance || !dimensions) return null;
   const x = dimensions.x ?? 0;
   const y = dimensions.y ?? 0;
-  const along = entrance.offset + entrance.width / 2;
+  // The offset is a percentage along the wall, and the door is centred on it —
+  // the same as the map draws it.
+  const across = (entrance.offset / 100) * dimensions.width;
+  const down = (entrance.offset / 100) * dimensions.height;
   switch (entrance.side) {
-    case 'top': return { x: x + along, y };
-    case 'bottom': return { x: x + along, y: y + dimensions.height };
-    case 'left': return { x, y: y + along };
-    case 'right': return { x: x + dimensions.width, y: y + along };
+    case 'top': return { x: x + across, y };
+    case 'bottom': return { x: x + across, y: y + dimensions.height };
+    case 'left': return { x, y: y + down };
+    case 'right': return { x: x + dimensions.width, y: y + down };
   }
 };
 
