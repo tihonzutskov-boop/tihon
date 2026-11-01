@@ -9,12 +9,14 @@ import EquipmentLibrary, { getEquipmentIconComponent } from './EquipmentLibrary'
 import AdminCoaching from './AdminCoaching';
 import { QuickAddEquipmentModal } from './QuickAddEquipmentModal';
 import UsageHeatmap from './UsageHeatmap';
+import MachineSizesPanel from './MachineSizesPanel';
 import { api, DEFAULT_EQUIPMENT } from '../services/api';
 import { evaluateZoneExercises, getZoneEquipmentIds, floorSpaceIsAssumed } from '../utils/equipmentMatcher';
 import { getExerciseLocations } from '../utils/exerciseMatcher';
-import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Eraser, Eye, EyeOff, Footprints, MapPin, LayoutTemplate, DoorOpen, Lock, Bath, Droplets, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle, Copy, ClipboardPaste, Dumbbell, Activity, Zap, Target, Layers, Box, Wind, RotateCcw, ArrowUpRight, ArrowUpLeft, ArrowDownRight, ArrowDownLeft, ArrowRight, ArrowUp, ArrowDown, MoveDown, Circle, Waves, Timer, Sparkles, Search, Video, Play, Film, Filter, X, ExternalLink, Compass, SlidersHorizontal, ChevronRight, Bookmark, BookmarkCheck, Camera, Users, Flame, Pencil } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Eraser, Eye, EyeOff, Footprints, MapPin, LayoutTemplate, DoorOpen, Lock, Bath, Droplets, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle, Copy, ClipboardPaste, Dumbbell, Activity, Zap, Target, Layers, Box, Wind, RotateCcw, ArrowUpRight, ArrowUpLeft, ArrowDownRight, ArrowDownLeft, ArrowRight, ArrowUp, ArrowDown, MoveDown, Circle, Waves, Timer, Sparkles, Search, Video, Play, Film, Filter, X, ExternalLink, Compass, SlidersHorizontal, ChevronRight, Bookmark, BookmarkCheck, Camera, Users, Flame, Pencil, RotateCw } from 'lucide-react';
 import { MACHINE_ICONS_LIST as MACHINE_ICONS, ICON_GROUPS } from '../utils/equipmentIcons';
 import { snapWallEndpoint } from '../utils/wallSnapping';
+import { standardSizeOf, sizeKindOf, fitToSize, turnQuarter, isAtSize, STANDARD_SIZES, unitsPerMetreOf } from '../utils/machineSizes';
 
 interface AdminPageProps {
   gyms: Gym[];
@@ -405,6 +407,9 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
   const { gym, update, snapshot, undo, redo, canUndo, canRedo } = useGymHistory(initialGym);
   const zones = gym.zones;
   const dimensions = gym.dimensions || { width: 780, height: 580 };
+  // Map units to a real metre: everything shown in metres goes through it.
+  const upm = unitsPerMetreOf(dimensions);
+  const inMetres = (units: number) => String(Math.round((units / upm) * 100) / 100);
   const entrance = gym.entrance || { side: 'bottom', offset: 50, width: 80 };
   const floorColor = gym.floorColor || '#1e293b';
   const annexes = gym.annexes || [];
@@ -451,6 +456,28 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
   // Equipment Library catalog state
   const [equipmentList, setEquipmentList] = useState<EquipmentItem[]>(DEFAULT_EQUIPMENT);
 
+  // The library item a placed machine came from, by link or, for machines
+  // placed before links were kept, by name.
+  const equipmentOf = useCallback(
+    (m: { name?: string; equipmentId?: string }) =>
+      equipmentList.find(e => e.id === m.equipmentId) || equipmentList.find(e => e.name === m.name),
+    [equipmentList]
+  );
+
+  // A new machine's footprint: its kind's real size, standing lengthways, or
+  // the old 4 × 4 square when nobody knows what it is yet.
+  const placedSize = useCallback((eq: EquipmentItem) => {
+    const size = standardSizeOf({ name: eq.name, equipmentId: eq.id }, eq);
+    return size
+      ? { width: Math.round(size.width * upm * 100) / 100, height: Math.round(size.length * upm * 100) / 100 }
+      : { width: 40, height: 40 };
+  }, [upm]);
+
+  // Machines with a fixed size can only be moved and turned, not resized.
+  const lockedMachineIds = useMemo(() => new Set(
+    gym.zones.flatMap(z => (z.machines || []).filter(m => !!standardSizeOf(m, equipmentOf(m))).map(m => m.id))
+  ), [gym.zones, equipmentOf]);
+
   // Exercise library state for zone exercise matching
   const [libraryExercises, setLibraryExercises] = useState<LibraryExercise[]>([]);
   const [showTutorials, setShowTutorials] = useState(false);
@@ -461,28 +488,28 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
   const [isQuickAddModalOpen, setIsQuickAddModalOpen] = useState(false);
   const [quickAddFeedback, setQuickAddFeedback] = useState<string | null>(null);
 
-  const [widthInput, setWidthInput] = useState<string>((dimensions.width / 10).toString());
-  const [heightInput, setHeightInput] = useState<string>((dimensions.height / 10).toString());
+  const [widthInput, setWidthInput] = useState<string>(inMetres(dimensions.width));
+  const [heightInput, setHeightInput] = useState<string>(inMetres(dimensions.height));
 
   useEffect(() => {
     const currentVal = parseFloat(widthInput);
-    if (isNaN(currentVal) || currentVal !== dimensions.width / 10) {
-      setWidthInput((dimensions.width / 10).toString());
+    if (isNaN(currentVal) || currentVal !== Number(inMetres(dimensions.width))) {
+      setWidthInput(inMetres(dimensions.width));
     }
-  }, [dimensions.width]);
+  }, [dimensions.width, upm]);
 
   useEffect(() => {
     const currentVal = parseFloat(heightInput);
-    if (isNaN(currentVal) || currentVal !== dimensions.height / 10) {
-      setHeightInput((dimensions.height / 10).toString());
+    if (isNaN(currentVal) || currentVal !== Number(inMetres(dimensions.height))) {
+      setHeightInput(inMetres(dimensions.height));
     }
-  }, [dimensions.height]);
+  }, [dimensions.height, upm]);
 
   const handleWidthChange = (val: string) => {
     setWidthInput(val);
     const meters = parseFloat(val);
     if (!isNaN(meters) && meters > 0) {
-      const pixels = Math.round(meters * 10);
+      const pixels = Math.round(meters * upm);
       update({ ...gym, dimensions: { ...dimensions, width: Math.max(10, Math.min(2500, pixels)) } }, false);
     }
   };
@@ -491,7 +518,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
     setHeightInput(val);
     const meters = parseFloat(val);
     if (!isNaN(meters) && meters > 0) {
-      const pixels = Math.round(meters * 10);
+      const pixels = Math.round(meters * upm);
       update({ ...gym, dimensions: { ...dimensions, height: Math.max(10, Math.min(2500, pixels)) } }, false);
     }
   };
@@ -560,13 +587,13 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
     const x = Math.min(selectedZone.width - 45, 10 + (offset % (selectedZone.width - 50 || 100)));
     const y = Math.min(selectedZone.height - 45, 10 + (Math.floor(offset / (selectedZone.width - 50 || 100)) * 15));
 
+    const size = placedSize(eq);
     const newMachine: GymMachine = {
       id: `machine-${Date.now()}`,
       name: eq.name,
-      x: Math.max(5, x),
-      y: Math.max(5, y),
-      width: 40,
-      height: 40,
+      x: Math.max(0, Math.min(Math.max(5, x), selectedZone.width - size.width)),
+      y: Math.max(0, Math.min(Math.max(5, y), selectedZone.height - size.height)),
+      ...size,
       icon: eq.icon || 'Dumbbell',
       longDescription: eq.description || '',
       videoUrl: '',
@@ -608,14 +635,14 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
     const x = Math.min(targetZoneObj.width - 45, 10 + (offset % (targetZoneObj.width - 50 || 100)));
     const y = Math.min(targetZoneObj.height - 45, 10 + (Math.floor(offset / (targetZoneObj.width - 50 || 100)) * 15));
 
+    const size = placedSize(newEq);
     const newMachine: GymMachine = {
       id: `machine-${Date.now()}`,
       name: newEq.name,
       equipmentId: newEq.id,
-      x: Math.max(5, x),
-      y: Math.max(5, y),
-      width: 40,
-      height: 40,
+      x: Math.max(0, Math.min(Math.max(5, x), targetZoneObj.width - size.width)),
+      y: Math.max(0, Math.min(Math.max(5, y), targetZoneObj.height - size.height)),
+      ...size,
       icon: 'Camera',
       imageUrl: newEq.imageUrl
     };
@@ -718,6 +745,20 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
       setSavingToLibrary(false);
     }
   }, [selectedZone, selectedMachineId, equipmentList, gym, update]);
+
+  // Changes one machine's footprint in the selected zone, as an undoable step.
+  const reshapeMachine = useCallback((reshape: (m: GymMachine, z: GymZone) => Partial<GymMachine> | null) => {
+    if (!selectedZone || !selectedMachineId) return;
+    const newZones = gym.zones.map(z => z.id !== selectedZone.id ? z : {
+      ...z,
+      machines: (z.machines || []).map(m => {
+        if (m.id !== selectedMachineId) return m;
+        const change = reshape(m, z);
+        return change ? { ...m, ...change } : m;
+      }),
+    });
+    update({ ...gym, zones: newZones }, true);
+  }, [selectedZone, selectedMachineId, gym, update]);
 
   const deleteMachine = useCallback(() => {
     if (!selectedZone || !selectedMachineId) return;
@@ -1073,7 +1114,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
   }
 
   const handleMachineResizeStart = (e: React.MouseEvent, machine: GymMachine, zoneId: string) => {
-    if (editMode !== 'machine') return; e.preventDefault(); snapshot(); setSelectedMachineId(machine.id);
+    if (editMode !== 'machine' || lockedMachineIds.has(machine.id)) return; e.preventDefault(); snapshot(); setSelectedMachineId(machine.id);
     setDragState({ mode: 'resize-machine', itemId: machine.id, zoneId: zoneId, startX: e.clientX, startY: e.clientY, initialData: { x: machine.x, y: machine.y, width: machine.width, height: machine.height }, viewParams: calculateViewParams(zoneId) });
   }
 
@@ -1822,6 +1863,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
                  onAnnexResizeStart={handleAnnexResizeStart} 
                  onMachineDragStart={handleMachineDragStart} 
                  onMachineResizeStart={handleMachineResizeStart} 
+                 lockedMachineIds={lockedMachineIds}
                  selectedMachineId={selectedMachineId} 
                  selectedWallId={selectedWallId}
                  onWallClick={setSelectedWallId}
@@ -2388,6 +2430,53 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
                           );
                         })()}
 
+                        {/* Size: fixed by the machine's kind, so it can only be turned. */}
+                        {(() => {
+                          const m = (selectedZone.machines || []).find(x => x.id === selectedMachineId);
+                          if (!m) return null;
+                          const eq = equipmentOf(m);
+                          const size = standardSizeOf(m, eq);
+                          const kind = sizeKindOf(m, eq);
+                          const atSize = size ? isAtSize(m, size, upm) : true;
+                          const metres = (v: number) => (v / upm).toFixed(1).replace(/\.0$/, '');
+                          return (
+                            <div className="rounded border border-slate-800 bg-slate-950/50 p-2.5 space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-slate-400 font-semibold">Size</span>
+                                <span className="text-[11px] font-mono text-slate-300">{metres(m.width)} × {metres(m.height)} m</span>
+                              </div>
+                              <p className="text-[10px] text-slate-500 leading-snug">
+                                {size
+                                  ? eq?.sizeM
+                                    ? `Fixed at ${size.width} × ${size.length} m, set in the Equipment Library.`
+                                    : `Fixed at ${size.width} × ${size.length} m, a typical ${kind ? STANDARD_SIZES[kind].name.toLowerCase() : 'machine'}. Change it in the Equipment Library.`
+                                  : 'No fixed size for this kind yet: drag the corner to size it, or give its Equipment Library item a real size.'}
+                              </p>
+                              {size && !atSize && (
+                                <p className="text-[10px] text-amber-300 leading-snug">It isn't at its fixed size yet.</p>
+                              )}
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => reshapeMachine(turnQuarter)}
+                                  className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-200"
+                                >
+                                  <RotateCw className="w-3 h-3" /> Rotate
+                                </button>
+                                {size && !atSize && (
+                                  <button
+                                    type="button"
+                                    onClick={() => reshapeMachine((mm, z) => fitToSize(mm, z, size, upm))}
+                                    className="flex-1 px-2 py-1.5 rounded bg-lime-500 hover:bg-lime-400 text-xs font-bold text-slate-950"
+                                  >
+                                    Use fixed size
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
+
                         <button onClick={deleteMachine} className="w-full flex items-center justify-center px-4 py-2 bg-red-950/20 hover:bg-red-950/40 text-red-400 border border-red-900/30 rounded text-xs transition-colors"><Trash2 className="w-3 h-3 mr-2" />Remove Machine</button>
                     </div>
                  ) : ( <div className="text-center py-8 text-slate-600 text-xs">Select a machine to edit details.</div> )}
@@ -2442,6 +2531,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
                         </div>
                      </div>
                   </div>
+                  <MachineSizesPanel gym={gym} equipment={equipmentList} onChange={next => update(next, true)} />
                   </>)}
 
                   {roomTab === 'annexes' && (
@@ -2500,7 +2590,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
                                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isSelected ? 'bg-lime-400' : 'bg-slate-600'}`} />
                                 <div className="truncate">
                                   <div className="font-semibold text-[11px] text-slate-200 truncate">{displayName}</div>
-                                  <div className="text-[10px] text-slate-500">{(annex.width / 10).toFixed(1)}m × {(annex.height / 10).toFixed(1)}m · pos: ({(annex.x / 10).toFixed(1)}m, {(annex.y / 10).toFixed(1)}m)</div>
+                                  <div className="text-[10px] text-slate-500">{(annex.width / upm).toFixed(1)}m × {(annex.height / upm).toFixed(1)}m · pos: ({(annex.x / upm).toFixed(1)}m, {(annex.y / upm).toFixed(1)}m)</div>
                                 </div>
                               </div>
                               <div className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -2574,9 +2664,9 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
                                   step="0.5"
                                   min="2"
                                   max="100"
-                                  value={(selectedAnnex.width / 10)}
+                                  value={Math.round((selectedAnnex.width / upm) * 100) / 100}
                                   onFocus={() => snapshot()}
-                                  onChange={(e) => updateAnnexProperty(selectedAnnex.id, 'width', Math.max(20, Math.round((parseFloat(e.target.value) || 2) * 10)))}
+                                  onChange={(e) => updateAnnexProperty(selectedAnnex.id, 'width', Math.max(20, Math.round((parseFloat(e.target.value) || 2) * upm)))}
                                   className="w-full bg-slate-900 border border-slate-700 rounded p-2 pr-7 text-xs text-white focus:border-lime-500 focus:outline-none"
                                 />
                                 <span className="absolute right-2 text-slate-500 text-[11px] font-semibold select-none pointer-events-none">m</span>
@@ -2591,9 +2681,9 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
                                   step="0.5"
                                   min="2"
                                   max="100"
-                                  value={(selectedAnnex.height / 10)}
+                                  value={Math.round((selectedAnnex.height / upm) * 100) / 100}
                                   onFocus={() => snapshot()}
-                                  onChange={(e) => updateAnnexProperty(selectedAnnex.id, 'height', Math.max(20, Math.round((parseFloat(e.target.value) || 2) * 10)))}
+                                  onChange={(e) => updateAnnexProperty(selectedAnnex.id, 'height', Math.max(20, Math.round((parseFloat(e.target.value) || 2) * upm)))}
                                   className="w-full bg-slate-900 border border-slate-700 rounded p-2 pr-7 text-xs text-white focus:border-lime-500 focus:outline-none"
                                 />
                                 <span className="absolute right-2 text-slate-500 text-[11px] font-semibold select-none pointer-events-none">m</span>
@@ -2608,9 +2698,9 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
                                 <input
                                   type="number"
                                   step="0.5"
-                                  value={(selectedAnnex.x / 10)}
+                                  value={Math.round((selectedAnnex.x / upm) * 100) / 100}
                                   onFocus={() => snapshot()}
-                                  onChange={(e) => updateAnnexProperty(selectedAnnex.id, 'x', Math.round((parseFloat(e.target.value) || 0) * 10))}
+                                  onChange={(e) => updateAnnexProperty(selectedAnnex.id, 'x', Math.round((parseFloat(e.target.value) || 0) * upm))}
                                   className="w-full bg-slate-900 border border-slate-700 rounded p-2 pr-7 text-xs text-white focus:border-lime-500 focus:outline-none"
                                 />
                                 <span className="absolute right-2 text-slate-500 text-[11px] font-semibold select-none pointer-events-none">m</span>
@@ -2623,9 +2713,9 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
                                 <input
                                   type="number"
                                   step="0.5"
-                                  value={(selectedAnnex.y / 10)}
+                                  value={Math.round((selectedAnnex.y / upm) * 100) / 100}
                                   onFocus={() => snapshot()}
-                                  onChange={(e) => updateAnnexProperty(selectedAnnex.id, 'y', Math.round((parseFloat(e.target.value) || 0) * 10))}
+                                  onChange={(e) => updateAnnexProperty(selectedAnnex.id, 'y', Math.round((parseFloat(e.target.value) || 0) * upm))}
                                   className="w-full bg-slate-900 border border-slate-700 rounded p-2 pr-7 text-xs text-white focus:border-lime-500 focus:outline-none"
                                 />
                                 <span className="absolute right-2 text-slate-500 text-[11px] font-semibold select-none pointer-events-none">m</span>

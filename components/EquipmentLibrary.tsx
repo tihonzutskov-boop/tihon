@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { api, DEFAULT_EQUIPMENT } from '../services/api';
 import { getEquipmentExerciseCount } from '../utils/equipmentMatcher';
+import { sizeKindOf, STANDARD_SIZES } from '../utils/machineSizes';
 
 interface EquipmentLibraryProps {
   gym: Gym;
@@ -154,6 +155,9 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
   const [formMuscleGroups, setFormMuscleGroups] = useState<string[]>([]);
   const [formFootprintW, setFormFootprintW] = useState('40');
   const [formFootprintH, setFormFootprintH] = useState('40');
+  // This item's real size in metres; empty means the typical size of its kind.
+  const [formSizeW, setFormSizeW] = useState('');
+  const [formSizeL, setFormSizeL] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleImageFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -255,6 +259,8 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
     setFormMuscleGroups([]);
     setFormFootprintW('40');
     setFormFootprintH('40');
+    setFormSizeW('');
+    setFormSizeL('');
     setIsCreatingNew(true);
   };
 
@@ -269,6 +275,8 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
     setFormMuscleGroups(item.muscleGroups || []);
     setFormFootprintW(item.defaultFootprint?.width?.toString() || '40');
     setFormFootprintH(item.defaultFootprint?.height?.toString() || '40');
+    setFormSizeW(item.sizeM ? String(item.sizeM.width) : '');
+    setFormSizeL(item.sizeM ? String(item.sizeM.length) : '');
     setIsCreatingNew(true);
   };
 
@@ -285,6 +293,16 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
       setModalError('Enter a name first.');
       return;
     }
+    // Both sides or neither: half a size can't be applied to a machine.
+    const sizeW = parseFloat(formSizeW.replace(',', '.'));
+    const sizeL = parseFloat(formSizeL.replace(',', '.'));
+    const sizeGiven = formSizeW.trim() !== '' || formSizeL.trim() !== '';
+    const plausible = (v: number) => Number.isFinite(v) && v >= 0.2 && v <= 20;
+    if (sizeGiven && !(plausible(sizeW) && plausible(sizeL))) {
+      setModalError('Enter both the width and the length in metres, between 0.2 and 20 — or leave both empty.');
+      return;
+    }
+    const sizeM = sizeGiven ? { width: Math.min(sizeW, sizeL), length: Math.max(sizeW, sizeL) } : undefined;
     setModalError('');
     setIsSavingModal(true);
 
@@ -301,7 +319,8 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
         description: formDescription.trim(),
         imageUrl: formImageUrl.trim() || undefined,
         muscleGroups: formMuscleGroups,
-        defaultFootprint: { width: w, height: h }
+        defaultFootprint: { width: w, height: h },
+        sizeM,
       };
       await api.saveEquipment(updated);
       onEquipmentChange(safeEquipmentList.map(item => item.id === updated.id ? updated : item));
@@ -315,7 +334,8 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
         description: formDescription.trim(),
         imageUrl: formImageUrl.trim() || undefined,
         muscleGroups: formMuscleGroups,
-        defaultFootprint: { width: w, height: h }
+        defaultFootprint: { width: w, height: h },
+        sizeM,
       };
       await api.createEquipment(created);
       onEquipmentChange([...safeEquipmentList, created]);
@@ -862,6 +882,38 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
                   Answers: What is this equipment, what does it look like, and how do members set it up?
                 </p>
               </div>
+
+              {/* Real size: every machine placed from this item takes it. */}
+              {(() => {
+                const kind = sizeKindOf({ name: formName, equipmentId: editingItem?.id });
+                const typical = kind ? STANDARD_SIZES[kind] : null;
+                return (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                      Real size
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text" inputMode="decimal" value={formSizeW} onChange={e => setFormSizeW(e.target.value)}
+                        placeholder={typical ? String(typical.size.width) : 'Width'} aria-label="Width in metres"
+                        className="w-24 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-lime-500"
+                      />
+                      <span className="text-slate-500 text-sm">×</span>
+                      <input
+                        type="text" inputMode="decimal" value={formSizeL} onChange={e => setFormSizeL(e.target.value)}
+                        placeholder={typical ? String(typical.size.length) : 'Length'} aria-label="Length in metres"
+                        className="w-24 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-lime-500"
+                      />
+                      <span className="text-slate-500 text-sm">m</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      {typical
+                        ? `Leave empty to use the typical ${typical.name.toLowerCase()}: ${typical.size.width} × ${typical.size.length} m. Every machine placed from this item takes this size on the map.`
+                        : 'No typical size for this kind. Enter one so machines placed from it have a fixed size on the map.'}
+                    </p>
+                  </div>
+                );
+              })()}
 
               {/* Muscle groups this equipment targets — matched against exercise targetMuscle */}
               <div>

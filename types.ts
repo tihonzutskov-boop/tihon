@@ -30,6 +30,10 @@ export interface EquipmentItem {
   icon?: string;
   imageUrl?: string; // Uploaded picture of the physical equipment
   defaultFootprint?: { width: number; height: number };
+  // This gym's model's real size, in metres, when it differs from the typical
+  // size of its kind (utils/machineSizes). Every machine placed from this item
+  // takes it.
+  sizeM?: { width: number; length: number };
   muscleGroups?: string[]; // Target muscle groups, matched against LibraryExercise.targetMuscle
 }
 
@@ -133,6 +137,10 @@ export interface GymDimensions {
   walls?: GymWall[];
   nodes?: GymWallNode[];
   hallways?: GymHallway[];
+  // How many map units make a real metre. Maps are drawn at whatever scale
+  // looked right, so this is set from the room's real width rather than
+  // assumed; absent means the editor's original 10 to the metre.
+  unitsPerMetre?: number;
 }
 
 export interface Gym {

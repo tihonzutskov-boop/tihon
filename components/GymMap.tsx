@@ -8,6 +8,7 @@ import { heatColor, type HeatEntry } from '../utils/equipmentUsage';
 import type { RoutePoint } from '../utils/sessionRoute';
 import type { Rect } from '../utils/walkingRoute';
 import { machineShapeOf } from '../utils/machineShapes';
+import { unitsPerMetreOf } from '../utils/machineSizes';
 import MachineTopView from './MachineTopView';
 
 const NEUTRAL_ZONE_STYLE = { fill: '#334155', stroke: '#475569', dashStroke: '#475569', textColor: '#cbd5e1' };
@@ -283,6 +284,8 @@ interface GymMapProps {
   onMachineDragStart?: (e: React.MouseEvent, machine: GymMachine, zoneId: string) => void;
   onMachineResizeStart?: (e: React.MouseEvent, machine: GymMachine, zoneId: string) => void;
   selectedMachineId?: string | null;
+  // Machines with a fixed real size: no resize handle, only moving and turning.
+  lockedMachineIds?: Set<string>;
 
   // Architectural Walls support
   selectedWallId?: string | null;
@@ -420,6 +423,7 @@ const GymMap: React.FC<GymMapProps> = ({
   onMachineDragStart,
   onMachineResizeStart,
   selectedMachineId,
+  lockedMachineIds,
 
   selectedWallId = null,
   onWallClick,
@@ -433,21 +437,21 @@ const GymMap: React.FC<GymMapProps> = ({
 }) => {
   const containerRef = React.useRef<HTMLDivElement>(null);
 
-  // The drawing area's size in pixels, so a walk can be fitted to it and drawn
-  // at a constant size on screen. Only watched when there is a walk.
+  // The drawing area's size in pixels: a walk is fitted to it and drawn at a
+  // constant size on screen, and the scale bar measures against it.
   const drawingRef = React.useRef<HTMLDivElement>(null);
   const [drawingSize, setDrawingSize] = React.useState<{ w: number; h: number } | null>(null);
   const hasWalk = !!walkRoute && !isThumbnail && !isEditable;
   React.useEffect(() => {
     const el = drawingRef.current;
-    if (!hasWalk || !el || typeof ResizeObserver === 'undefined') return;
+    if (isThumbnail || !el || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect;
       if (width > 0 && height > 0) setDrawingSize({ w: width, h: height });
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [hasWalk]);
+  }, [isThumbnail]);
 
   // Exercise & Equipment Locating State
   const [mapSearchQuery, setMapSearchQuery] = React.useState('');
@@ -954,12 +958,16 @@ const GymMap: React.FC<GymMapProps> = ({
   const scaleParams = (() => {
     if (isThumbnail) return null;
     const targetPx = 60;
-    const rawMeters = targetPx / (10 * zoomScale);
+    // Screen pixels per map unit — the viewBox fitted into the drawing area,
+    // then zoomed — and map units per metre from the gym's own scale.
+    const pxPerUnit = (drawingSize ? Math.min(drawingSize.w / viewBoxWidth, drawingSize.h / viewBoxHeight) : 1) * zoomScale;
+    const upm = unitsPerMetreOf(dimensions);
+    const rawMeters = targetPx / (upm * pxPerUnit);
     const niceMeters = [0.5, 1, 2, 5, 10, 20, 50, 100];
     const closest = niceMeters.reduce((prev, curr) => 
       Math.abs(curr - rawMeters) < Math.abs(prev - rawMeters) ? curr : prev
     );
-    const barWidthPx = closest * 10 * zoomScale;
+    const barWidthPx = closest * upm * pxPerUnit;
     return { meters: closest, widthPx: barWidthPx };
   })();
 
@@ -2100,7 +2108,7 @@ const GymMap: React.FC<GymMapProps> = ({
                                 </g>
                               )}
 
-                              {isMachineEdit && isMachineSelected && (
+                              {isMachineEdit && isMachineSelected && !lockedMachineIds?.has(machine.id) && (
                                 <rect
                                   x={machine.width - 6} y={machine.height - 6} width="6" height="6"
                                   fill="#3b82f6"

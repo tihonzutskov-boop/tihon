@@ -286,3 +286,18 @@ export const validateGymDetails = (raw) => {
   if (!('name' in value) && !('chain' in value)) return fail('Nothing to change.');
   return ok(value);
 };
+
+// An equipment item's real size in metres, or null to fall back to the typical
+// size of its kind. Anything that isn't a plausible machine — not a number, a
+// side under 20 cm or over 20 m — is dropped rather than saved, since a size
+// is applied to every machine placed from the item.
+export const MIN_MACHINE_SIDE_M = 0.2;
+export const MAX_MACHINE_SIDE_M = 20;
+export const cleanSizeM = (raw) => {
+  if (!raw || typeof raw !== 'object') return null;
+  const w = Number(raw.width), l = Number(raw.length);
+  const fine = v => Number.isFinite(v) && v >= MIN_MACHINE_SIDE_M && v <= MAX_MACHINE_SIDE_M;
+  if (!fine(w) || !fine(l)) return null;
+  const r = v => Math.round(v * 100) / 100;
+  return { width: r(Math.min(w, l)), length: r(Math.max(w, l)) };
+};

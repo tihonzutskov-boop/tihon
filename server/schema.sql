@@ -197,6 +197,10 @@ ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS generated_for_gym_id VARCHAR(100
 -- chain for their plan and one of its locations each session; NULL means the
 -- location is a chain of its own.
 ALTER TABLE gyms ADD COLUMN IF NOT EXISTS chain VARCHAR(120);
+
+-- An equipment item's real size in metres ({ width, length }), when this gym's
+-- model differs from the typical size of its kind. Machines placed from it take it.
+ALTER TABLE equipment ADD COLUMN IF NOT EXISTS size_m JSONB;
 -- Provenance: what produced this plan, and which rule/data versions were in
 -- effect — so a plan can be explained (and reproduced) long after the fact.
 ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS generation_meta JSONB;

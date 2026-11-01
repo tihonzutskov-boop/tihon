@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   validateQuestionnaire, validatePlanPayload, validateExerciseLogs,
-  validateCompletedWorkout, validateCheckinText, validateGymDetails, AIMS, TRAINING_TYPES, FOCUS_AREAS, MAX_FOCUS_AREAS,
+  validateCompletedWorkout, validateCheckinText, validateGymDetails, cleanSizeM, AIMS, TRAINING_TYPES, FOCUS_AREAS, MAX_FOCUS_AREAS,
   LOG_MAX_ENTRIES, LOG_MAX_SETS,
   PLAN_MAX_DAYS, PLAN_MAX_EXERCISES_PER_DAY,
 } from './validate.js';
@@ -287,5 +287,21 @@ describe('a location\'s name and chain', () => {
 
   it('refuses a request that changes nothing', () => {
     for (const body of [{}, null, 'MyFitness', { other: 'x' }]) expect(validateGymDetails(body).ok).toBe(false);
+  });
+});
+
+describe('cleanSizeM', () => {
+  it('keeps a plausible size in metres, short side first, to the centimetre', () => {
+    expect(cleanSizeM({ width: 2.104, length: 0.9 })).toEqual({ width: 0.9, length: 2.1 });
+    expect(cleanSizeM({ width: '1.5', length: '1.5' })).toEqual({ width: 1.5, length: 1.5 });
+  });
+
+  it('drops anything that is not a machine size', () => {
+    expect(cleanSizeM(null)).toBeNull();
+    expect(cleanSizeM('2x1')).toBeNull();
+    expect(cleanSizeM({ width: 0, length: 2 })).toBeNull();
+    expect(cleanSizeM({ width: 0.1, length: 2 })).toBeNull();
+    expect(cleanSizeM({ width: 1, length: 25 })).toBeNull();
+    expect(cleanSizeM({ width: 'abc', length: 2 })).toBeNull();
   });
 });
