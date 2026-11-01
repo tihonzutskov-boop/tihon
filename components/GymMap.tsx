@@ -147,15 +147,17 @@ export interface WalkOverlay {
   label: string;
   /** Other copies of the same machine, for when this one is taken. */
   spares?: Rect[];
+  /** Copies the client found taken. */
+  busy?: Rect[];
   /** The area they are walking from, kept in view so "you are here" has its surroundings. */
   startArea?: Rect | null;
 }
 
 // Screen pixels: room around the walk when the map fits itself to it, with
-// more above for the pin and its name.
+// more above for the pin and its name, and below for the zoom controls.
 const WALK_PAD_X = 28;
 const WALK_PAD_TOP = 70;
-const WALK_PAD_BOTTOM = 28;
+const WALK_PAD_BOTTOM = 76;
 // Map units (10 to a metre): never zoom in so far that a short walk loses the
 // floor around it.
 const WALK_MIN_SPAN = 260;
@@ -164,7 +166,7 @@ const WALK_MIN_SPAN = 260;
 // pixel), so the line, dot and pin look the same however big the walk is.
 // Keyed by the walk in the parent, so each new one plays its animation afresh.
 const WalkLayer: React.FC<{ walk: WalkOverlay; unit: number; visibleRight: number }> = ({ walk, unit, visibleRight }) => {
-  const { points, start, pin, label, spares = [] } = walk;
+  const { points, start, pin, label, spares = [], busy = [] } = walk;
   const d = points.length > 1 ? `M ${points.map(p => `${p.x} ${p.y}`).join(' L ')}` : '';
   const length = points.slice(1).reduce((sum, p, k) => sum + Math.hypot(p.x - points[k].x, p.y - points[k].y), 0);
   const dotGap = 10 * unit;
@@ -181,6 +183,16 @@ const WalkLayer: React.FC<{ walk: WalkOverlay; unit: number; visibleRight: numbe
           rx={5 * unit} fill="none" stroke="#a3e635" strokeWidth={1.5 * unit}
           strokeDasharray={`${4 * unit} ${3 * unit}`} className="walk-spare"
         />
+      ))}
+      {busy.map((r, i) => (
+        <g key={`busy-${i}`}>
+          <rect
+            x={r.x - 4 * unit} y={r.y - 4 * unit} width={r.width + 8 * unit} height={r.height + 8 * unit}
+            rx={5 * unit} fill="#020617" fillOpacity={0.35} stroke="#f87171" strokeWidth={1.5 * unit}
+            strokeDasharray={`${4 * unit} ${3 * unit}`}
+          />
+          <text x={r.x + r.width / 2} y={r.y - 8 * unit} textAnchor="middle" fontSize={9.5 * unit} fontWeight="800" fill="#fca5a5">Busy</text>
+        </g>
       ))}
       {d && (
         <>
@@ -831,13 +843,14 @@ const GymMap: React.FC<GymMapProps> = ({
     offsetX = manualView.offsetX;
     offsetY = manualView.offsetY;
   } else if (hasWalk) {
-    // Fit the whole walk — where they are, the way, and the machine's area —
+    // Fit the whole walk — where they are, the way, and the machine's area,
+    // plus any copy just marked busy so they can see it was passed over —
     // matching the drawing area's shape so none of it is spent on margins.
     const walk = walkRoute!;
     const pts = [...walk.points, walk.pin, ...(walk.start ? [walk.start] : [])];
     let minX = Math.min(...pts.map(p => p.x)), maxX = Math.max(...pts.map(p => p.x));
     let minY = Math.min(...pts.map(p => p.y)), maxY = Math.max(...pts.map(p => p.y));
-    for (const r of [focusedZone, walk.startArea]) {
+    for (const r of [focusedZone, walk.startArea, ...(walk.busy || [])]) {
       if (!r) continue;
       minX = Math.min(minX, r.x); maxX = Math.max(maxX, r.x + r.width);
       minY = Math.min(minY, r.y); maxY = Math.max(maxY, r.y + r.height);

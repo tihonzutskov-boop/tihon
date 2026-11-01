@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { planWalkingRoute, machineRect, Rect, RoutePlace } from './walkingRoute';
+import { planWalkingRoute, machineRect, Rect, RoutePlace, nearestByWalk, planSessionWalk, walkLength, optionKey } from './walkingRoute';
 import { entrancePoint, optionPoint, RoutePoint } from './sessionRoute';
 import { DEFAULT_GYM } from '../constants';
 import { Gym, GymZone, GymMachine, GymWall } from '../types';
@@ -183,6 +183,7 @@ describe('planWalkingRoute', () => {
   it('has nothing to walk when the client is already at the machine', () => {
     const route = planWalkingRoute(gymOf([cables]), { point: { x: 50, y: 40 }, zone: cables, machine: target }, { zone: cables, machine: target })!;
     expect(route.points).toEqual([]);
+    expect(route.arrived).toBe(true);
     expect(route.pin).toEqual({ x: 50, y: 40 });
   });
 
@@ -257,5 +258,115 @@ describe('planWalkingRoute', () => {
         expect(overAnother).toBeUndefined();
       }
     }
+  });
+});
+
+describe('nearestByWalk', () => {
+  // Two copies of the same machine: one just the other side of a wall, nearer
+  // as the crow flies; one further off but on the client's side of it.
+  const across = machine('across', 0, 0, 20, 10);
+  const acrossZone = zone('upstairs', 90, 40, 20, 10, [across]);
+  const beside = machine('beside', 0, 0, 20, 10);
+  const besideZone = zone('corner', 20, 95, 20, 10, [beside]);
+  const walls = [wall('w', 0, 60, 180, 60), wall('door', 180, 60, 200, 60, 'door')];
+  const options = [{ zone: acrossZone, machine: across }, { zone: besideZone, machine: beside }];
+  const here = at(100, 110);
+
+  it('picks the copy with the shorter walk, not the one nearer in a straight line', () => {
+    expect(nearestByWalk(gymOf([acrossZone, besideZone], { walls }), here, options)).toBe(1);
+  });
+
+  it('picks the nearer in a straight line when nothing is in the way', () => {
+    expect(nearestByWalk(gymOf([acrossZone, besideZone]), here, options)).toBe(0);
+  });
+
+  it('falls back to a straight line for a gym with no floor plan', () => {
+    expect(nearestByWalk({ zones: [acrossZone, besideZone] }, here, options)).toBe(0);
+  });
+
+  it('picks the one the client is already at', () => {
+    const atBeside = { point: { x: 30, y: 100 }, zone: besideZone, machine: beside };
+    expect(nearestByWalk(gymOf([acrossZone, besideZone], { walls }), atBeside, [options[0], options[1]])).toBe(1);
+  });
+});
+
+describe('planSessionWalk', () => {
+  const left = machine('press-left', 0, 0, 20, 20);
+  const right = machine('press-right', 0, 0, 20, 20);
+  const leftZone = zone('left', 20, 20, 20, 20, [left]);
+  const rightZone = zone('right', 160, 20, 20, 20, [right]);
+  const rowA = machine('row', 0, 0, 20, 20);
+  const rowZone = zone('rows', 150, 80, 20, 20, [rowA]);
+  const presses = [{ zone: leftZone, machine: left }, { zone: rightZone, machine: right }];
+  const g = gymOf([leftZone, rightZone, rowZone]);
+
+  it('sends each exercise to the copy nearest where the last one left them', () => {
+    // The door is bottom left; the row is on the right. Press, row, press: the
+    // second press is the right-hand copy, beside the row, not the first one.
+    const stops = planSessionWalk(g, { x: 10, y: 120 }, [
+      { options: presses, travels: true },
+      { options: [{ zone: rowZone, machine: rowA }], travels: true },
+      { options: presses, travels: true },
+    ]);
+    expect(stops[0].place?.machine?.id).toBe('press-left');
+    expect(stops[0].from?.point).toEqual({ x: 10, y: 120 });
+    expect(stops[0].others.map(o => o.machine?.id)).toEqual(['press-right']);
+    expect(stops[1].from?.machine?.id).toBe('press-left');
+    expect(stops[2].from?.machine?.id).toBe('row');
+    expect(stops[2].place?.machine?.id).toBe('press-right');
+  });
+
+  it('leaves the client where they were after an exercise that sends them nowhere', () => {
+    const stops = planSessionWalk(g, { x: 10, y: 120 }, [
+      { options: presses, travels: true },
+      { options: [{ zone: rowZone, machine: rowA }], travels: false },
+      { options: presses, travels: true },
+    ]);
+    expect(stops[2].from?.machine?.id).toBe('press-left');
+    expect(stops[2].place?.machine?.id).toBe('press-left');
+  });
+
+  it('has no place for an exercise with nothing on the map, and moves no one', () => {
+    const stops = planSessionWalk(g, { x: 10, y: 120 }, [
+      { options: [], travels: true },
+      { options: presses, travels: true },
+    ]);
+    expect(stops[0]).toEqual({ place: null, others: [], busy: [], from: { point: { x: 10, y: 120 } } });
+    expect(stops[1].from?.point).toEqual({ x: 10, y: 120 });
+  });
+
+  it('passes over a copy marked busy for the next closest', () => {
+    const stops = planSessionWalk(g, { x: 10, y: 120 }, [
+      { options: presses, travels: true, busy: [optionKey(presses[0])] },
+    ]);
+    expect(stops[0].place?.machine?.id).toBe('press-right');
+    expect(stops[0].busy.map(o => o.machine?.id)).toEqual(['press-left']);
+    expect(stops[0].others).toEqual([]);
+  });
+
+  it('carries on from the copy used instead of the busy one', () => {
+    const stops = planSessionWalk(g, { x: 10, y: 120 }, [
+      { options: presses, travels: true, busy: [optionKey(presses[0])] },
+      { options: [{ zone: rowZone, machine: rowA }], travels: true },
+    ]);
+    expect(stops[1].from?.machine?.id).toBe('press-right');
+  });
+
+  it('goes back to the closest when every copy is marked busy', () => {
+    const stops = planSessionWalk(g, { x: 10, y: 120 }, [
+      { options: presses, travels: true, busy: presses.map(optionKey) },
+    ]);
+    expect(stops[0].place?.machine?.id).toBe('press-left');
+    expect(stops[0].busy.map(o => o.machine?.id)).toEqual(['press-right']);
+    expect(stops[0].others).toEqual([]);
+  });
+
+  it('only marks busy the copy named, in that zone', () => {
+    expect(optionKey(presses[0])).not.toBe(optionKey(presses[1]));
+    expect(optionKey({ zone: leftZone, machine: null })).toBe('left/');
+  });
+
+  it('measures walks along the route', () => {
+    expect(walkLength([{ x: 0, y: 0 }, { x: 3, y: 0 }, { x: 3, y: 4 }])).toBe(7);
   });
 });

@@ -3,8 +3,8 @@ import { X, ArrowLeft, Check, Plus, Minus, Dumbbell, PlayCircle, MapPin } from '
 import { WorkoutDay, Gym, EquipmentItem, LibraryExercise, Exercise, EffortRating, ExerciseLog, EFFORT_SCALE, JointStressArea, ALL_JOINT_STRESS_AREAS } from '../types';
 import { api } from '../services/api';
 import GymMap, { WalkOverlay } from './GymMap';
-import { planSessionRoute, entrancePoint, optionPoint } from '../utils/sessionRoute';
-import { planWalkingRoute, machineRect, RoutePlace } from '../utils/walkingRoute';
+import { planSessionRoute, entrancePoint, RouteOption } from '../utils/sessionRoute';
+import { planWalkingRoute, planSessionWalk, machineRect, optionKey, RoutePlace } from '../utils/walkingRoute';
 import { selectBookendExercise } from '../utils/planGeneration';
 import { getExerciseRequiredEquipmentIds } from '../utils/equipmentMatcher';
 import { nearestMatPickup, zoneCentre, matPickupMessage } from '../utils/matPickup';
@@ -205,10 +205,40 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
     setVariationOverlay(null);
   }, [exIdx]);
 
-  const routeStop = route[exIdx];
+  // Copies the client found taken, by exercise index. Tapping Busy on the
+  // Locate screen adds the one shown; the session then sends them to the next
+  // closest and carries on from there.
+  const [busyState, setBusyState] = useState<Record<number, string[]>>({});
+
+  // Where each exercise sends the client, worked out in session order: the copy
+  // of its machine with the shortest walk from wherever the last one left them,
+  // which is where the Locate map puts the pin and the next "you are here".
+  const walkStops = useMemo(() => {
+    // The map draws a door at the bottom middle when none is set; start there too.
+    const door = entrancePoint(gym.entrance || { side: 'bottom', offset: 50, width: 80 }, gym.dimensions);
+    return planSessionWalk(gym, door, exercises.map((ex, j) => {
+      const stop = route[j];
+      const matched: RouteOption[] = stop?.zone ? [{ zone: stop.zone, machine: stop.machine }, ...stop.alternatives] : [];
+      // An explicitly assigned zone always wins: an admin who pinned a machine
+      // meant that machine, and routing must not second-guess it. A zone
+      // pinned without a machine still gets the nearest copy within it.
+      const direct = gym.zones.find(z => z.id === ex.equipmentId);
+      const pinned = direct?.machines?.find(m => m.id === ex.machineId);
+      const inDirect = direct ? matched.filter(o => o.zone.id === direct.id) : [];
+      const options: RouteOption[] = pinned
+        ? [{ zone: direct!, machine: pinned }]
+        : direct
+          ? (inDirect.length > 0 ? inDirect : [{ zone: direct, machine: null }])
+          : matched;
+      // A follow-along video sends them nowhere, so it leaves them where they were.
+      const travels = !!stagesByExIdx[j]?.some(st => st.key === 'locate' || st.key === 'bookend');
+      return { options, travels, busy: busyState[j] };
+    }));
+  }, [gym, exercises, route, stagesByExIdx, busyState]);
+  const walkStop = walkStops[exIdx];
   // Everywhere else in the gym this same exercise could be done. Kept so a
   // client who finds their machine occupied has somewhere to go.
-  const alternatives = routeStop?.alternatives || [];
+  const alternatives = useMemo(() => walkStop?.others || [], [walkStop]);
 
   const libraryExercise = useMemo(
     () => (exercise?.libraryExerciseId ? libraryExercises.find(le => le.id === exercise.libraryExerciseId) : undefined),
@@ -248,35 +278,23 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
       const viaBookend = gym.zones.find(z => z.id === bookendExercise.equipmentId);
       if (viaBookend) return viaBookend;
     }
-    return routeStop?.zone || undefined;
-  }, [gym, exercise, routeStop, bookendExercise]);
+    return walkStop?.place?.zone || undefined;
+  }, [gym, exercise, walkStop, bookendExercise]);
   const machine = useMemo(() => {
     if (!exercise) return undefined;
     const direct = zone?.machines?.find(m => m.id === exercise.machineId);
     if (direct) return direct;
-    return routeStop?.machine || undefined;
-  }, [zone, exercise, routeStop]);
+    // Only a machine that stands in the zone being shown: one from another
+    // zone would be drawn at its own offset inside this one — the wrong place.
+    return walkStop?.place?.zone.id === zone?.id ? walkStop?.place?.machine || undefined : undefined;
+  }, [zone, exercise, walkStop]);
 
   // Where the client is standing when this exercise's Locate screen opens:
-  // where the last exercise they were sent somewhere for was done, or the
-  // entrance for the first. A follow-along video sends them nowhere, so it is
-  // skipped. The same choice as each exercise's own Locate screen made.
+  // where the last exercise sent them, or the entrance for the first.
   const walkFrom = useMemo((): (RoutePlace & { name: string | null }) | null => {
-    for (let j = exIdx - 1; j >= 0; j--) {
-      if (!stagesByExIdx[j]?.some(s => s.key === 'locate' || s.key === 'bookend')) continue;
-      const ex = exercises[j];
-      const placeZone = gym.zones.find(z => z.id === ex.equipmentId) || route[j]?.zone;
-      if (!placeZone) continue;
-      const placeMachine = placeZone.machines?.find(m => m.id === ex.machineId)
-        || (route[j]?.zone?.id === placeZone.id ? route[j]?.machine : null)
-        || null;
-      const place = { zone: placeZone, machine: placeMachine };
-      return { ...place, point: optionPoint(place), name: placeMachine?.name || placeZone.name };
-    }
-    // The map draws a door at the bottom middle when none is set; start there too.
-    const door = entrancePoint(gym.entrance || { side: 'bottom', offset: 50, width: 80 }, gym.dimensions);
-    return door ? { point: door, name: null } : null;
-  }, [exIdx, exercises, gym, route, stagesByExIdx]);
+    const from = walkStop?.from;
+    return from ? { ...from, name: from.machine?.name || from.zone?.name || null } : null;
+  }, [walkStop]);
 
   const sameSpot = !!walkFrom?.zone && walkFrom.zone.id === zone?.id && (walkFrom.machine?.id ?? null) === (machine?.id ?? null);
 
@@ -291,10 +309,11 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
       start: sameSpot ? null : walkFrom.point,
       pin: planned.pin,
       label: machine?.name || zone.name,
-      spares: (routeStop?.alternatives || []).flatMap(a => (a.machine ? [machineRect(a.zone, a.machine)] : [])),
+      spares: alternatives.flatMap(a => (a.machine && a.machine.id !== machine?.id ? [machineRect(a.zone, a.machine)] : [])),
+      busy: (walkStop?.busy || []).flatMap(a => (a.machine ? [machineRect(a.zone, a.machine)] : [])),
       startArea: !sameSpot && walkFrom.zone ? walkFrom.zone : null,
     };
-  }, [stage.key, zone, machine, walkFrom, gym, routeStop, sameSpot]);
+  }, [stage.key, zone, machine, walkFrom, alternatives, walkStop, gym, sameSpot]);
 
   // Where to pick up a mat, for an exercise done on open floor. Advisory: the
   // exercise is offered because the gym has floor space, and whether anyone
@@ -655,10 +674,24 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
             )}
           </div>
           <div className="flex-shrink-0 p-4 border-t border-slate-800 bg-slate-900/70">
-            {/* The app can't know what's free, so the honest help is telling
-                someone where else the same thing is. Kept quiet — it matters
-                only to the person who walked over and found it taken. */}
-            {alternatives.length > 0 && (
+            {/* The app can't know what's free, so the honest help is a way on
+                when the one shown is taken: Busy sends them to the next closest
+                copy, and the map redraws from where they are. */}
+            {(walkStop?.busy.length ?? 0) > 0 && (
+              <p className="text-[11px] text-slate-400 mb-2.5 leading-relaxed">
+                {walkStop!.busy.length === 1 ? 'The one in ' + walkStop!.busy[0].zone.name + ' is busy' : `${walkStop!.busy.length} are busy`}
+                {alternatives.length > 0 ? ', so this is the next closest.' : ', so this is the last one left.'}
+                {' '}
+                <button
+                  type="button"
+                  onClick={() => setBusyState(prev => ({ ...prev, [exIdx]: [] }))}
+                  className="font-bold text-lime-400 hover:text-lime-300 underline underline-offset-2"
+                >
+                  Start again
+                </button>
+              </p>
+            )}
+            {(walkStop?.busy.length ?? 0) === 0 && alternatives.length > 0 && (
               <p className="text-[11px] text-slate-500 mb-2.5 leading-relaxed">
                 {alternatives.length === 1 ? "There's another" : `There are ${alternatives.length} more`}
                 {' in '}
@@ -671,12 +704,26 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
                 {matPickupMessage(matPickup, zone?.id)}
               </p>
             )}
-            <button
-              onClick={() => go(1)}
-              className="w-full py-3.5 rounded-xl text-sm font-extrabold bg-lime-500 hover:bg-lime-400 active:scale-95 text-slate-950 transition-all duration-150"
-            >
-              I found it — Continue
-            </button>
+            <div className="flex gap-2">
+              {alternatives.length > 0 && walkStop?.place && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const shown = optionKey(walkStop.place!);
+                    setBusyState(prev => ({ ...prev, [exIdx]: [...(prev[exIdx] || []), shown] }));
+                  }}
+                  className="flex-1 py-3.5 rounded-xl text-sm font-bold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 active:scale-95 transition-all duration-150"
+                >
+                  It's busy
+                </button>
+              )}
+              <button
+                onClick={() => go(1)}
+                className="flex-[2] py-3.5 rounded-xl text-sm font-extrabold bg-lime-500 hover:bg-lime-400 active:scale-95 text-slate-950 transition-all duration-150"
+              >
+                I found it — Continue
+              </button>
+            </div>
           </div>
         </div>
       )}

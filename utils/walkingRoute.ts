@@ -37,6 +37,8 @@ export interface WalkingRoute {
   points: RoutePoint[];
   /** Where the pin goes: the middle of the machine, or of the area. */
   pin: RoutePoint;
+  /** Already there: the same machine or spot as before, so nothing to walk. */
+  arrived: boolean;
 }
 
 export interface Rect { x: number; y: number; width: number; height: number }
@@ -450,7 +452,7 @@ export const planWalkingRoute = (
   const pin = optionPoint(to);
   const target = to.machine ? machineRect(to.zone, to.machine) : null;
   // Already at it: the same machine as the last exercise, or the same spot.
-  if (target ? inRect(target, from.point.x, from.point.y) : same(from.point, pin)) return { points: [], pin };
+  if (target ? inRect(target, from.point.x, from.point.y) : same(from.point, pin)) return { points: [], pin, arrived: true };
 
   const grid = buildGrid(gym, from, to, pin);
   const goal = new Uint8Array(grid.cost.length);
@@ -466,13 +468,13 @@ export const planWalkingRoute = (
     if (at >= 0) goal[at] = 1;
   }
   const start = nearestFloor(grid, from.point);
-  if (start < 0) return { points: [], pin };
-  if (goal[start]) return { points: [], pin };
+  if (start < 0) return { points: [], pin, arrived: false };
+  if (goal[start]) return { points: [], pin, arrived: true };
 
   // Walls drawn slightly off the room's edge can seal the entrance in; a route
   // that ignores them beats none.
   const cells = search(grid, start, goal, true) || search(grid, start, goal, false);
-  if (!cells) return { points: [], pin };
+  if (!cells) return { points: [], pin, arrived: false };
 
   let end = pin;
   let walked = cells;
@@ -483,5 +485,91 @@ export const planWalkingRoute = (
   }
   let points = corners([from.point, ...walked.map(c => centre(grid, c)), end]);
   if (target) points = meetSquarely(grid, points, target);
-  return { points: alignEnds(points, target), pin };
+  return { points: alignEnds(points, target), pin, arrived: false };
+};
+
+// How far the walk is, along the route drawn — not as the crow flies.
+export const walkLength = (points: RoutePoint[]): number =>
+  points.slice(1).reduce((sum, p, k) => sum + Math.hypot(p.x - points[k].x, p.y - points[k].y), 0);
+
+/**
+ * Of several copies of the same machine, the one with the shortest walk from
+ * where the client is. A straight line can't see walls or rows of machines: the
+ * copy just the other side of a wall looks nearest and is the furthest walk.
+ * Without a floor plan to walk — or no way through to any of them — the
+ * nearest in a straight line. Ties keep the order given, so the same floor
+ * always gives the same answer.
+ */
+export const nearestByWalk = (
+  gym: Pick<Gym, 'zones' | 'dimensions' | 'annexes'>,
+  from: RoutePlace,
+  options: RouteOption[],
+): number => {
+  if (options.length < 2) return 0;
+  const lengths = options.map(option => {
+    const walk = planWalkingRoute(gym, from, option);
+    if (!walk) return NaN;
+    return walk.arrived ? 0 : walk.points.length > 1 ? walkLength(walk.points) : Infinity;
+  });
+  const walkable = lengths.some(l => Number.isFinite(l));
+  const crowFlies = (o: RouteOption) => {
+    const p = optionPoint(o);
+    return Math.hypot(p.x - from.point.x, p.y - from.point.y);
+  };
+  let best = 0;
+  options.forEach((option, k) => {
+    const length = walkable ? lengths[k] : crowFlies(option);
+    const bestSoFar = walkable ? lengths[best] : crowFlies(options[best]);
+    if (length < bestSoFar) best = k;
+  });
+  return best;
+};
+
+export interface WalkStop {
+  /** Where this exercise sends the client, or null when nowhere on the map. */
+  place: RouteOption | null;
+  /** The other copies of the same thing not marked busy, for when that one is taken. */
+  others: RouteOption[];
+  /** Copies the client marked busy. */
+  busy: RouteOption[];
+  /** Where they are standing as it starts: the last place they were sent, or the entrance. */
+  from: RoutePlace | null;
+}
+
+// Names one copy of a machine, or an area, for marking it busy.
+export const optionKey = (option: RouteOption): string => `${option.zone.id}/${option.machine?.id ?? ''}`;
+
+/**
+ * The session walked in order: each exercise sent to the copy of its machine
+ * with the shortest walk from wherever the one before left the client, so the
+ * pin always lands on the copy nearest the "you are here" shown with it. An
+ * exercise that sends them nowhere — a follow-along video — leaves them where
+ * they were.
+ *
+ * Copies the client found taken (`busy`, by optionKey) are passed over for the
+ * next closest, and the session carries on from wherever they went instead.
+ * With every copy marked busy there is nothing better to offer, so it goes
+ * back to the closest.
+ */
+export const planSessionWalk = (
+  gym: Pick<Gym, 'zones' | 'dimensions' | 'annexes'>,
+  entrance: RoutePoint | null,
+  exercises: { options: RouteOption[]; travels: boolean; busy?: string[] }[],
+): WalkStop[] => {
+  let at: RoutePlace | null = entrance ? { point: entrance } : null;
+  return exercises.map(({ options, travels, busy = [] }) => {
+    const from = at;
+    if (options.length === 0) return { place: null, others: [], busy: [], from };
+    const isBusy = (o: RouteOption) => busy.includes(optionKey(o));
+    const free = options.filter(o => !isBusy(o));
+    const pool = free.length > 0 ? free : options;
+    const place = pool[from ? nearestByWalk(gym, from, pool) : 0];
+    if (travels) at = { point: optionPoint(place), zone: place.zone, machine: place.machine };
+    return {
+      place,
+      others: free.filter(o => o !== place),
+      busy: options.filter(o => o !== place && isBusy(o)),
+      from,
+    };
+  });
 };
