@@ -7,6 +7,8 @@ import { ICON_MAP, getEquipmentIcon, getTaxonomyColor, isBeginnerFriendly, isAme
 import { heatColor, type HeatEntry } from '../utils/equipmentUsage';
 import type { RoutePoint } from '../utils/sessionRoute';
 import type { Rect } from '../utils/walkingRoute';
+import { machineShapeOf } from '../utils/machineShapes';
+import MachineTopView from './MachineTopView';
 
 const NEUTRAL_ZONE_STYLE = { fill: '#334155', stroke: '#475569', dashStroke: '#475569', textColor: '#cbd5e1' };
 
@@ -1848,18 +1850,32 @@ const GymMap: React.FC<GymMapProps> = ({
                         below represents them better. */}
                     {!isFocused && !isThumbnail && !isAmenity && zone.machines && zone.machines.length > 0 && (
                       <g style={{ pointerEvents: 'none', opacity: zoneOpacity }} className="transition-opacity duration-300 ease-in-out">
-                        {zone.machines.map((machine, mIdx) => (
-                          <rect
-                            key={`preview-${zone.id}-${machine.id}-${mIdx}`}
-                            x={zone.x + machine.x}
-                            y={zone.y + machine.y}
-                            width={machine.width}
-                            height={machine.height}
-                            rx="4"
-                            fill="rgba(255,255,255,0.16)"
-                            style={{ filter: 'blur(3px)' }}
-                          />
-                        ))}
+                        {zone.machines.map((machine, mIdx) => {
+                          // A machine with a top-view drawing shows it, a little
+                          // muted, even before its zone is zoomed into: a row of
+                          // treadmills reads as treadmills from across the map.
+                          const topShape = heatMode ? null : machineShapeOf(machine);
+                          return topShape ? (
+                            <g
+                              key={`preview-${zone.id}-${machine.id}-${mIdx}`}
+                              transform={`translate(${zone.x + machine.x}, ${zone.y + machine.y})`}
+                              opacity={0.8}
+                            >
+                              <MachineTopView shape={topShape} width={machine.width} height={machine.height} />
+                            </g>
+                          ) : (
+                            <rect
+                              key={`preview-${zone.id}-${machine.id}-${mIdx}`}
+                              x={zone.x + machine.x}
+                              y={zone.y + machine.y}
+                              width={machine.width}
+                              height={machine.height}
+                              rx="4"
+                              fill="rgba(255,255,255,0.16)"
+                              style={{ filter: 'blur(3px)' }}
+                            />
+                          );
+                        })}
                       </g>
                     )}
 
@@ -1954,6 +1970,10 @@ const GymMap: React.FC<GymMapProps> = ({
                           const isDimmed = zoneHasTarget && !isMachineSelected && !isHovered;
                           const machineHeatEntry = machineHeat ? machineHeat[machine.id] : undefined;
                           const MachineIcon = getEquipmentIcon(machine.icon, machine.name, zone.type);
+                          // Drawn from above instead of a box and icon, where
+                          // there is a drawing for it. The editor keeps boxes,
+                          // which are easier to drag and resize precisely.
+                          const topShape = !isEditable && !heatMode ? machineShapeOf(machine) : null;
 
                           return (
                             <g
@@ -2005,6 +2025,22 @@ const GymMap: React.FC<GymMapProps> = ({
                                   </text>
                                 </>
                               )}
+                              {topShape ? (
+                                <>
+                                  {/* The whole footprint stays tappable, gaps in the drawing included. */}
+                                  <rect width={machine.width} height={machine.height} rx="4" fill="transparent" />
+                                  <MachineTopView shape={topShape} width={machine.width} height={machine.height} />
+                                  {(isUserTarget || showUserGlow || isPickup) && (
+                                    <rect
+                                      width={machine.width} height={machine.height} rx="4"
+                                      fill="none" pointerEvents="none"
+                                      stroke={isUserTarget ? '#a3e635' : isPickup ? '#38bdf8' : '#ffffff'}
+                                      strokeWidth={2}
+                                      className={isUserTarget ? 'machine-glow-lime' : showUserGlow ? 'machine-glow-white' : ''}
+                                    />
+                                  )}
+                                </>
+                              ) : (
                               <rect
                                 width={machine.width} height={machine.height}
                                 fill={heatMode ? '#1e293b' : zoneStyle.stroke}
@@ -2014,6 +2050,7 @@ const GymMap: React.FC<GymMapProps> = ({
                                 rx="4"
                                 className={showAdminSelected ? 'machine-pulse' : isUserTarget ? 'machine-glow-lime' : (showUserGlow ? 'machine-glow-white' : '')}
                               />
+                              )}
                               {machineHeatEntry && (
                                 // Heat fills the machine's own box and stops at its
                                 // edge; the icon is drawn after it, so it stays on top.
@@ -2025,6 +2062,7 @@ const GymMap: React.FC<GymMapProps> = ({
                                 />
                               )}
 
+                              {!topShape && (
                               <g transform={`translate(${machine.width / 2}, ${machine.height / 2})`} className="pointer-events-none">
                                 {MachineIcon ? (
                                   <g transform={`scale(${Math.min(machine.width, machine.height) / 48}) translate(-12, -12)`}>
@@ -2042,6 +2080,7 @@ const GymMap: React.FC<GymMapProps> = ({
                                   )
                                 )}
                               </g>
+                              )}
 
                               {/* With a walk drawn, the pin carries the target's name. */}
                               {showUserGlow && !(hasWalk && isUserTarget && !isHovered) && (
