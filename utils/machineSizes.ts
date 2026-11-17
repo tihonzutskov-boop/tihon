@@ -240,6 +240,19 @@ export const applyStandardSizes = (gym: Gym, equipment: EquipmentItem[]): SizeRe
   return { gym: next, resized, unknown, overlaps: findOverlaps(next) };
 };
 
+/**
+ * The room set to its real size, in one go with everything in it. The width
+ * sets the map's scale, so every zone keeps its place on the map and is
+ * measured in the same metres as the room; the length then sets how long the
+ * room is at that scale; and every machine goes to its real size in it.
+ */
+export const setRoomSize = (gym: Gym, widthM: number, lengthM: number, equipment: EquipmentItem[]): SizeReport => {
+  const dims = gym.dimensions || { width: 780, height: 580 };
+  const unitsPerMetre = dims.width / widthM;
+  const height = round(lengthM * unitsPerMetre);
+  return applyStandardSizes({ ...gym, dimensions: { ...dims, unitsPerMetre, height } }, equipment);
+};
+
 /** How many machines are not at their real size: what Apply would change. */
 export const countOffSize = (gym: Pick<Gym, 'zones' | 'dimensions'>, equipment: EquipmentItem[]): number => {
   const upm = unitsPerMetreOf(gym.dimensions);

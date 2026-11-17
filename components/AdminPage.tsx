@@ -9,7 +9,7 @@ import EquipmentLibrary, { getEquipmentIconComponent } from './EquipmentLibrary'
 import AdminCoaching from './AdminCoaching';
 import { QuickAddEquipmentModal } from './QuickAddEquipmentModal';
 import UsageHeatmap from './UsageHeatmap';
-import MachineSizesPanel from './MachineSizesPanel';
+import RoomSizePanel from './RoomSizePanel';
 import { api, DEFAULT_EQUIPMENT } from '../services/api';
 import { evaluateZoneExercises, getZoneEquipmentIds, floorSpaceIsAssumed } from '../utils/equipmentMatcher';
 import { getExerciseLocations } from '../utils/exerciseMatcher';
@@ -411,7 +411,6 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
   const dimensions = gym.dimensions || { width: 780, height: 580 };
   // Map units to a real metre: everything shown in metres goes through it.
   const upm = unitsPerMetreOf(dimensions);
-  const inMetres = (units: number) => String(Math.round((units / upm) * 100) / 100);
   const entrance = gym.entrance || { side: 'bottom', offset: 50, width: 80 };
   const floorColor = gym.floorColor || '#1e293b';
   const annexes = gym.annexes || [];
@@ -489,41 +488,6 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
   const [isMachineNameFocused, setIsMachineNameFocused] = useState(false);
   const [isQuickAddModalOpen, setIsQuickAddModalOpen] = useState(false);
   const [quickAddFeedback, setQuickAddFeedback] = useState<string | null>(null);
-
-  const [widthInput, setWidthInput] = useState<string>(inMetres(dimensions.width));
-  const [heightInput, setHeightInput] = useState<string>(inMetres(dimensions.height));
-
-  useEffect(() => {
-    const currentVal = parseFloat(widthInput);
-    if (isNaN(currentVal) || currentVal !== Number(inMetres(dimensions.width))) {
-      setWidthInput(inMetres(dimensions.width));
-    }
-  }, [dimensions.width, upm]);
-
-  useEffect(() => {
-    const currentVal = parseFloat(heightInput);
-    if (isNaN(currentVal) || currentVal !== Number(inMetres(dimensions.height))) {
-      setHeightInput(inMetres(dimensions.height));
-    }
-  }, [dimensions.height, upm]);
-
-  const handleWidthChange = (val: string) => {
-    setWidthInput(val);
-    const meters = parseFloat(val);
-    if (!isNaN(meters) && meters > 0) {
-      const pixels = Math.round(meters * upm);
-      update({ ...gym, dimensions: { ...dimensions, width: Math.max(10, Math.min(2500, pixels)) } }, false);
-    }
-  };
-
-  const handleHeightChange = (val: string) => {
-    setHeightInput(val);
-    const meters = parseFloat(val);
-    if (!isNaN(meters) && meters > 0) {
-      const pixels = Math.round(meters * upm);
-      update({ ...gym, dimensions: { ...dimensions, height: Math.max(10, Math.min(2500, pixels)) } }, false);
-    }
-  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -2530,40 +2494,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
                 </div>
                 <div className="space-y-4">
                   {roomTab === 'dimensions' && (<>
-                  <div className="bg-slate-950/50 p-3 rounded border border-slate-800">
-                     <h3 className="text-xs font-bold text-white mb-2">Main Hall Dimensions (m)</h3>
-                     <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-[10px] text-slate-500 mb-1 uppercase">Width (m)</label>
-                          <div className="relative flex items-center">
-                            <input 
-                              type="text" 
-                              inputMode="decimal"
-                              value={widthInput} 
-                              onFocus={() => snapshot()} 
-                              onChange={(e) => handleWidthChange(e.target.value)} 
-                              className="w-full bg-slate-950 border border-slate-700 rounded p-2 pr-7 text-sm text-white focus:border-blue-500 focus:outline-none" 
-                            />
-                            <span className="absolute right-2 text-slate-500 text-[11px] font-semibold select-none pointer-events-none">m</span>
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-[10px] text-slate-500 mb-1 uppercase">Height (m)</label>
-                          <div className="relative flex items-center">
-                            <input 
-                              type="text" 
-                              inputMode="decimal"
-                              value={heightInput} 
-                              onFocus={() => snapshot()} 
-                              onChange={(e) => handleHeightChange(e.target.value)} 
-                              className="w-full bg-slate-950 border border-slate-700 rounded p-2 pr-7 text-sm text-white focus:border-blue-500 focus:outline-none" 
-                            />
-                            <span className="absolute right-2 text-slate-500 text-[11px] font-semibold select-none pointer-events-none">m</span>
-                          </div>
-                        </div>
-                     </div>
-                  </div>
-                  <MachineSizesPanel gym={gym} equipment={equipmentList} onChange={next => update(next, true)} />
+                  <RoomSizePanel gym={gym} equipment={equipmentList} onChange={next => update(next, true)} />
                   </>)}
 
                   {roomTab === 'annexes' && (

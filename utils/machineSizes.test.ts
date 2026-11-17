@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   sizeKindOf, standardSizeOf, fitToSize, turnQuarter, isAtSize, findOverlaps,
-  applyStandardSizes, countOffSize, unitsPerMetreOf, STANDARD_SIZES, drawnKindOf, facingOf, rotateClockwise,
+  applyStandardSizes, countOffSize, unitsPerMetreOf, STANDARD_SIZES, drawnKindOf, facingOf, rotateClockwise, setRoomSize,
 } from './machineSizes';
 import { DEFAULT_CABLE_LAYOUT, setSide } from './cableStation';
 import { Gym, GymZone, GymMachine, EquipmentItem } from '../types';
@@ -178,6 +178,26 @@ describe('applyStandardSizes', () => {
   it('counts what Apply would change', () => {
     expect(countOffSize(gym(), [])).toBe(1);
     expect(countOffSize(applyStandardSizes(gym(), []).gym, [])).toBe(0);
+  });
+});
+
+describe('setRoomSize', () => {
+  // Drawn 300 units wide: 30 m at the old ten to the metre, really 10 m.
+  const drawn = () => gymOf([zone('cardio', 0, 0, 200, 100, [machine('t1', 'Treadmill 1', 10, 10, 9, 21)])]);
+
+  it('scales the map to the real width, so machines come out at their real size in it', () => {
+    const { gym } = setRoomSize(drawn(), 10, 8, []);
+    expect(gym.dimensions).toMatchObject({ width: 300, height: 240, unitsPerMetre: 30 });
+    // The zone keeps its place on the map; the treadmill is 0.9 × 2.1 m at 30 to the metre.
+    expect(gym.zones[0]).toMatchObject({ x: 0, y: 0, width: 200, height: 100 });
+    const t1 = gym.zones[0].machines![0];
+    expect([t1.width, t1.height]).toEqual([27, 63]);
+  });
+
+  it('only lengthens the room when the width stays', () => {
+    const { gym } = setRoomSize(drawn(), 30, 25, []);
+    expect(gym.dimensions).toMatchObject({ width: 300, height: 250, unitsPerMetre: 10 });
+    expect(gym.zones[0].machines![0]).toMatchObject({ width: 9, height: 21 });
   });
 });
 

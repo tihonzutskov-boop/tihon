@@ -1478,7 +1478,7 @@ const GymMap: React.FC<GymMapProps> = ({
                           fontSize="9.5"
                           fontWeight="bold"
                         >
-                          {displayName} ({(annex.width / 10).toFixed(1)}m × {(annex.height / 10).toFixed(1)}m)
+                          {displayName} ({(annex.width / unitsPerMetreOf(dimensions)).toFixed(1)}m × {(annex.height / unitsPerMetreOf(dimensions)).toFixed(1)}m)
                         </text>
                       </g>
 
