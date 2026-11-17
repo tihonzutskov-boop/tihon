@@ -17,6 +17,8 @@ import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2,
 import { MACHINE_ICONS_LIST as MACHINE_ICONS, ICON_GROUPS } from '../utils/equipmentIcons';
 import { snapWallEndpoint } from '../utils/wallSnapping';
 import { standardSizeOf, sizeKindOf, fitToSize, turnQuarter, isAtSize, STANDARD_SIZES, unitsPerMetreOf } from '../utils/machineSizes';
+import { cableStationSize, readCableLayout } from '../utils/cableStation';
+import CableStationEditor from './CableStationEditor';
 
 interface AdminPageProps {
   gyms: Gym[];
@@ -2430,6 +2432,19 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
                           );
                         })()}
 
+                        {/* A cable station is built of towers and seats; its size follows from them. */}
+                        {(() => {
+                          const m = (selectedZone.machines || []).find(x => x.id === selectedMachineId);
+                          if (!m || sizeKindOf(m, equipmentOf(m)) !== 'cableStation') return null;
+                          return (
+                            <CableStationEditor
+                              layout={readCableLayout(m.cableLayout)}
+                              color={selectedZone.color}
+                              onChange={next => reshapeMachine((mm, z) => ({ cableLayout: next, ...fitToSize(mm, z, cableStationSize(next), upm) }))}
+                            />
+                          );
+                        })()}
+
                         {/* Size: fixed by the machine's kind, so it can only be turned. */}
                         {(() => {
                           const m = (selectedZone.machines || []).find(x => x.id === selectedMachineId);
@@ -2447,7 +2462,9 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
                               </div>
                               <p className="text-[10px] text-slate-500 leading-snug">
                                 {size
-                                  ? eq?.sizeM
+                                  ? kind === 'cableStation'
+                                    ? `Fixed at ${size.width} × ${size.length} m by its towers and seats. Change them under Extensions.`
+                                    : eq?.sizeM
                                     ? `Fixed at ${size.width} × ${size.length} m, set in the Equipment Library.`
                                     : `Fixed at ${size.width} × ${size.length} m, a typical ${kind ? STANDARD_SIZES[kind].name.toLowerCase() : 'machine'}. Change it in the Equipment Library.`
                                   : 'No fixed size for this kind yet: drag the corner to size it, or give its Equipment Library item a real size.'}

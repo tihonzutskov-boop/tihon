@@ -1,15 +1,13 @@
-// Which top-view drawing a machine on the map gets, if any.
+// Name rules for the cardio and free-weight machines: treadmills, bikes,
+// rowers, cross-trainers, stair climbers, power racks, benches and dumbbell
+// racks. Strength machines are named in machineSizes.ts, which checks them
+// first and decides which machines get a top-view drawing.
 //
-// Only machines that look unmistakable from above, and whose names say so
-// unambiguously, get one: cardio machines, power racks, benches and dumbbell
-// racks. Everything else keeps its box and icon. A wrong drawing is worse than
-// none — it sends someone looking for the wrong thing — so the name rules err
-// towards no match: "row" alone never makes a rower, since a seated row is a
-// strength machine.
+// A wrong drawing is worse than none — it sends someone looking for the wrong
+// thing — so the name rules err towards no match: "row" alone never makes a
+// rower, since a seated row is a strength machine.
 
 export type MachineShape = 'treadmill' | 'bike' | 'rower' | 'elliptical' | 'stairs' | 'rack' | 'bench' | 'dumbbells';
-
-export const CARDIO_SHAPES: ReadonlySet<MachineShape> = new Set(['treadmill', 'bike', 'rower', 'elliptical', 'stairs']);
 
 // A machine placed from the Equipment Library carries its item's id, which is
 // a surer guide than whatever it was later renamed to.

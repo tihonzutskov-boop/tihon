@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   sizeKindOf, standardSizeOf, fitToSize, turnQuarter, isAtSize, findOverlaps,
-  applyStandardSizes, countOffSize, unitsPerMetreOf, STANDARD_SIZES,
+  applyStandardSizes, countOffSize, unitsPerMetreOf, STANDARD_SIZES, drawnKindOf,
 } from './machineSizes';
+import { DEFAULT_CABLE_LAYOUT, setSide } from './cableStation';
 import { Gym, GymZone, GymMachine, EquipmentItem } from '../types';
 
 const machine = (id: string, name: string, x: number, y: number, width: number, height: number, extra: Partial<GymMachine> = {}): GymMachine =>
@@ -48,6 +49,24 @@ describe('standardSizeOf', () => {
 
   it('has no size for kit nobody sized', () => {
     expect(standardSizeOf({ name: 'Battle ropes' })).toBeNull();
+  });
+
+  it("takes a cable station's size from its towers and seats", () => {
+    expect(sizeKindOf({ name: '8-Station Multi Stack' })).toBe('cableStation');
+    expect(standardSizeOf({ name: 'Cable station' })).toEqual({ width: 4, length: 6.2 });
+    const longer = setSide(DEFAULT_CABLE_LAYOUT, '1:bottom', 'tower');
+    expect(standardSizeOf({ name: 'Cable station', cableLayout: longer })).toEqual({ width: 4, length: 10.9 });
+  });
+});
+
+describe('drawnKindOf', () => {
+  it('draws the sketched machines and leaves the rest as boxes', () => {
+    expect(drawnKindOf({ name: 'Flat Bench Press' })).toBe('benchStation');
+    expect(drawnKindOf({ name: 'Functional Trainer' })).toBe('functionalTrainer');
+    expect(drawnKindOf({ name: 'Lat Pulldown' })).toBe('pulldown');
+    expect(drawnKindOf({ name: 'Dual Cable Cross' })).toBeNull();
+    expect(drawnKindOf({ name: 'Leg Extension' })).toBeNull();
+    expect(drawnKindOf({ name: 'Plyo box' })).toBeNull();
   });
 });
 

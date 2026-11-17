@@ -7,8 +7,7 @@ import { ICON_MAP, getEquipmentIcon, getTaxonomyColor, isBeginnerFriendly, isAme
 import { heatColor, type HeatEntry } from '../utils/equipmentUsage';
 import type { RoutePoint } from '../utils/sessionRoute';
 import type { Rect } from '../utils/walkingRoute';
-import { machineShapeOf } from '../utils/machineShapes';
-import { unitsPerMetreOf } from '../utils/machineSizes';
+import { drawnKindOf, unitsPerMetreOf } from '../utils/machineSizes';
 import MachineTopView from './MachineTopView';
 
 const NEUTRAL_ZONE_STYLE = { fill: '#334155', stroke: '#475569', dashStroke: '#475569', textColor: '#cbd5e1' };
@@ -1862,14 +1861,14 @@ const GymMap: React.FC<GymMapProps> = ({
                           // A machine with a top-view drawing shows it, a little
                           // muted, even before its zone is zoomed into: a row of
                           // treadmills reads as treadmills from across the map.
-                          const topShape = heatMode ? null : machineShapeOf(machine);
+                          const topShape = heatMode ? null : drawnKindOf(machine);
                           return topShape ? (
                             <g
                               key={`preview-${zone.id}-${machine.id}-${mIdx}`}
                               transform={`translate(${zone.x + machine.x}, ${zone.y + machine.y})`}
                               opacity={0.8}
                             >
-                              <MachineTopView shape={topShape} width={machine.width} height={machine.height} />
+                              <MachineTopView shape={topShape} width={machine.width} height={machine.height} color={zone.color} cableLayout={machine.cableLayout} />
                             </g>
                           ) : (
                             <rect
@@ -1981,7 +1980,7 @@ const GymMap: React.FC<GymMapProps> = ({
                           // Drawn from above instead of a box and icon, where
                           // there is a drawing for it. The editor keeps boxes,
                           // which are easier to drag and resize precisely.
-                          const topShape = !isEditable && !heatMode ? machineShapeOf(machine) : null;
+                          const topShape = !isEditable && !heatMode ? drawnKindOf(machine) : null;
 
                           return (
                             <g
@@ -2037,7 +2036,7 @@ const GymMap: React.FC<GymMapProps> = ({
                                 <>
                                   {/* The whole footprint stays tappable, gaps in the drawing included. */}
                                   <rect width={machine.width} height={machine.height} rx="4" fill="transparent" />
-                                  <MachineTopView shape={topShape} width={machine.width} height={machine.height} />
+                                  <MachineTopView shape={topShape} width={machine.width} height={machine.height} color={zone.color} cableLayout={machine.cableLayout} />
                                   {(isUserTarget || showUserGlow || isPickup) && (
                                     <rect
                                       width={machine.width} height={machine.height} rx="4"

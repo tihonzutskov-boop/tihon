@@ -51,6 +51,25 @@ export interface GymMachine {
   equipmentId?: string; // Links this placed machine to an EquipmentItem in the Equipment Library
   exerciseId?: string;  // Optional direct link to a LibraryExercise
   imageUrl?: string;
+  cableLayout?: CableLayout; // A cable station's towers and seats; its size follows from them
+}
+
+export type CableSide = 'top' | 'left' | 'right' | 'bottom';
+export type CableSeat = 'pulldown' | 'row';
+
+/** A weight tower of a cable station, on a grid; every tower but the first hangs off another by a pull-up bar. */
+export interface CableTower {
+  id: number;
+  gx: number;
+  gy: number;
+  parent?: number;
+  side?: CableSide; // which side of its parent it hangs off
+}
+
+/** A cable station's towers, and the seat on each side that has one, keyed "towerId:side". */
+export interface CableLayout {
+  towers: CableTower[];
+  stations: Record<string, CableSeat>;
 }
 
 export interface GymAnnex {

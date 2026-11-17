@@ -11,8 +11,10 @@
 // drawing itself is never touched: shrinking a whole map would leave its
 // labels, lines and zoom levels three times too big for it.
 
-import { Gym, GymMachine, GymZone, GymDimensions, EquipmentItem } from '../types';
+import { Gym, GymMachine, GymZone, GymDimensions, EquipmentItem, CableLayout } from '../types';
 import { machineShapeOf } from './machineShapes';
+import { DrawnKind } from './machineDrawings';
+import { cableStationSize, readCableLayout } from './cableStation';
 
 /** The room editor's original assumption, for gyms that never set a scale. */
 export const DEFAULT_UNITS_PER_METRE = 10;
@@ -25,27 +27,35 @@ export const unitsPerMetreOf = (dimensions: GymDimensions | Partial<GymDimension
 /** Width is the short side, length the long one, in metres. */
 export interface RealSize { width: number; length: number }
 
-export type SizeKind =
-  | 'treadmill' | 'bike' | 'rower' | 'elliptical' | 'stairs' | 'rack' | 'bench' | 'dumbbells'
-  | 'benchStation' | 'legPress' | 'smith' | 'cableCrossover' | 'functionalTrainer' | 'pulldown' | 'weightStack';
+/** Every kind with a top-view drawing, and two strength machines that only have a size. */
+export type SizeKind = DrawnKind | 'cableCrossover' | 'weightStack';
 
 export const STANDARD_SIZES: Record<SizeKind, { name: string; size: RealSize }> = {
   treadmill: { name: 'Treadmill', size: { width: 0.9, length: 2.1 } },
   bike: { name: 'Bike', size: { width: 0.6, length: 1.2 } },
   rower: { name: 'Rower', size: { width: 0.6, length: 2.4 } },
-  elliptical: { name: 'Cross-trainer', size: { width: 0.7, length: 2.0 } },
+  elliptical: { name: 'Cross-trainer', size: { width: 0.7, length: 1.6 } },
   stairs: { name: 'Stair climber', size: { width: 0.9, length: 1.6 } },
-  rack: { name: 'Power rack', size: { width: 1.5, length: 1.5 } },
+  rack: { name: 'Power rack', size: { width: 1.4, length: 2.2 } },
   bench: { name: 'Bench', size: { width: 0.6, length: 1.4 } },
   dumbbells: { name: 'Dumbbell rack', size: { width: 0.8, length: 2.5 } },
-  benchStation: { name: 'Bench press station', size: { width: 1.3, length: 1.9 } },
+  benchStation: { name: 'Bench press', size: { width: 1.3, length: 2.2 } },
   legPress: { name: 'Leg press', size: { width: 1.8, length: 2.3 } },
   smith: { name: 'Smith machine', size: { width: 1.4, length: 2.2 } },
-  cableCrossover: { name: 'Cable crossover', size: { width: 1.2, length: 4.5 } },
-  functionalTrainer: { name: 'Functional trainer', size: { width: 1.0, length: 1.6 } },
+  // The owner's sketch of the RPM Power Renegade: two rack stations and plate storage.
+  functionalTrainer: { name: 'Functional trainer', size: { width: 1.6, length: 4.13 } },
   pulldown: { name: 'Lat pulldown / row', size: { width: 1.2, length: 1.8 } },
+  // Two towers as sketched; a station's own towers and seats give its size.
+  cableStation: { name: 'Cable station', size: { width: 4.0, length: 6.2 } },
+  cableCrossover: { name: 'Cable crossover', size: { width: 1.2, length: 4.5 } },
   weightStack: { name: 'Weight-stack machine', size: { width: 1.2, length: 1.6 } },
 };
+
+/** The kinds with a top-view drawing; the rest show as a box. */
+const DRAWN: ReadonlySet<SizeKind> = new Set<SizeKind>([
+  'treadmill', 'bike', 'rower', 'elliptical', 'stairs', 'rack', 'bench', 'dumbbells',
+  'benchStation', 'legPress', 'smith', 'functionalTrainer', 'pulldown', 'cableStation',
+]);
 
 const BY_EQUIPMENT: Record<string, SizeKind> = {
   'eq-leg-press': 'legPress',
@@ -56,14 +66,15 @@ const BY_EQUIPMENT: Record<string, SizeKind> = {
   'eq-latpull': 'pulldown',
 };
 
-// Strength machines, which have no top-view drawing but do have a typical
-// size. Checked before the drawing kinds: a bench press station is not a bench,
-// and a "seated cable row" is a pulldown/row station, not a rower.
+// Strength machines, by name. Checked before the cardio and free-weight kinds:
+// a bench press station is not a bench, and a "seated cable row" is a
+// pulldown/row station, not a rower.
 const kindFromName = (name: string): SizeKind | null => {
   const n = name.toLowerCase();
   if (/leg press|hack squat/.test(n)) return 'legPress';
   if (/smith/.test(n)) return 'smith';
   if (/functional trainer/.test(n)) return 'functionalTrainer';
+  if (/cable station|multi[ -]?(stack|station|gym)/.test(n)) return 'cableStation';
   if (/cable cross|crossover/.test(n)) return 'cableCrossover';
   if (/pulldown|pull-down|lat pull|seated (cable )?row|low row|cable row/.test(n)) return 'pulldown';
   if (/bench press/.test(n)) return 'benchStation';
@@ -81,15 +92,24 @@ export const sizeKindOf = (machine: { name?: string; equipmentId?: string }, equ
   return machineShapeOf(machine) || (equipment ? machineShapeOf({ name: equipment.name }) : null);
 };
 
+/** Which drawing a machine gets on the map, or null when it shows as a box. */
+export const drawnKindOf = (machine: { name?: string; equipmentId?: string }): DrawnKind | null => {
+  const kind = sizeKindOf(machine);
+  return kind && DRAWN.has(kind) ? kind as DrawnKind : null;
+};
+
 /**
- * The real size a machine should be: its Equipment Library item's own size
- * when one was set for this gym's model, or the typical size of its kind.
- * Null for kit nobody has given a size — it keeps the size it was drawn at.
+ * The real size a machine should be: a cable station's from its own towers
+ * and seats (the sketch's two until someone changes them), its Equipment
+ * Library item's own size when one was set for this gym's model, or the
+ * typical size of its kind. Null for kit nobody has given a size — it keeps
+ * the size it was drawn at.
  */
-export const standardSizeOf = (machine: { name?: string; equipmentId?: string }, equipment?: EquipmentItem): RealSize | null => {
+export const standardSizeOf = (machine: { name?: string; equipmentId?: string; cableLayout?: CableLayout }, equipment?: EquipmentItem): RealSize | null => {
+  const kind = sizeKindOf(machine, equipment);
+  if (kind === 'cableStation') return cableStationSize(readCableLayout(machine.cableLayout));
   const own = equipment?.sizeM;
   if (own && own.width > 0 && own.length > 0) return { width: Math.min(own.width, own.length), length: Math.max(own.width, own.length) };
-  const kind = sizeKindOf(machine, equipment);
   return kind ? STANDARD_SIZES[kind].size : null;
 };
 
