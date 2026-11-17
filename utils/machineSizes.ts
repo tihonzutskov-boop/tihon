@@ -44,7 +44,7 @@ export const STANDARD_SIZES: Record<SizeKind, { name: string; size: RealSize }> 
   legPress: { name: 'Leg press', size: { width: 1.8, length: 2.3 } },
   smith: { name: 'Smith machine', size: { width: 1.4, length: 2.2 } },
   // The owner's sketch of the RPM Power Renegade: two rack stations and plate storage.
-  functionalTrainer: { name: 'Functional trainer', size: { width: 1.6, length: 4.13 } },
+  functionalTrainer: { name: 'Functional Training Rig', size: { width: 1.6, length: 4.13 } },
   pulldown: { name: 'Lat pulldown / row', size: { width: 1.2, length: 1.8 } },
   // Two towers as sketched; a station's own towers and seats give its size.
   cableStation: { name: 'Cable station', size: { width: 4.0, length: 6.2 } },
@@ -74,7 +74,7 @@ const kindFromName = (name: string): SizeKind | null => {
   const n = name.toLowerCase();
   if (/leg press|hack squat/.test(n)) return 'legPress';
   if (/smith/.test(n)) return 'smith';
-  if (/functional trainer/.test(n)) return 'functionalTrainer';
+  if (/functional train(er|ing)|training rig/.test(n)) return 'functionalTrainer';
   if (/cable station|multi[ -]?(stack|station|gym)/.test(n)) return 'cableStation';
   if (/cable cross|crossover/.test(n)) return 'cableCrossover';
   if (/pulldown|pull-down|lat pull|seated (cable )?row|low row|cable row/.test(n)) return 'pulldown';

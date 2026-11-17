@@ -63,6 +63,7 @@ describe('drawnKindOf', () => {
   it('draws the sketched machines and leaves the rest as boxes', () => {
     expect(drawnKindOf({ name: 'Flat Bench Press' })).toBe('benchStation');
     expect(drawnKindOf({ name: 'Functional Trainer' })).toBe('functionalTrainer');
+    expect(drawnKindOf({ name: 'Functional Training Rig' })).toBe('functionalTrainer');
     expect(drawnKindOf({ name: 'Lat Pulldown' })).toBe('pulldown');
     expect(drawnKindOf({ name: 'Dual Cable Cross' })).toBeNull();
     expect(drawnKindOf({ name: 'Leg Extension' })).toBeNull();
