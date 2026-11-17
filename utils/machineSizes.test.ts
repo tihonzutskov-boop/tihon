@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   sizeKindOf, standardSizeOf, fitToSize, turnQuarter, isAtSize, findOverlaps,
-  applyStandardSizes, countOffSize, unitsPerMetreOf, STANDARD_SIZES, drawnKindOf,
+  applyStandardSizes, countOffSize, unitsPerMetreOf, STANDARD_SIZES, drawnKindOf, facingOf, rotateClockwise,
 } from './machineSizes';
 import { DEFAULT_CABLE_LAYOUT, setSide } from './cableStation';
 import { Gym, GymZone, GymMachine, EquipmentItem } from '../types';
@@ -98,6 +98,34 @@ describe('turnQuarter', () => {
   it('swaps width and length about the same centre', () => {
     const box = turnQuarter(machine('m', 'Treadmill', 50, 50, 9, 21), zone('z', 0, 0, 200, 200));
     expect(box).toEqual({ x: 44, y: 56, width: 21, height: 9 });
+  });
+});
+
+describe('facing', () => {
+  const z = zone('z', 0, 0, 200, 200);
+
+  it('faces up standing, right lying sideways, and the other way flipped', () => {
+    expect(facingOf(machine('m', 'Treadmill', 0, 0, 9, 21))).toBe('up');
+    expect(facingOf(machine('m', 'Treadmill', 0, 0, 21, 9))).toBe('right');
+    expect(facingOf(machine('m', 'Treadmill', 0, 0, 9, 21, { flipped: true }))).toBe('down');
+    expect(facingOf(machine('m', 'Treadmill', 0, 0, 21, 9, { flipped: true }))).toBe('left');
+  });
+
+  it('turns clockwise all the way round', () => {
+    let m = machine('m', 'Treadmill', 50, 50, 9, 21);
+    const seen = [];
+    for (let i = 0; i < 4; i++) {
+      m = { ...m, ...rotateClockwise(m, z) };
+      seen.push(facingOf(m));
+    }
+    expect(seen).toEqual(['right', 'down', 'left', 'up']);
+    expect(m).toMatchObject({ x: 50, y: 50, width: 9, height: 21, flipped: false });
+  });
+
+  it('knows a cable station built wider than long stands that way', () => {
+    const wide = setSide(setSide(DEFAULT_CABLE_LAYOUT, '0:right', 'tower'), '2:right', 'tower');
+    // 12.2 m across, 6.2 m long: drawn wide, so a wide footprint is not turned.
+    expect(facingOf(machine('c', 'Cable station', 0, 0, 122, 62, { cableLayout: wide }))).toBe('up');
   });
 });
 

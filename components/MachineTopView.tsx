@@ -7,9 +7,10 @@ import { cableStationDrawing, readCableLayout } from '../utils/cableStation';
 // placed at on the map, in three shades of its zone's colour so it reads as
 // part of the zone.
 //
-// Drawings stand upright, front at the top. Machines on the map have no
-// direction yet, so a drawing turns a quarter to lie along its footprint's
-// long side — a treadmill placed wider than long is lying sideways.
+// Drawings stand upright, front at the top. A drawing turns a quarter to lie
+// along its footprint's long side — a treadmill placed wider than long is
+// lying sideways, front at the right — and a flipped machine is turned round,
+// front at the other end.
 
 /** A drawing's parts, painted in a palette. */
 export const DrawingParts: React.FC<{ drawing: Drawing; palette: Palette }> = ({ drawing, palette }) => (
@@ -27,6 +28,7 @@ interface Props {
   /** The zone's colour, which the machine is drawn in. */
   color?: string;
   cableLayout?: CableLayout;
+  flipped?: boolean;
 }
 
 const naturalDrawing = (shape: DrawnKind, cableLayout?: CableLayout): Drawing | null =>
@@ -34,7 +36,7 @@ const naturalDrawing = (shape: DrawnKind, cableLayout?: CableLayout): Drawing | 
     : shape === 'cableStation' ? cableStationDrawing(readCableLayout(cableLayout))
     : DRAWINGS[shape];
 
-const MachineTopView: React.FC<Props> = ({ shape, width, height, color, cableLayout }) => {
+const MachineTopView: React.FC<Props> = ({ shape, width, height, color, cableLayout, flipped }) => {
   const natural = naturalDrawing(shape, cableLayout);
   // Lie along the footprint's long side: turn a quarter when the drawing's
   // long side and the footprint's disagree.
@@ -48,9 +50,11 @@ const MachineTopView: React.FC<Props> = ({ shape, width, height, color, cableLay
   const [W, H] = drawing.size;
 
   return (
-    <g transform={turned ? `translate(${width} 0) rotate(90)` : undefined} className="pointer-events-none">
-      <g transform={`scale(${boxW / W} ${boxH / H})`}>
-        <DrawingParts drawing={drawing} palette={paletteOf(color)} />
+    <g transform={flipped ? `rotate(180 ${width / 2} ${height / 2})` : undefined} className="pointer-events-none">
+      <g transform={turned ? `translate(${width} 0) rotate(90)` : undefined}>
+        <g transform={`scale(${boxW / W} ${boxH / H})`}>
+          <DrawingParts drawing={drawing} palette={paletteOf(color)} />
+        </g>
       </g>
     </g>
   );

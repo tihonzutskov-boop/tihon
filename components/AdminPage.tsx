@@ -13,10 +13,10 @@ import MachineSizesPanel from './MachineSizesPanel';
 import { api, DEFAULT_EQUIPMENT } from '../services/api';
 import { evaluateZoneExercises, getZoneEquipmentIds, floorSpaceIsAssumed } from '../utils/equipmentMatcher';
 import { getExerciseLocations } from '../utils/exerciseMatcher';
-import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Eraser, Eye, EyeOff, Footprints, MapPin, LayoutTemplate, DoorOpen, Lock, Bath, Droplets, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle, Copy, ClipboardPaste, Dumbbell, Activity, Zap, Target, Layers, Box, Wind, RotateCcw, ArrowUpRight, ArrowUpLeft, ArrowDownRight, ArrowDownLeft, ArrowRight, ArrowUp, ArrowDown, MoveDown, Circle, Waves, Timer, Sparkles, Search, Video, Play, Film, Filter, X, ExternalLink, Compass, SlidersHorizontal, ChevronRight, Bookmark, BookmarkCheck, Camera, Users, Flame, Pencil, RotateCw } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Eraser, Eye, EyeOff, Footprints, MapPin, LayoutTemplate, DoorOpen, Lock, Bath, Droplets, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle, Copy, ClipboardPaste, Dumbbell, Activity, Zap, Target, Layers, Box, Wind, RotateCcw, ArrowUpRight, ArrowUpLeft, ArrowDownRight, ArrowDownLeft, ArrowRight, ArrowUp, ArrowDown, MoveDown, Circle, Waves, Timer, Sparkles, Search, Video, Play, Film, Filter, X, ExternalLink, Compass, SlidersHorizontal, ChevronRight, Bookmark, BookmarkCheck, Camera, Users, Flame, Pencil, RotateCw, ArrowUpDown } from 'lucide-react';
 import { MACHINE_ICONS_LIST as MACHINE_ICONS, ICON_GROUPS } from '../utils/equipmentIcons';
 import { snapWallEndpoint } from '../utils/wallSnapping';
-import { standardSizeOf, sizeKindOf, fitToSize, turnQuarter, isAtSize, STANDARD_SIZES, unitsPerMetreOf } from '../utils/machineSizes';
+import { standardSizeOf, sizeKindOf, fitToSize, rotateClockwise, facingOf, isAtSize, STANDARD_SIZES, unitsPerMetreOf } from '../utils/machineSizes';
 import { cableStationSize, readCableLayout } from '../utils/cableStation';
 import CableStationEditor from './CableStationEditor';
 
@@ -2472,24 +2472,39 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
                               {size && !atSize && (
                                 <p className="text-[10px] text-amber-300 leading-snug">It isn't at its fixed size yet.</p>
                               )}
+                              {/* Where the front is: the lime arrow on the map shows it too. */}
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-slate-400 font-semibold">Front faces</span>
+                                <span className="flex items-center gap-1 text-[11px] font-bold text-lime-400">
+                                  {{ up: <ArrowUp className="w-3 h-3" />, right: <ArrowRight className="w-3 h-3" />, down: <ArrowDown className="w-3 h-3" />, left: <ArrowLeft className="w-3 h-3" /> }[facingOf(m)]}
+                                  {facingOf(m)}
+                                </span>
+                              </div>
                               <div className="flex gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => reshapeMachine(turnQuarter)}
+                                  onClick={() => reshapeMachine(rotateClockwise)}
                                   className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-200"
                                 >
                                   <RotateCw className="w-3 h-3" /> Rotate
                                 </button>
-                                {size && !atSize && (
-                                  <button
-                                    type="button"
-                                    onClick={() => reshapeMachine((mm, z) => fitToSize(mm, z, size, upm))}
-                                    className="flex-1 px-2 py-1.5 rounded bg-lime-500 hover:bg-lime-400 text-xs font-bold text-slate-950"
-                                  >
-                                    Use fixed size
-                                  </button>
-                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => reshapeMachine(mm => ({ flipped: !mm.flipped }))}
+                                  className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-200"
+                                >
+                                  <ArrowUpDown className="w-3 h-3" /> Flip
+                                </button>
                               </div>
+                              {size && !atSize && (
+                                <button
+                                  type="button"
+                                  onClick={() => reshapeMachine((mm, z) => fitToSize(mm, z, size, upm))}
+                                  className="w-full px-2 py-1.5 rounded bg-lime-500 hover:bg-lime-400 text-xs font-bold text-slate-950"
+                                >
+                                  Use fixed size
+                                </button>
+                              )}
                             </div>
                           );
                         })()}

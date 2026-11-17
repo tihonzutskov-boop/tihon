@@ -14,7 +14,7 @@
 import { Gym, GymMachine, GymZone, GymDimensions, EquipmentItem, CableLayout } from '../types';
 import { machineShapeOf } from './machineShapes';
 import { DrawnKind } from './machineDrawings';
-import { cableStationSize, readCableLayout } from './cableStation';
+import { cableStationExtent, cableStationSize, readCableLayout } from './cableStation';
 
 /** The room editor's original assumption, for gyms that never set a scale. */
 export const DEFAULT_UNITS_PER_METRE = 10;
@@ -147,6 +147,37 @@ export const turnQuarter = (machine: GymMachine, zone: GymZone): Box => {
   const cy = machine.y + machine.height / 2;
   const box = clampInto({ x: cx - machine.height / 2, y: cy - machine.width / 2, width: machine.height, height: machine.width }, zone);
   return { x: round(box.x), y: round(box.y), width: round(box.width), height: round(box.height) };
+};
+
+/** Which way a machine's front points on the map: its console, its weights. */
+export type Facing = 'up' | 'right' | 'down' | 'left';
+
+const BEHIND: Record<Facing, Facing> = { up: 'down', right: 'left', down: 'up', left: 'right' };
+
+/** Whether a machine's drawing stands upright, front at the top: all do, but a cable station can be wider than long. */
+const drawsUpright = (machine: { name?: string; equipmentId?: string; cableLayout?: CableLayout }): boolean => {
+  if (sizeKindOf(machine) !== 'cableStation') return true;
+  const [w, h] = cableStationExtent(readCableLayout(machine.cableLayout));
+  return h >= w;
+};
+
+/**
+ * Where a machine's front is. Its drawing lies along the footprint's long
+ * side, turned a quarter clockwise when the two disagree, so the front is at
+ * the top or, turned, at the right; flipped, it is at the other end.
+ */
+export const facingOf = (machine: Pick<GymMachine, 'width' | 'height' | 'flipped' | 'name' | 'equipmentId' | 'cableLayout'>): Facing => {
+  const turned = drawsUpright(machine) !== (machine.height >= machine.width);
+  const front: Facing = turned ? 'right' : 'up';
+  return machine.flipped ? BEHIND[front] : front;
+};
+
+/** A quarter turn clockwise, front and all: up, right, down, left and round again. */
+export const rotateClockwise = (machine: GymMachine, zone: GymZone): Box & { flipped: boolean } => {
+  const facing = facingOf(machine);
+  // Swapping the sides alone takes right back up; from the side, it goes on round to the far end.
+  const flipped = facing === 'right' || facing === 'left' ? !machine.flipped : !!machine.flipped;
+  return { ...turnQuarter(machine, zone), flipped };
 };
 
 /** Whether a machine already is its real size, either way round. */

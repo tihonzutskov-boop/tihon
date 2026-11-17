@@ -7,7 +7,7 @@ import { ICON_MAP, getEquipmentIcon, getTaxonomyColor, isBeginnerFriendly, isAme
 import { heatColor, type HeatEntry } from '../utils/equipmentUsage';
 import type { RoutePoint } from '../utils/sessionRoute';
 import type { Rect } from '../utils/walkingRoute';
-import { drawnKindOf, unitsPerMetreOf } from '../utils/machineSizes';
+import { drawnKindOf, facingOf, unitsPerMetreOf } from '../utils/machineSizes';
 import MachineTopView from './MachineTopView';
 
 const NEUTRAL_ZONE_STYLE = { fill: '#334155', stroke: '#475569', dashStroke: '#475569', textColor: '#cbd5e1' };
@@ -1868,7 +1868,7 @@ const GymMap: React.FC<GymMapProps> = ({
                               transform={`translate(${zone.x + machine.x}, ${zone.y + machine.y})`}
                               opacity={0.8}
                             >
-                              <MachineTopView shape={topShape} width={machine.width} height={machine.height} color={zone.color} cableLayout={machine.cableLayout} />
+                              <MachineTopView shape={topShape} width={machine.width} height={machine.height} color={zone.color} cableLayout={machine.cableLayout} flipped={machine.flipped} />
                             </g>
                           ) : (
                             <rect
@@ -2036,7 +2036,7 @@ const GymMap: React.FC<GymMapProps> = ({
                                 <>
                                   {/* The whole footprint stays tappable, gaps in the drawing included. */}
                                   <rect width={machine.width} height={machine.height} rx="4" fill="transparent" />
-                                  <MachineTopView shape={topShape} width={machine.width} height={machine.height} color={zone.color} cableLayout={machine.cableLayout} />
+                                  <MachineTopView shape={topShape} width={machine.width} height={machine.height} color={zone.color} cableLayout={machine.cableLayout} flipped={machine.flipped} />
                                   {(isUserTarget || showUserGlow || isPickup) && (
                                     <rect
                                       width={machine.width} height={machine.height} rx="4"
@@ -2088,6 +2088,34 @@ const GymMap: React.FC<GymMapProps> = ({
                                 )}
                               </g>
                               )}
+
+                              {/* The editor shows boxes, so it marks each machine's front:
+                                  a bar along that edge and an arrow pointing out of it. */}
+                              {isEditable && !heatMode && (() => {
+                                const w = machine.width, h = machine.height, s = Math.min(w, h);
+                                const facing = facingOf(machine);
+                                const across = facing === 'up' || facing === 'down';
+                                const edge = s * 0.1, depth = s * 0.2, half = s * 0.18;
+                                // Points measured inwards from the front edge, then placed on the map.
+                                const at = (inward: number, along: number): string =>
+                                  facing === 'up' ? `${w / 2 + along},${inward}`
+                                  : facing === 'down' ? `${w / 2 - along},${h - inward}`
+                                  : facing === 'left' ? `${inward},${h / 2 - along}`
+                                  : `${w - inward},${h / 2 + along}`;
+                                const barLength = (across ? w : h) * 0.7;
+                                return (
+                                  <g className="pointer-events-none">
+                                    <polygon
+                                      points={[at(edge * 0.4, -barLength / 2), at(edge * 0.4, barLength / 2), at(edge * 1.4, barLength / 2), at(edge * 1.4, -barLength / 2)].join(' ')}
+                                      fill="#a3e635"
+                                    />
+                                    <polygon
+                                      points={[at(edge * 1.4 + depth, -half), at(edge * 1.4 + depth, half), at(edge * 1.4, 0)].join(' ')}
+                                      fill="#a3e635"
+                                    />
+                                  </g>
+                                );
+                              })()}
 
                               {/* With a walk drawn, the pin carries the target's name. */}
                               {showUserGlow && !(hasWalk && isUserTarget && !isHovered) && (
