@@ -15,6 +15,7 @@ import { Gym, GymMachine, GymZone, GymDimensions, EquipmentItem, CableLayout } f
 import { machineShapeOf } from './machineShapes';
 import { DrawnKind } from './machineDrawings';
 import { cableStationExtent, cableStationSize, readCableLayout } from './cableStation';
+import { stretchRoom } from './roomStretch';
 
 /** The room editor's original assumption, for gyms that never set a scale. */
 export const DEFAULT_UNITS_PER_METRE = 10;
@@ -244,13 +245,16 @@ export const applyStandardSizes = (gym: Gym, equipment: EquipmentItem[]): SizeRe
  * The room set to its real size, in one go with everything in it. The width
  * sets the map's scale, so every zone keeps its place on the map and is
  * measured in the same metres as the room; the length then sets how long the
- * room is at that scale; and every machine goes to its real size in it.
+ * room is at that scale, the zones stretching with it; and every machine goes
+ * to its real size in it.
  */
 export const setRoomSize = (gym: Gym, widthM: number, lengthM: number, equipment: EquipmentItem[]): SizeReport => {
   const dims = gym.dimensions || { width: 780, height: 580 };
   const unitsPerMetre = dims.width / widthM;
-  const height = round(lengthM * unitsPerMetre);
-  return applyStandardSizes({ ...gym, dimensions: { ...dims, unitsPerMetre, height } }, equipment);
+  const scaled = { ...gym, dimensions: { ...dims, unitsPerMetre } };
+  const room = { x: dims.x || 0, y: dims.y || 0, width: dims.width, height: round(lengthM * unitsPerMetre) };
+  const keepsSize = (m: GymMachine) => !!standardSizeOf(m, equipmentFor(m, equipment));
+  return applyStandardSizes(stretchRoom(scaled, room, keepsSize), equipment);
 };
 
 /** How many machines are not at their real size: what Apply would change. */

@@ -8,7 +8,8 @@ import { applyStandardSizes, countOffSize, setRoomSize, unitsPerMetreOf, SizeRep
 // Maps are drawn at whatever size looked right on screen, so the room's real
 // width sets how many map units make a metre for this gym: every zone keeps its
 // place and is measured in the same metres as the room, and every machine goes
-// to its real size. The length then sets how long the room is at that scale.
+// to its real size. The length then sets how long the room is at that scale,
+// and the zones stretch with it.
 // The room's size and the scale machines are sized by used to be set in two
 // places, and could disagree; now they are one.
 
@@ -87,9 +88,9 @@ const RoomSizePanel: React.FC<Props> = ({ gym, equipment, onChange }) => {
         {!valid
           ? "Enter the room's width and length in metres."
           : widthChanged
-            ? `The map has the room ${roomWidth} m wide. It will be scaled to ${width} m: every zone keeps its place and grows or shrinks with the room, and machines go to their real size.${lengthChanged ? ` The room will be ${length} m long.` : ''}`
+            ? `The map has the room ${roomWidth} m wide. It will be scaled to ${width} m: every zone keeps its place and grows or shrinks with the room, and machines go to their real size.${lengthChanged ? ` The room will be ${length} m long, the zones stretching with it.` : ''}`
             : lengthChanged
-              ? `The room will be ${length} m long instead of ${roomLength} m. Zones stay where they are.`
+              ? `The room will be ${length} m long instead of ${roomLength} m. The zones stretch with it; machines keep their real size.`
               : offSize === 0
                 ? 'Every machine with a fixed size is at it.'
                 : `${offSize} machine${offSize === 1 ? " isn't" : "s aren't"} at their real size yet.`}

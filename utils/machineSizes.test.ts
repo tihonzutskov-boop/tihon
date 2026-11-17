@@ -188,15 +188,17 @@ describe('setRoomSize', () => {
   it('scales the map to the real width, so machines come out at their real size in it', () => {
     const { gym } = setRoomSize(drawn(), 10, 8, []);
     expect(gym.dimensions).toMatchObject({ width: 300, height: 240, unitsPerMetre: 30 });
-    // The zone keeps its place on the map; the treadmill is 0.9 × 2.1 m at 30 to the metre.
-    expect(gym.zones[0]).toMatchObject({ x: 0, y: 0, width: 200, height: 100 });
+    // The zone keeps its place across the map and stretches with the room's new
+    // length, 200 to 240; the treadmill is 0.9 × 2.1 m at 30 to the metre.
+    expect(gym.zones[0]).toMatchObject({ x: 0, y: 0, width: 200, height: 120 });
     const t1 = gym.zones[0].machines![0];
     expect([t1.width, t1.height]).toEqual([27, 63]);
   });
 
-  it('only lengthens the room when the width stays', () => {
+  it('only lengthens the room when the width stays, the zones stretching with it', () => {
     const { gym } = setRoomSize(drawn(), 30, 25, []);
     expect(gym.dimensions).toMatchObject({ width: 300, height: 250, unitsPerMetre: 10 });
+    expect(gym.zones[0]).toMatchObject({ y: 0, height: 125 });
     expect(gym.zones[0].machines![0]).toMatchObject({ width: 9, height: 21 });
   });
 });

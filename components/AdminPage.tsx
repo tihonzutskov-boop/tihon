@@ -10,6 +10,7 @@ import AdminCoaching from './AdminCoaching';
 import { QuickAddEquipmentModal } from './QuickAddEquipmentModal';
 import UsageHeatmap from './UsageHeatmap';
 import RoomSizePanel from './RoomSizePanel';
+import { stretchRoom } from '../utils/roomStretch';
 import { api, DEFAULT_EQUIPMENT } from '../services/api';
 import { evaluateZoneExercises, getZoneEquipmentIds, floorSpaceIsAssumed } from '../utils/equipmentMatcher';
 import { getExerciseLocations } from '../utils/exerciseMatcher';
@@ -321,6 +322,9 @@ interface DragState {
   // long drag can't compound its own corrections.
   initialMachines?: { id: string; x: number; y: number }[];
   initialWallData?: { x1: number; y1: number; x2: number; y2: number; controlX?: number; controlY?: number; };
+  // The whole gym as it was when a room resize began: the zones, walls and
+  // wings stretch from here, so they follow the room without drifting.
+  initialGym?: Gym;
   handle?: 'right' | 'bottom' | 'top' | 'left' | 'corner' | 'se' | 'sw' | 'ne' | 'nw';
   viewParams?: { viewBox: string, offsetX: number, offsetY: number, width: number, height: number };
 }
@@ -1061,7 +1065,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
   
   const handleMainRoomResizeStart = (e: React.MouseEvent, handle: 'left' | 'right' | 'top' | 'bottom' | 'corner') => {
     if (editMode !== 'room') return; e.preventDefault(); snapshot();
-    setDragState({ mode: 'resize-room', itemId: 'main-room', startX: e.clientX, startY: e.clientY, initialData: { x: dimensions.x || 0, y: dimensions.y || 0, width: dimensions.width, height: dimensions.height }, handle, viewParams: calculateViewParams(null) });
+    setDragState({ mode: 'resize-room', itemId: 'main-room', startX: e.clientX, startY: e.clientY, initialData: { x: dimensions.x || 0, y: dimensions.y || 0, width: dimensions.width, height: dimensions.height }, initialGym: gym, handle, viewParams: calculateViewParams(null) });
   };
 
   const handleAnnexDragStart = (e: React.MouseEvent, annex: GymAnnex) => {
@@ -1281,9 +1285,9 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
          const clampedH = Math.max(200, Math.min(2000, newH));
          if (dragState.handle === 'left' && clampedW !== newW) newX = initRight - clampedW;
          if (dragState.handle === 'top' && clampedH !== newH) newY = initBottom - clampedH;
-         // Spread the existing dimensions so a resize never silently drops
-         // custom walls/nodes/hallways authored elsewhere in the room editor.
-         update({ ...gym, dimensions: { ...dimensions, x: newX, y: newY, width: clampedW, height: clampedH } }, false);
+         // The zones, walls and wings follow the room; machines keep their real size.
+         const from = dragState.initialGym || gym;
+         update(stretchRoom(from, { x: newX, y: newY, width: clampedW, height: clampedH }, m => lockedMachineIds.has(m.id)), false);
       } else if (dragState.mode === 'move-annex') {
         const w = dragState.initialData.width;
         const h = dragState.initialData.height;
