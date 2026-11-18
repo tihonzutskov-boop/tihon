@@ -53,6 +53,7 @@ export interface GymMachine {
   imageUrl?: string;
   cableLayout?: CableLayout; // A cable station's towers and seats; its size follows from them
   flipped?: boolean; // Turned round to face the other way: its front at the bottom (or left) instead of the top (or right)
+  kind?: string; // The kind of machine someone picked for its drawing and size ('none' for a plain box); otherwise worked out from its name
 }
 
 export type CableSide = 'top' | 'left' | 'right' | 'bottom';

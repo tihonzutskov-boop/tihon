@@ -83,18 +83,30 @@ const kindFromName = (name: string): SizeKind | null => {
   return null;
 };
 
-/** Which kind of machine this is, for its size, or null when unknown. */
-export const sizeKindOf = (machine: { name?: string; equipmentId?: string }, equipment?: EquipmentItem): SizeKind | null => {
-  if (machine.equipmentId && BY_EQUIPMENT[machine.equipmentId]) return BY_EQUIPMENT[machine.equipmentId];
-  for (const name of [machine.name || '', equipment?.name || '']) {
-    const kind = kindFromName(name);
-    if (kind) return kind;
-  }
-  return machineShapeOf(machine) || (equipment ? machineShapeOf({ name: equipment.name }) : null);
+const kindFromAnyName = (name: string | undefined): SizeKind | null =>
+  name ? kindFromName(name) || machineShapeOf({ name }) : null;
+
+export const isSizeKind = (kind: string | undefined): kind is SizeKind => !!kind && kind in STANDARD_SIZES;
+
+/**
+ * Which kind of machine this is, for its drawing and size, or null when
+ * unknown. The kind someone picked for it comes first; then its own name, as
+ * the admin typed it; then the Equipment Library item it was placed from, by
+ * link and by name. A cable crossover from the library renamed "Cable
+ * station" is a cable station.
+ */
+export const sizeKindOf = (machine: { name?: string; equipmentId?: string; kind?: string }, equipment?: EquipmentItem): SizeKind | null => {
+  if (machine.kind === 'none') return null;
+  if (isSizeKind(machine.kind)) return machine.kind;
+  const linked = machine.equipmentId ? BY_EQUIPMENT[machine.equipmentId] || machineShapeOf({ equipmentId: machine.equipmentId }) : null;
+  return kindFromAnyName(machine.name) || linked || kindFromAnyName(equipment?.name);
 };
 
+/** Whether a kind of machine has a top-view drawing, rather than showing as a box. */
+export const isDrawn = (kind: SizeKind): boolean => DRAWN.has(kind);
+
 /** Which drawing a machine gets on the map, or null when it shows as a box. */
-export const drawnKindOf = (machine: { name?: string; equipmentId?: string }): DrawnKind | null => {
+export const drawnKindOf = (machine: { name?: string; equipmentId?: string; kind?: string }): DrawnKind | null => {
   const kind = sizeKindOf(machine);
   return kind && DRAWN.has(kind) ? kind as DrawnKind : null;
 };
@@ -106,7 +118,7 @@ export const drawnKindOf = (machine: { name?: string; equipmentId?: string }): D
  * typical size of its kind. Null for kit nobody has given a size — it keeps
  * the size it was drawn at.
  */
-export const standardSizeOf = (machine: { name?: string; equipmentId?: string; cableLayout?: CableLayout }, equipment?: EquipmentItem): RealSize | null => {
+export const standardSizeOf = (machine: { name?: string; equipmentId?: string; kind?: string; cableLayout?: CableLayout }, equipment?: EquipmentItem): RealSize | null => {
   const kind = sizeKindOf(machine, equipment);
   if (kind === 'cableStation') return cableStationSize(readCableLayout(machine.cableLayout));
   const own = equipment?.sizeM;
@@ -156,7 +168,7 @@ export type Facing = 'up' | 'right' | 'down' | 'left';
 const BEHIND: Record<Facing, Facing> = { up: 'down', right: 'left', down: 'up', left: 'right' };
 
 /** Whether a machine's drawing stands upright, front at the top: all do, but a cable station can be wider than long. */
-const drawsUpright = (machine: { name?: string; equipmentId?: string; cableLayout?: CableLayout }): boolean => {
+const drawsUpright = (machine: { name?: string; equipmentId?: string; kind?: string; cableLayout?: CableLayout }): boolean => {
   if (sizeKindOf(machine) !== 'cableStation') return true;
   const [w, h] = cableStationExtent(readCableLayout(machine.cableLayout));
   return h >= w;
@@ -167,7 +179,7 @@ const drawsUpright = (machine: { name?: string; equipmentId?: string; cableLayou
  * side, turned a quarter clockwise when the two disagree, so the front is at
  * the top or, turned, at the right; flipped, it is at the other end.
  */
-export const facingOf = (machine: Pick<GymMachine, 'width' | 'height' | 'flipped' | 'name' | 'equipmentId' | 'cableLayout'>): Facing => {
+export const facingOf = (machine: Pick<GymMachine, 'width' | 'height' | 'flipped' | 'name' | 'equipmentId' | 'kind' | 'cableLayout'>): Facing => {
   const turned = drawsUpright(machine) !== (machine.height >= machine.width);
   const front: Facing = turned ? 'right' : 'up';
   return machine.flipped ? BEHIND[front] : front;

@@ -30,6 +30,21 @@ describe('sizeKindOf', () => {
     expect(sizeKindOf({ name: 'Rower B' })).toBe('rower');
   });
 
+  it("goes by the machine's own name before its library link, so a renamed crossover is what it says", () => {
+    expect(sizeKindOf({ name: 'Cable station', equipmentId: 'eq-cable-crossover' })).toBe('cableStation');
+    // A name that says nothing falls back to the link.
+    expect(sizeKindOf({ name: 'Station 3', equipmentId: 'eq-cable-crossover' })).toBe('cableCrossover');
+    expect(sizeKindOf({ name: 'Lane 4', equipmentId: 'eq-treadmill' })).toBe('treadmill');
+  });
+
+  it('takes the kind someone picked over anything else, or a plain box', () => {
+    expect(sizeKindOf({ name: 'Station 3', equipmentId: 'eq-cable-crossover', kind: 'cableStation' })).toBe('cableStation');
+    expect(sizeKindOf({ name: 'Treadmill 1', kind: 'none' })).toBeNull();
+    expect(drawnKindOf({ name: 'Cable machine', kind: 'cableStation' })).toBe('cableStation');
+    // An unknown pick is ignored.
+    expect(sizeKindOf({ name: 'Treadmill 1', kind: 'hovercraft' })).toBe('treadmill');
+  });
+
   it('falls back to the Equipment Library item name, then gives up', () => {
     const eq = { id: 'eq-x', name: 'Commercial Running Treadmill', category: 'Cardio' } as EquipmentItem;
     expect(sizeKindOf({ name: 'Lane 4', equipmentId: 'eq-x' }, eq)).toBe('treadmill');

@@ -17,7 +17,7 @@ import { getExerciseLocations } from '../utils/exerciseMatcher';
 import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Eraser, Eye, EyeOff, Footprints, MapPin, LayoutTemplate, DoorOpen, Lock, Bath, Droplets, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle, Copy, ClipboardPaste, Dumbbell, Activity, Zap, Target, Layers, Box, Wind, RotateCcw, ArrowUpRight, ArrowUpLeft, ArrowDownRight, ArrowDownLeft, ArrowRight, ArrowUp, ArrowDown, MoveDown, Circle, Waves, Timer, Sparkles, Search, Video, Play, Film, Filter, X, ExternalLink, Compass, SlidersHorizontal, ChevronRight, Bookmark, BookmarkCheck, Camera, Users, Flame, Pencil, RotateCw, ArrowUpDown } from 'lucide-react';
 import { MACHINE_ICONS_LIST as MACHINE_ICONS, ICON_GROUPS } from '../utils/equipmentIcons';
 import { snapWallEndpoint } from '../utils/wallSnapping';
-import { standardSizeOf, sizeKindOf, fitToSize, rotateClockwise, facingOf, isAtSize, STANDARD_SIZES, unitsPerMetreOf } from '../utils/machineSizes';
+import { standardSizeOf, sizeKindOf, fitToSize, rotateClockwise, facingOf, isAtSize, isDrawn, STANDARD_SIZES, SizeKind, unitsPerMetreOf } from '../utils/machineSizes';
 import { cableStationSize, readCableLayout } from '../utils/cableStation';
 import CableStationEditor from './CableStationEditor';
 
@@ -2396,6 +2396,34 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
                                   Stores this physical gear item into your Equipment Library for quick reuse and exercise mapping.
                                 </p>
                               )}
+                            </div>
+                          );
+                        })()}
+
+                        {/* What it's drawn as: worked out from its name, or picked here when that gets it wrong. */}
+                        {(() => {
+                          const m = (selectedZone.machines || []).find(x => x.id === selectedMachineId);
+                          if (!m) return null;
+                          const automatic = sizeKindOf({ ...m, kind: undefined }, equipmentOf(m));
+                          // A new kind brings its own real size with it.
+                          const pick = (value: string) => reshapeMachine((mm, z) => {
+                            const next = { ...mm, kind: value || undefined };
+                            const size = standardSizeOf(next, equipmentOf(next));
+                            return size ? { kind: next.kind, ...fitToSize(next, z, size, upm) } : { kind: next.kind };
+                          });
+                          const label = (k: SizeKind) => `${STANDARD_SIZES[k].name}${isDrawn(k) ? '' : ' (box)'}`;
+                          return (
+                            <div className="rounded border border-slate-800 bg-slate-950/50 p-2.5 space-y-1.5">
+                              <label htmlFor="machine-kind" className="block text-xs text-slate-400 font-semibold">Shown as</label>
+                              <select
+                                id="machine-kind" value={m.kind || ''} onChange={e => pick(e.target.value)}
+                                className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-xs text-white focus:border-lime-500 focus:outline-none"
+                              >
+                                <option value="">{automatic ? `Automatic: ${label(automatic)}` : 'Automatic: a plain box'}</option>
+                                {(Object.keys(STANDARD_SIZES) as SizeKind[]).map(k => <option key={k} value={k}>{label(k)}</option>)}
+                                <option value="none">A plain box</option>
+                              </select>
+                              <p className="text-[10px] text-slate-500 leading-snug">The drawing and real size it gets on the map. Automatic goes by its name.</p>
                             </div>
                           );
                         })()}
