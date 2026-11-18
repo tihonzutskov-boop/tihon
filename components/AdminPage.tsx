@@ -1319,7 +1319,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
          if (dragState.handle === 'top' && clampedH !== newH) newY = initBottom - clampedH;
          // The zones, walls and wings follow the room; machines keep their real size.
          const from = dragState.initialGym || gym;
-         update(stretchRoom(from, { x: newX, y: newY, width: clampedW, height: clampedH }, m => lockedMachineIds.has(m.id)), false);
+         update(stretchRoom(from, { x: newX, y: newY, width: clampedW, height: clampedH }), false);
       } else if (dragState.mode === 'move-annex') {
         const w = dragState.initialData.width;
         const h = dragState.initialData.height;
@@ -1380,7 +1380,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
         }
 
         // What's in the wing goes with it.
-        update(stretchWing(dragState.initialGym || gym, dragState.itemId, { x: finalX, y: finalY, width: w, height: h }, m => lockedMachineIds.has(m.id)), false);
+        update(stretchWing(dragState.initialGym || gym, dragState.itemId, { x: finalX, y: finalY, width: w, height: h }), false);
       } else if (dragState.mode === 'resize-annex') {
         const newAnnexes = (gym.annexes || []).map(a => {
           if (a.id !== dragState.itemId) return a;
@@ -1455,7 +1455,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
         // The zones in the wing stretch with it; machines keep their real size.
         const wing = newAnnexes.find(a => a.id === dragState.itemId);
         update(wing
-          ? stretchWing(dragState.initialGym || gym, wing.id, { x: wing.x, y: wing.y, width: wing.width, height: wing.height }, m => lockedMachineIds.has(m.id))
+          ? stretchWing(dragState.initialGym || gym, wing.id, { x: wing.x, y: wing.y, width: wing.width, height: wing.height })
           : { ...gym, annexes: newAnnexes }, false);
       } else if (dragState.mode === 'move-machine') {
          // A machine goes where it's put, in 10 cm steps, unless it comes within a

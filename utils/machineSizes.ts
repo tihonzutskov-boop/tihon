@@ -279,8 +279,7 @@ export const setRoomSize = (gym: Gym, widthM: number, lengthM: number, equipment
   const unitsPerMetre = dims.width / widthM;
   const scaled = { ...gym, dimensions: { ...dims, unitsPerMetre } };
   const room = { x: dims.x || 0, y: dims.y || 0, width: dims.width, height: round(lengthM * unitsPerMetre) };
-  const keepsSize = (m: GymMachine) => !!standardSizeOf(m, equipmentFor(m, equipment));
-  return applyStandardSizes(stretchRoom(scaled, room, keepsSize), equipment);
+  return applyStandardSizes(stretchRoom(scaled, room), equipment);
 };
 
 /** How many machines are not at their real size: what Apply would change. */
