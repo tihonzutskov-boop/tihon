@@ -9,6 +9,29 @@ import type { SessionCheckIn } from '../utils/sessionCheckIn';
 // frontend) and via the Vite dev server proxy in local development.
 export const API_BASE = '/api';
 
+// The browser keeps copies of gyms, equipment and exercises for when the server
+// can't be reached. They are only a fallback, so a full browser store must
+// never fail what the server already did: Safari allows about 5 MB, which a few
+// photos fill, and then refuses with "The quota has been exceeded". The copy
+// is dropped instead, so a stale one isn't left behind.
+const keepCopy = (key: string, value: string) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch (err) {
+    try { localStorage.removeItem(key); } catch { /* no storage at all */ }
+    console.warn(`Not keeping a copy of ${key} in this browser:`, err);
+  }
+};
+
+const updateCachedGyms = (change: (gyms: Gym[]) => Gym[]) => {
+  let gyms: Gym[] = [DEFAULT_GYM];
+  try {
+    const cached = localStorage.getItem('gym_locations');
+    if (cached) gyms = JSON.parse(cached);
+  } catch { /* an unreadable copy is replaced */ }
+  keepCopy('gym_locations', JSON.stringify(change(gyms)));
+};
+
 // Canonical standard equipment items that are reusable across any gym
 export const DEFAULT_EQUIPMENT: EquipmentItem[] = [
   {
@@ -674,10 +697,7 @@ export const api = {
     } catch (error) {
       console.warn("Backend unavailable. Change not persisted to DB.");
     }
-    const cached = localStorage.getItem('gym_locations');
-    let gyms: Gym[] = cached ? JSON.parse(cached) : [DEFAULT_GYM];
-    gyms.push(gym);
-    localStorage.setItem('gym_locations', JSON.stringify(gyms));
+    updateCachedGyms(gyms => [...gyms, gym]);
   },
 
   // A location's name or chain; its floor plan is left alone. Comes back with
@@ -721,10 +741,7 @@ export const api = {
       const body = await response.json().catch(() => null);
       throw new Error(`Not saved: ${body?.error || `the server answered ${response.status}`}. Try again.`);
     }
-    const cached = localStorage.getItem('gym_locations');
-    let gyms: Gym[] = cached ? JSON.parse(cached) : [DEFAULT_GYM];
-    gyms = gyms.map(g => g.id === gym.id ? gym : g);
-    localStorage.setItem('gym_locations', JSON.stringify(gyms));
+    updateCachedGyms(gyms => gyms.map(g => g.id === gym.id ? gym : g));
   },
 
   async deleteGym(gymId: string): Promise<void> {
@@ -735,10 +752,7 @@ export const api = {
     } catch (error) {
       console.warn("Backend unavailable. Change not persisted to DB.");
     }
-    const cached = localStorage.getItem('gym_locations');
-    let gyms: Gym[] = cached ? JSON.parse(cached) : [DEFAULT_GYM];
-    gyms = gyms.filter(g => g.id !== gymId);
-    localStorage.setItem('gym_locations', JSON.stringify(gyms));
+    updateCachedGyms(gyms => gyms.filter(g => g.id !== gymId));
   },
 
   // --- EQUIPMENT LIBRARY ---
@@ -760,7 +774,7 @@ export const api = {
           }
         } catch {}
       }
-      localStorage.setItem('gym_equipment', JSON.stringify(DEFAULT_EQUIPMENT));
+      keepCopy('gym_equipment', JSON.stringify(DEFAULT_EQUIPMENT));
       return DEFAULT_EQUIPMENT;
     }
   },
@@ -783,7 +797,7 @@ export const api = {
       const cached = localStorage.getItem('gym_equipment');
       const list: EquipmentItem[] = cached ? JSON.parse(cached) : [...DEFAULT_EQUIPMENT];
       list.push(equipment);
-      localStorage.setItem('gym_equipment', JSON.stringify(list));
+      keepCopy('gym_equipment', JSON.stringify(list));
     } catch (storageError) {
       console.warn('Could not cache equipment locally (localStorage quota likely exceeded):', storageError);
     }
@@ -806,7 +820,7 @@ export const api = {
     try {
       const cached = localStorage.getItem('gym_equipment');
       const list: EquipmentItem[] = cached ? JSON.parse(cached) : [...DEFAULT_EQUIPMENT];
-      localStorage.setItem('gym_equipment', JSON.stringify(
+      keepCopy('gym_equipment', JSON.stringify(
         list.map(item => item.id === equipment.id ? equipment : item)));
     } catch (storageError) {
       console.warn('Could not cache equipment locally (localStorage quota likely exceeded):', storageError);
@@ -828,7 +842,7 @@ export const api = {
     try {
       const cached = localStorage.getItem('gym_equipment');
       const list: EquipmentItem[] = cached ? JSON.parse(cached) : [...DEFAULT_EQUIPMENT];
-      localStorage.setItem('gym_equipment', JSON.stringify(list.filter(item => item.id !== id)));
+      keepCopy('gym_equipment', JSON.stringify(list.filter(item => item.id !== id)));
     } catch (storageError) {
       console.warn('Could not cache equipment locally (localStorage quota likely exceeded):', storageError);
     }
@@ -890,7 +904,7 @@ export const api = {
       const cached = localStorage.getItem('gym_exercises');
       let exercises: LibraryExercise[] = cached ? JSON.parse(cached) : [...DEFAULT_EXERCISES];
       exercises.push(exercise);
-      localStorage.setItem('gym_exercises', JSON.stringify(exercises));
+      keepCopy('gym_exercises', JSON.stringify(exercises));
     } catch (storageError) {
       console.warn('Could not cache exercise locally (localStorage quota likely exceeded):', storageError);
     }
@@ -991,7 +1005,7 @@ export const api = {
       const cached = localStorage.getItem('gym_exercises');
       let exercises: LibraryExercise[] = cached ? JSON.parse(cached) : [...DEFAULT_EXERCISES];
       exercises = exercises.map(ex => ex.id === exercise.id ? exercise : ex);
-      localStorage.setItem('gym_exercises', JSON.stringify(exercises));
+      keepCopy('gym_exercises', JSON.stringify(exercises));
     } catch (storageError) {
       console.warn('Could not cache exercise locally (localStorage quota likely exceeded):', storageError);
     }
@@ -1010,7 +1024,7 @@ export const api = {
     const cached = localStorage.getItem('gym_exercises');
     let exercises: LibraryExercise[] = cached ? JSON.parse(cached) : [...DEFAULT_EXERCISES];
     exercises = exercises.filter(ex => ex.id !== id);
-    localStorage.setItem('gym_exercises', JSON.stringify(exercises));
+    keepCopy('gym_exercises', JSON.stringify(exercises));
   }
 };
 

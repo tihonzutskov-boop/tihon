@@ -11,6 +11,7 @@ import {
 import { api, DEFAULT_EQUIPMENT } from '../services/api';
 import { getEquipmentExerciseCount } from '../utils/equipmentMatcher';
 import { sizeKindOf, STANDARD_SIZES } from '../utils/machineSizes';
+import { shrinkImage } from '../utils/shrinkImage';
 
 interface EquipmentLibraryProps {
   gym: Gym;
@@ -163,13 +164,7 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
   const handleImageFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setFormImageUrl(reader.result);
-      }
-    };
-    reader.readAsDataURL(file);
+    shrinkImage(file).then(setFormImageUrl).catch(err => console.warn('Could not read the image:', err));
   };
 
   const toggleMuscleGroup = (m: string) => {

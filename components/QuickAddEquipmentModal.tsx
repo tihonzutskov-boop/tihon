@@ -2,6 +2,7 @@ import React, { useState, useRef, useMemo } from 'react';
 import { Camera, Upload, X, Check, Image as ImageIcon, MapPin, Sparkles, AlertCircle } from 'lucide-react';
 import { EquipmentItem, GymZone } from '../types';
 import { api } from '../services/api';
+import { shrinkImage } from '../utils/shrinkImage';
 import { CATEGORIES, ICON_OPTIONS, MUSCLE_GROUPS, EquipmentCategoryCombo } from './EquipmentLibrary';
 
 interface QuickAddEquipmentModalProps {
@@ -60,16 +61,9 @@ export const QuickAddEquipmentModal: React.FC<QuickAddEquipmentModalProps> = ({
       return;
     }
     setErrorMessage('');
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setImageUrl(reader.result);
-      }
-    };
-    reader.onerror = () => {
-      setErrorMessage('Failed to read image file. Please try again.');
-    };
-    reader.readAsDataURL(file);
+    shrinkImage(file)
+      .then(setImageUrl)
+      .catch(() => setErrorMessage('Failed to read image file. Please try again.'));
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
