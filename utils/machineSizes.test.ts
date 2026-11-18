@@ -138,6 +138,26 @@ describe('facing', () => {
     expect(m).toMatchObject({ x: 50, y: 50, width: 9, height: 21, flipped: false });
   });
 
+  it('knows the machines whose front is a long side', () => {
+    // Standing, the bench press faces right and the rack and Smith machine left.
+    expect(facingOf(machine('b', 'Bench Press 1', 0, 0, 13, 22))).toBe('right');
+    expect(facingOf(machine('r', 'Power Rack 1', 0, 0, 14, 22))).toBe('left');
+    expect(facingOf(machine('s', 'Smith Machine', 0, 0, 14, 22))).toBe('left');
+    // Lying sideways, the rack's front comes round to the top.
+    expect(facingOf(machine('r', 'Power Rack 1', 0, 0, 22, 14))).toBe('up');
+    expect(facingOf(machine('r', 'Power Rack 1', 0, 0, 14, 22, { flipped: true }))).toBe('right');
+  });
+
+  it('turns a rack clockwise all the way round too', () => {
+    let m = machine('r', 'Power Rack 1', 50, 50, 14, 22);
+    const seen = [facingOf(m)];
+    for (let i = 0; i < 4; i++) {
+      m = { ...m, ...rotateClockwise(m, z) };
+      seen.push(facingOf(m));
+    }
+    expect(seen).toEqual(['left', 'up', 'right', 'down', 'left']);
+  });
+
   it('knows a cable station built wider than long stands that way', () => {
     const wide = setSide(setSide(DEFAULT_CABLE_LAYOUT, '0:right', 'tower'), '2:right', 'tower');
     // 12.2 m across, 6.2 m long: drawn wide, so a wide footprint is not turned.

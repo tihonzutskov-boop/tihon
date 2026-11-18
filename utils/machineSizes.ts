@@ -165,31 +165,45 @@ export const turnQuarter = (machine: GymMachine, zone: GymZone): Box => {
 /** Which way a machine's front points on the map: its console, its weights. */
 export type Facing = 'up' | 'right' | 'down' | 'left';
 
-const BEHIND: Record<Facing, Facing> = { up: 'down', right: 'left', down: 'up', left: 'right' };
+const CLOCKWISE: Facing[] = ['up', 'right', 'down', 'left'];
+/** A direction turned on by another, as quarter turns clockwise from up. */
+const turnBy = (facing: Facing, by: Facing): Facing => CLOCKWISE[(CLOCKWISE.indexOf(facing) + CLOCKWISE.indexOf(by)) % 4];
 
-/** Whether a machine's drawing stands upright, front at the top: all do, but a cable station can be wider than long. */
+// Which side of a drawing is the machine's front, where the person using it
+// faces, for the machines whose front isn't the top: the owner's bench press
+// and power rack, and the Smith machine, have the bar along one long side.
+const FRONT_OF_DRAWING: Partial<Record<SizeKind, Facing>> = { benchStation: 'right', rack: 'left', smith: 'left' };
+
+/** Whether a machine's drawing stands upright, long side up and down: all do, but a cable station can be wider than long. */
 const drawsUpright = (machine: { name?: string; equipmentId?: string; kind?: string; cableLayout?: CableLayout }): boolean => {
   if (sizeKindOf(machine) !== 'cableStation') return true;
   const [w, h] = cableStationExtent(readCableLayout(machine.cableLayout));
   return h >= w;
 };
 
+type Placed = Pick<GymMachine, 'width' | 'height' | 'flipped' | 'name' | 'equipmentId' | 'kind' | 'cableLayout'>;
+
 /**
- * Where a machine's front is. Its drawing lies along the footprint's long
- * side, turned a quarter clockwise when the two disagree, so the front is at
- * the top or, turned, at the right; flipped, it is at the other end.
+ * Where the top of a machine's drawing points on the map. The drawing lies
+ * along the footprint's long side, turned a quarter clockwise when the two
+ * disagree, so its top is up or, turned, at the right; flipped, it is the
+ * other way.
  */
-export const facingOf = (machine: Pick<GymMachine, 'width' | 'height' | 'flipped' | 'name' | 'equipmentId' | 'kind' | 'cableLayout'>): Facing => {
+const topOf = (machine: Placed): Facing => {
   const turned = drawsUpright(machine) !== (machine.height >= machine.width);
-  const front: Facing = turned ? 'right' : 'up';
-  return machine.flipped ? BEHIND[front] : front;
+  return turnBy(turned ? 'right' : 'up', machine.flipped ? 'down' : 'up');
 };
+
+/** Where a machine's front points on the map: its drawing's top, or the side its front is on. */
+export const facingOf = (machine: Placed): Facing =>
+  turnBy(topOf(machine), FRONT_OF_DRAWING[sizeKindOf(machine) as SizeKind] || 'up');
 
 /** A quarter turn clockwise, front and all: up, right, down, left and round again. */
 export const rotateClockwise = (machine: GymMachine, zone: GymZone): Box & { flipped: boolean } => {
-  const facing = facingOf(machine);
-  // Swapping the sides alone takes right back up; from the side, it goes on round to the far end.
-  const flipped = facing === 'right' || facing === 'left' ? !machine.flipped : !!machine.flipped;
+  const top = topOf(machine);
+  // Swapping the sides alone takes a drawing lying on its side back upright; from
+  // the side it has to go on round, so it ends up the other way up.
+  const flipped = top === 'right' || top === 'left' ? !machine.flipped : !!machine.flipped;
   return { ...turnQuarter(machine, zone), flipped };
 };
 
