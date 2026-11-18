@@ -1168,12 +1168,11 @@ const GymMap: React.FC<GymMapProps> = ({
               // saved before that origin existed.
               const roomX = dimensions.x || 0;
               const roomY = dimensions.y || 0;
-              // Once a room has confirmed wings, render the room + annexes
-              // as one continuous shape (no seam where they touch) rather
-              // than one bordered block per wing. Room editing keeps the
-              // per-wing borders/rounding so each piece stays individually
-              // selectable and draggable.
-              const mergeShape = !isRoomEdit && annexes.length > 0;
+              // A room with wings is one continuous shape, with no seam where
+              // they meet, in the room editor too: a wing is part of the room,
+              // not a block of its own. Each piece stays selectable and
+              // draggable through its overlay further down.
+              const mergeShape = annexes.length > 0;
               const cornerRadius = mergeShape ? '0' : '10';
               const mergedOutline = mergeShape
                 ? buildUnionOutlinePath([
@@ -1189,8 +1188,8 @@ const GymMap: React.FC<GymMapProps> = ({
                     width={dimensions.width}
                     height={dimensions.height}
                     fill={effectiveFloorColor}
-                    stroke={isRoomEdit ? '#84cc16' : (mergeShape ? 'none' : '#233554')}
-                    strokeWidth={isThumbnail ? 0 : (isRoomEdit ? 4 : (mergeShape ? 0 : 1.5))}
+                    stroke={mergeShape ? 'none' : (isRoomEdit ? '#84cc16' : '#233554')}
+                    strokeWidth={isThumbnail || mergeShape ? 0 : (isRoomEdit ? 4 : 1.5)}
                     rx={cornerRadius}
                     className="transition-all duration-300 ease-in-out"
                   />
@@ -1214,8 +1213,8 @@ const GymMap: React.FC<GymMapProps> = ({
                           width={annex.width}
                           height={annex.height}
                           fill={annex.color || effectiveFloorColor}
-                          stroke={isRoomEdit ? (isSelected ? '#a3e635' : '#84cc16') : (mergeShape ? 'none' : '#233554')}
-                          strokeWidth={isThumbnail ? 0 : (isSelected ? 4 : (mergeShape ? 0 : 1.5))}
+                          stroke="none"
+                          strokeWidth={0}
                           rx={cornerRadius}
                           className="transition-all duration-300 ease-in-out"
                         />
@@ -1232,11 +1231,13 @@ const GymMap: React.FC<GymMapProps> = ({
                     );
                   })}
                   {mergeShape && mergedOutline && (
+                    // The one outer wall: lime while the room is being edited.
                     <path
                       d={mergedOutline}
                       fill="none"
-                      stroke="#233554"
-                      strokeWidth={isThumbnail ? 0 : 1.5}
+                      stroke={isRoomEdit ? '#84cc16' : '#233554'}
+                      strokeWidth={isThumbnail ? 0 : (isRoomEdit ? 4 : 1.5)}
+                      strokeLinejoin="round"
                       className="pointer-events-none"
                     />
                   )}
@@ -1456,10 +1457,10 @@ const GymMap: React.FC<GymMapProps> = ({
                         width={annex.width}
                         height={annex.height}
                         fill={isSelected ? '#84cc16' : '#38bdf8'}
-                        fillOpacity={isSelected ? 0.14 : 0.001}
-                        stroke={isSelected ? '#a3e635' : '#64748b'}
-                        strokeWidth={isSelected ? 2.5 : 1.2}
-                        strokeDasharray={isSelected ? undefined : '6 4'}
+                        fillOpacity={isSelected ? 0.1 : 0.001}
+                        stroke={isSelected ? '#a3e635' : 'transparent'}
+                        strokeWidth={isSelected ? 2 : 1.2}
+                        strokeDasharray="6 4"
                         className={`transition-colors ${isSelected ? 'cursor-move' : 'cursor-pointer hover:stroke-lime-400 hover:fill-lime-400/10'}`}
                         onMouseDown={(e) => {
                           e.stopPropagation();

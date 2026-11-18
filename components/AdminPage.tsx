@@ -10,7 +10,7 @@ import AdminCoaching from './AdminCoaching';
 import { QuickAddEquipmentModal } from './QuickAddEquipmentModal';
 import UsageHeatmap from './UsageHeatmap';
 import RoomSizePanel from './RoomSizePanel';
-import { stretchRoom } from '../utils/roomStretch';
+import { stretchRoom, stretchWing } from '../utils/roomStretch';
 import { lineUp, guidesFor, Guide } from '../utils/machineSnap';
 import { api, DEFAULT_EQUIPMENT } from '../services/api';
 import { evaluateZoneExercises, getZoneEquipmentIds, floorSpaceIsAssumed } from '../utils/equipmentMatcher';
@@ -323,8 +323,8 @@ interface DragState {
   // long drag can't compound its own corrections.
   initialMachines?: { id: string; x: number; y: number }[];
   initialWallData?: { x1: number; y1: number; x2: number; y2: number; controlX?: number; controlY?: number; };
-  // The whole gym as it was when a room resize began: the zones, walls and
-  // wings stretch from here, so they follow the room without drifting.
+  // The whole gym as it was when a room or wing resize began: the zones, walls
+  // and wings stretch from here, so they follow the room without drifting.
   initialGym?: Gym;
   handle?: 'right' | 'bottom' | 'top' | 'left' | 'corner' | 'se' | 'sw' | 'ne' | 'nw';
   viewParams?: { viewBox: string, offsetX: number, offsetY: number, width: number, height: number };
@@ -1095,12 +1095,12 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
 
   const handleAnnexDragStart = (e: React.MouseEvent, annex: GymAnnex) => {
     if (editMode !== 'room') return; e.preventDefault(); snapshot(); setSelectedAnnexId(annex.id);
-    setDragState({ mode: 'move-annex', itemId: annex.id, startX: e.clientX, startY: e.clientY, initialData: { x: annex.x, y: annex.y, width: annex.width, height: annex.height }, viewParams: calculateViewParams(null) });
+    setDragState({ mode: 'move-annex', itemId: annex.id, startX: e.clientX, startY: e.clientY, initialData: { x: annex.x, y: annex.y, width: annex.width, height: annex.height }, initialGym: gym, viewParams: calculateViewParams(null) });
   };
 
   const handleAnnexResizeStart = (e: React.MouseEvent, annex: GymAnnex, handle: 'se' | 'sw' | 'ne' | 'nw' | 'right' | 'bottom' | 'top' | 'left' | 'corner' = 'se') => {
     if (editMode !== 'room') return; e.preventDefault(); snapshot(); setSelectedAnnexId(annex.id);
-    setDragState({ mode: 'resize-annex', itemId: annex.id, startX: e.clientX, startY: e.clientY, initialData: { x: annex.x, y: annex.y, width: annex.width, height: annex.height }, handle, viewParams: calculateViewParams(null) });
+    setDragState({ mode: 'resize-annex', itemId: annex.id, startX: e.clientX, startY: e.clientY, initialData: { x: annex.x, y: annex.y, width: annex.width, height: annex.height }, initialGym: gym, handle, viewParams: calculateViewParams(null) });
   };
 
   const handleMachineDragStart = (e: React.MouseEvent, machine: GymMachine, zoneId: string) => {
@@ -1379,11 +1379,8 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
           finalX = Math.max(-w + minOverlap, Math.min(dimensions.width - minOverlap, finalX));
         }
 
-        const newAnnexes = (gym.annexes || []).map(a => {
-          if (a.id !== dragState.itemId) return a;
-          return { ...a, x: finalX, y: finalY };
-        });
-        update({ ...gym, annexes: newAnnexes }, false);
+        // What's in the wing goes with it.
+        update(stretchWing(dragState.initialGym || gym, dragState.itemId, { x: finalX, y: finalY, width: w, height: h }, m => lockedMachineIds.has(m.id)), false);
       } else if (dragState.mode === 'resize-annex') {
         const newAnnexes = (gym.annexes || []).map(a => {
           if (a.id !== dragState.itemId) return a;
@@ -1455,7 +1452,11 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
 
           return { ...a, x: nx, y: ny, width: nw, height: nh };
         });
-        update({ ...gym, annexes: newAnnexes }, false);
+        // The zones in the wing stretch with it; machines keep their real size.
+        const wing = newAnnexes.find(a => a.id === dragState.itemId);
+        update(wing
+          ? stretchWing(dragState.initialGym || gym, wing.id, { x: wing.x, y: wing.y, width: wing.width, height: wing.height }, m => lockedMachineIds.has(m.id))
+          : { ...gym, annexes: newAnnexes }, false);
       } else if (dragState.mode === 'move-machine') {
          // A machine goes where it's put, in 10 cm steps, unless it comes within a
          // few pixels of lining up with another: then it snaps into line. Holding
