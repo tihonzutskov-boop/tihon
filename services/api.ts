@@ -700,15 +700,26 @@ export const api = {
     }
   },
 
+  /**
+   * Saves the whole gym, and throws when it wasn't saved, so the editor can
+   * say so: a refused save used to look exactly like a saved one.
+   */
   async saveGym(gym: Gym): Promise<void> {
+    let response: Response;
     try {
-      await fetch(`${API_BASE}/gyms/${gym.id}`, {
+      response = await fetch(`${API_BASE}/gyms/${gym.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(gym),
       });
-    } catch (error) {
-      console.warn("Backend unavailable. Change not persisted to DB.");
+    } catch {
+      throw new Error("Couldn't reach the server, so nothing was saved. Check the connection and save again.");
+    }
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) throw new Error('Your sign-in has run out, so nothing was saved. Sign in again, then save.');
+      if (response.status === 413) throw new Error('The layout is too big to save in one go.');
+      const body = await response.json().catch(() => null);
+      throw new Error(`Not saved: ${body?.error || `the server answered ${response.status}`}. Try again.`);
     }
     const cached = localStorage.getItem('gym_locations');
     let gyms: Gym[] = cached ? JSON.parse(cached) : [DEFAULT_GYM];

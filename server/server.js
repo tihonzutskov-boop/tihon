@@ -1605,10 +1605,12 @@ app.get('/api/gyms', requireAuth, async (req, res) => {
         ...z,
         equipmentIds: z.equipment_ids || [],
         floorSpace: z.floor_space === null || z.floor_space === undefined ? undefined : z.floor_space,
+        ...(z.is_hallway ? { isHallway: true } : {}),
       }));
 
       const annexRes = await client.query('SELECT * FROM annexes WHERE gym_id = $1', [gym.id]);
-      gym.annexes = annexRes.rows;
+      // A wing with no name or colour of its own leaves them out, as it was sent.
+      gym.annexes = annexRes.rows.map(({ name, color, ...a }) => ({ ...a, ...(name ? { name } : {}), ...(color ? { color } : {}) }));
     }
 
     res.json(gyms);
@@ -1619,6 +1621,29 @@ app.get('/api/gyms', requireAuth, async (req, res) => {
     client?.release();
   }
 });
+
+// A gym's zones and wings, written in full. Shared by creating a gym and
+// saving one, so the two can't store different things.
+const insertZones = async (client, gymId, zones) => {
+  for (const z of zones) {
+    await client.query(
+      'INSERT INTO zones (id, gym_id, name, type, x, y, width, height, color, icon, description, machines, equipment_ids, floor_space, is_hallway) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)',
+      [z.id, gymId, z.name, z.type, z.x, z.y, z.width, z.height, z.color, z.icon, z.description, JSON.stringify(z.machines || []), JSON.stringify(z.equipmentIds || []),
+       // Only a real true/false is stored; anything else means undecided.
+       z.floorSpace === true || z.floorSpace === false ? z.floorSpace : null,
+       z.isHallway === true]
+    );
+  }
+};
+
+const insertAnnexes = async (client, gymId, annexes) => {
+  for (const a of annexes) {
+    await client.query(
+      'INSERT INTO annexes (id, gym_id, x, y, width, height, name, color) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [a.id, gymId, a.x, a.y, a.width, a.height, typeof a.name === 'string' ? a.name : null, typeof a.color === 'string' ? a.color : null]
+    );
+  }
+};
 
 // POST Create Gym
 app.post('/api/gyms', requireAdmin, async (req, res) => {
@@ -1634,27 +1659,9 @@ app.post('/api/gyms', requireAdmin, async (req, res) => {
       [id, name, JSON.stringify(dimensions), JSON.stringify(entrance), floorColor, cleanChainName(chain) || null]
     );
 
-    // Insert Zones if any provided initially
-    if (zones && zones.length > 0) {
-      for (const z of zones) {
-        await client.query(
-          'INSERT INTO zones (id, gym_id, name, type, x, y, width, height, color, icon, description, machines, equipment_ids, floor_space) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)',
-          [z.id, id, z.name, z.type, z.x, z.y, z.width, z.height, z.color, z.icon, z.description, JSON.stringify(z.machines || []), JSON.stringify(z.equipmentIds || []),
-           // Only a real true/false is stored; anything else means undecided.
-           z.floorSpace === true || z.floorSpace === false ? z.floorSpace : null]
-        );
-      }
-    }
-
-    // Insert Annexes
-    if (annexes && annexes.length > 0) {
-      for (const a of annexes) {
-         await client.query(
-          'INSERT INTO annexes (id, gym_id, x, y, width, height) VALUES ($1, $2, $3, $4, $5, $6)',
-          [a.id, id, a.x, a.y, a.width, a.height]
-         );
-      }
-    }
+    // Insert Zones and Annexes if any provided initially
+    if (Array.isArray(zones)) await insertZones(client, id, zones);
+    if (Array.isArray(annexes)) await insertAnnexes(client, id, annexes);
 
     await client.query('COMMIT');
     res.json({ success: true, id });
@@ -1700,25 +1707,13 @@ app.put('/api/gyms/:id', requireAdmin, async (req, res) => {
     // intentionally clear them.
     if (Array.isArray(zones)) {
       await client.query('DELETE FROM zones WHERE gym_id = $1', [id]);
-      for (const z of zones) {
-        await client.query(
-          'INSERT INTO zones (id, gym_id, name, type, x, y, width, height, color, icon, description, machines, equipment_ids, floor_space) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)',
-          [z.id, id, z.name, z.type, z.x, z.y, z.width, z.height, z.color, z.icon, z.description, JSON.stringify(z.machines || []), JSON.stringify(z.equipmentIds || []),
-           // Only a real true/false is stored; anything else means undecided.
-           z.floorSpace === true || z.floorSpace === false ? z.floorSpace : null]
-        );
-      }
+      await insertZones(client, id, zones);
     }
 
     // 3. Replace Annexes (same omit-vs-empty-array distinction as zones)
     if (Array.isArray(annexes)) {
       await client.query('DELETE FROM annexes WHERE gym_id = $1', [id]);
-      for (const a of annexes) {
-         await client.query(
-          'INSERT INTO annexes (id, gym_id, x, y, width, height) VALUES ($1, $2, $3, $4, $5, $6)',
-          [a.id, id, a.x, a.y, a.width, a.height]
-         );
-      }
+      await insertAnnexes(client, id, annexes);
     }
 
     await client.query('COMMIT');

@@ -377,7 +377,7 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
     });
 
     const updatedGym = { ...gym, zones: updatedZones };
-    api.saveGym(updatedGym);
+    api.saveGym(updatedGym).catch(err => console.warn('Zone equipment not saved:', err));
     onGymChange(updatedGym);
   };
 

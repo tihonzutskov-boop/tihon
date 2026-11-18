@@ -423,3 +423,10 @@ ALTER TABLE exercise_logs ADD COLUMN IF NOT EXISTS zone_id VARCHAR(100);
 ALTER TABLE exercise_logs ADD COLUMN IF NOT EXISTS machine_id VARCHAR(100);
 CREATE INDEX IF NOT EXISTS idx_exercise_logs_gym_usage
   ON exercise_logs (gym_id, zone_id) WHERE gym_id IS NOT NULL;
+
+-- Walkways are zones that say so, and wings keep the name and colour they were
+-- given: none of the three used to be stored, so a save brought walkways back
+-- as ordinary zones and every wing as "Extension 1".
+ALTER TABLE zones ADD COLUMN IF NOT EXISTS is_hallway BOOLEAN;
+ALTER TABLE annexes ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE annexes ADD COLUMN IF NOT EXISTS color TEXT;

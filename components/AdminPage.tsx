@@ -14,7 +14,7 @@ import { stretchRoom } from '../utils/roomStretch';
 import { api, DEFAULT_EQUIPMENT } from '../services/api';
 import { evaluateZoneExercises, getZoneEquipmentIds, floorSpaceIsAssumed } from '../utils/equipmentMatcher';
 import { getExerciseLocations } from '../utils/exerciseMatcher';
-import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Eraser, Eye, EyeOff, Footprints, MapPin, LayoutTemplate, DoorOpen, Lock, Bath, Droplets, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle, Copy, ClipboardPaste, Dumbbell, Activity, Zap, Target, Layers, Box, Wind, RotateCcw, ArrowUpRight, ArrowUpLeft, ArrowDownRight, ArrowDownLeft, ArrowRight, ArrowUp, ArrowDown, MoveDown, Circle, Waves, Timer, Sparkles, Search, Video, Play, Film, Filter, X, ExternalLink, Compass, SlidersHorizontal, ChevronRight, Bookmark, BookmarkCheck, Camera, Users, Flame, Pencil, RotateCw, ArrowUpDown } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Eraser, Eye, EyeOff, Footprints, MapPin, LayoutTemplate, DoorOpen, Lock, Bath, Droplets, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle, Copy, ClipboardPaste, Dumbbell, Activity, Zap, Target, Layers, Box, Wind, RotateCcw, ArrowUpRight, ArrowUpLeft, ArrowDownRight, ArrowDownLeft, ArrowRight, ArrowUp, ArrowDown, MoveDown, Circle, Waves, Timer, Sparkles, Search, Video, Play, Film, Filter, X, ExternalLink, Compass, SlidersHorizontal, ChevronRight, Bookmark, BookmarkCheck, Camera, Users, Flame, Pencil, RotateCw, ArrowUpDown, Hand } from 'lucide-react';
 import { MACHINE_ICONS_LIST as MACHINE_ICONS, ICON_GROUPS } from '../utils/equipmentIcons';
 import { snapWallEndpoint } from '../utils/wallSnapping';
 import { standardSizeOf, sizeKindOf, fitToSize, rotateClockwise, facingOf, isAtSize, isDrawn, STANDARD_SIZES, SizeKind, unitsPerMetreOf } from '../utils/machineSizes';
@@ -428,6 +428,10 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  // The gym as last loaded or saved: anything else on screen isn't saved yet.
+  const savedGymRef = useRef(gym);
+  const unsaved = gym !== savedGymRef.current;
   const [clipboard, setClipboard] = useState<{ type: 'zone' | 'machine', data: any } | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const selectedZone = zones.find(z => z.id === selectedZoneId) || null;
@@ -455,6 +459,8 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
       setZoneTab('details');
       setDragState(null);
       setSaveState('idle');
+      setSaveError(null);
+      savedGymRef.current = gym;
     }
   }, [gym.id]);
 
@@ -1009,7 +1015,21 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
     update({ ...gym, annexes: newAnnexes }, true);
   };
 
-  const handleSave = async () => { setSaveState('saving'); await onSave(gym); setSaveState('saved'); setTimeout(() => setSaveState('idle'), 2000); };
+  // A save that didn't go through says so and stays unsaved, instead of showing "Saved".
+  const handleSave = async () => {
+    const saving = gym;
+    setSaveState('saving');
+    setSaveError(null);
+    try {
+      await onSave(saving);
+      savedGymRef.current = saving;
+      setSaveState('saved');
+      setTimeout(() => setSaveState('idle'), 2000);
+    } catch (err) {
+      setSaveState('idle');
+      setSaveError(err instanceof Error ? err.message : 'Not saved. Try again.');
+    }
+  };
 
   const calculateViewParams = (focusedZoneId: string | null = null) => {
     let viewBoxWidth, viewBoxHeight, offsetX, offsetY;
@@ -1619,9 +1639,11 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
                 <button onClick={undo} disabled={!canUndo} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-colors" title="Undo (Ctrl+Z)"><Undo2 className="w-4 h-4" /></button>
                 <button onClick={redo} disabled={!canRedo} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-md disabled:opacity-30 disabled:hover:bg-transparent transition-colors" title="Redo (Ctrl+Shift+Z)"><Redo2 className="w-4 h-4" /></button>
               </div>
-              <button onClick={handleSave} disabled={saveState !== 'idle'} className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all min-w-[140px] justify-center ${saveState === 'saved' ? 'bg-emerald-950/50 text-emerald-400 border border-emerald-900/50' : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'}`}>
+              {saveError && <span role="alert" className="max-w-[260px] text-xs leading-snug text-red-400">{saveError}</span>}
+              <button onClick={handleSave} disabled={saveState !== 'idle'} title={unsaved ? 'There are changes that are not saved yet' : 'Everything is saved'} className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all min-w-[140px] justify-center ${saveState === 'saved' ? 'bg-emerald-950/50 text-emerald-400 border border-emerald-900/50' : saveError ? 'bg-red-950/40 hover:bg-red-950/60 text-red-200 border border-red-800/60' : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'}`}>
                 {saveState === 'saving' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : saveState === 'saved' ? <Check className="w-4 h-4 mr-2" /> : <Save className="w-4 h-4 mr-2" />}
-                {saveState === 'saving' ? 'Saving...' : saveState === 'saved' ? 'Saved' : 'Save Layout'}
+                {saveState === 'saving' ? 'Saving...' : saveState === 'saved' ? 'Saved' : saveError ? 'Save again' : 'Save Layout'}
+                {saveState === 'idle' && unsaved && <span className="ml-2 h-2 w-2 rounded-full bg-lime-400" aria-label="Unsaved changes" />}
               </button>
             </>
           )}
@@ -1844,7 +1866,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
 
              <div className="absolute bottom-4 left-4 text-xs text-slate-500 bg-slate-950/80 px-3 py-1.5 rounded-full border border-slate-800 flex items-center space-x-4 pointer-events-none select-none z-20 backdrop-blur-sm">
                 {editMode === 'layout' ? ( 
-                  <><span className="flex items-center"><Move className="w-3 h-3 mr-1.5" /> Drag to move</span><span className="w-1 h-1 bg-slate-700 rounded-full"></span><span className="flex items-center"><Maximize2 className="w-3 h-3 mr-1.5" /> Drag corner to resize</span></> 
+                  <><span className="flex items-center"><Move className="w-3 h-3 mr-1.5" /> Select a zone to move it</span><span className="w-1 h-1 bg-slate-700 rounded-full"></span><span className="flex items-center whitespace-nowrap"><Hand className="w-3 h-3 mr-1.5" /> Drag to look around</span></> 
                 ) : editMode === 'room' ? ( 
                   <><span className="flex items-center text-lime-400"><SquareDashed className="w-3 h-3 mr-1.5" /> Drag edges to resize room</span></> 
 

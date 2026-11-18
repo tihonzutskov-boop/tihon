@@ -550,6 +550,9 @@ const GymMap: React.FC<GymMapProps> = ({
 
   // Animation flag & interaction refs
   const panStartRef = React.useRef({ x: 0, y: 0, panX: 0, panY: 0 });
+  // Set by a zone that isn't selected when the editor's pointer goes down on
+  // it: the press moves the view, not the zone, until the zone is selected.
+  const panFromZoneRef = React.useRef(false);
   const touchStartRef = React.useRef<{
     x1: number; y1: number; x2: number; y2: number;
     distance: number; cx: number; cy: number;
@@ -643,7 +646,9 @@ const GymMap: React.FC<GymMapProps> = ({
       targetElement.getAttribute('rx') === '4' // floor backgrounds
     );
 
-    const shouldPan = !isEditable || e.button === 1 || isBgClick;
+    const fromZone = panFromZoneRef.current;
+    panFromZoneRef.current = false;
+    const shouldPan = !isEditable || e.button === 1 || isBgClick || fromZone;
     if (!shouldPan) return;
 
     setIsPanning(true);
@@ -1721,9 +1726,12 @@ const GymMap: React.FC<GymMapProps> = ({
                       if (!isThumbnail) {
                         e.stopPropagation();
                         if (!isMachineEdit) {
-                          setPanX(0);
-                          setPanY(0);
-                          setZoomScale(1);
+                          // The editor keeps its view where it is when a zone is picked.
+                          if (!isEditable) {
+                            setPanX(0);
+                            setPanY(0);
+                            setZoomScale(1);
+                          }
                           onZoneClick(zone);
                           if (!isEditable) {
                             setActivePopoverZone(zone);
@@ -1733,9 +1741,13 @@ const GymMap: React.FC<GymMapProps> = ({
                       }
                     }}
                     onMouseDown={(e) => {
-                      if (!isThumbnail && isLayoutEdit && onZoneDragStart) onZoneDragStart(e, zone);
+                      if (isThumbnail || !isLayoutEdit) return;
+                      // Only the selected zone moves; pressing any other one moves the
+                      // view, and a click without dragging selects it.
+                      if (isSelected && onZoneDragStart) onZoneDragStart(e, zone);
+                      else panFromZoneRef.current = true;
                     }}
-                    className={`transition-all duration-300 ease-in-out ${isThumbnail ? '' : isLayoutEdit ? 'cursor-move' : isMachineEdit && isFocused ? 'cursor-default' : 'cursor-pointer'}`}
+                    className={`transition-all duration-300 ease-in-out ${isThumbnail ? '' : isLayoutEdit ? (isSelected ? 'cursor-move' : 'cursor-pointer') : isMachineEdit && isFocused ? 'cursor-default' : 'cursor-pointer'}`}
                   >
                     {isPickupZone && (
                       <rect
@@ -2312,16 +2324,6 @@ const GymMap: React.FC<GymMapProps> = ({
         </div>
       )}
 
-      {/* Editable Mode Bottom Helper */}
-      {isEditable && !isThumbnail && (
-        <div className="absolute bottom-4 left-4 z-10 pointer-events-none select-none">
-          <div className="flex items-center gap-2 bg-slate-950/80 backdrop-blur-md border border-slate-800 px-3 py-1.5 rounded-lg text-xs text-slate-400 font-medium shadow-md">
-            <span>✦ Drag to move</span>
-            <span className="text-slate-600">•</span>
-            <span>⤢ Drag corner to resize</span>
-          </div>
-        </div>
-      )}
 
       {!isThumbnail && (
         <div className="absolute bottom-4 right-4 z-20 flex items-center gap-2 bg-slate-950/85 backdrop-blur-md border border-slate-800 rounded-xl p-1.5 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-300">
