@@ -11,6 +11,7 @@ import { QuickAddEquipmentModal } from './QuickAddEquipmentModal';
 import UsageHeatmap from './UsageHeatmap';
 import RoomSizePanel from './RoomSizePanel';
 import { stretchRoom } from '../utils/roomStretch';
+import { lineUp, guidesFor, Guide } from '../utils/machineSnap';
 import { api, DEFAULT_EQUIPMENT } from '../services/api';
 import { evaluateZoneExercises, getZoneEquipmentIds, floorSpaceIsAssumed } from '../utils/equipmentMatcher';
 import { getExerciseLocations } from '../utils/exerciseMatcher';
@@ -427,6 +428,10 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
   const [selectedAnnexId, setSelectedAnnexId] = useState<string | null>(null);
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
+  // Machines line up with their neighbours as they're dragged, unless this is off.
+  const [lineUpOn, setLineUpOn] = useState(true);
+  // What a dragged machine lined up with, drawn on the map in map units.
+  const [snapGuides, setSnapGuides] = useState<Guide[] | null>(null);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
   // The gym as last loaded or saved: anything else on screen isn't saved yet.
@@ -1205,6 +1210,13 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
       const zoomScale = Number.isFinite(savedZoom) && savedZoom > 0 ? savedZoom : 1;
       scaleX /= zoomScale;
       scaleY /= zoomScale;
+      // Better: ask the map itself how many screen pixels a map unit is drawn at,
+      // zoom and all. The guess above takes the viewBox the editor would choose,
+      // not the one the map fitted to its frame, so in a tall, narrow frame an
+      // item dragged up or down moved half as far as the pointer.
+      const content = mapContainerRef.current?.querySelector('[data-map-content]') as SVGGraphicsElement | null;
+      const ctm = content?.getScreenCTM();
+      if (ctm && ctm.a > 0 && ctm.d > 0) { scaleX = 1 / ctm.a; scaleY = 1 / ctm.d; }
       const deltaX = (e.clientX - dragState.startX) * scaleX, deltaY = (e.clientY - dragState.startY) * scaleY;
       const snapToGrid = (val: number) => Math.round(val / 10) * 10;
       const SNAP_THRESHOLD = 15;
@@ -1445,7 +1457,31 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
         });
         update({ ...gym, annexes: newAnnexes }, false);
       } else if (dragState.mode === 'move-machine') {
-         const newZones = gym.zones.map(z => { if (z.id !== dragState.zoneId) return z; const newMachines = (z.machines || []).map(m => { if (m.id !== dragState.itemId) return m; let nx = snapToGrid(dragState.initialData.x + deltaX), ny = snapToGrid(dragState.initialData.y + deltaY); nx = Math.max(0, Math.min(z.width - m.width, nx)); ny = Math.max(0, Math.min(z.height - m.height, ny)); return { ...m, x: nx, y: ny }; }); return { ...z, machines: newMachines }; });
+         // A machine goes where it's put, in 10 cm steps, unless it comes within a
+         // few pixels of lining up with another: then it snaps into line. Holding
+         // Option (Alt), or switching lining up off, places it freely.
+         const step = 0.1 * upm;
+         let guides: Guide[] = [];
+         const newZones = gym.zones.map(z => {
+           if (z.id !== dragState.zoneId) return z;
+           const newMachines = (z.machines || []).map(m => {
+             if (m.id !== dragState.itemId) return m;
+             const raw = { x: dragState.initialData.x + deltaX, y: dragState.initialData.y + deltaY, width: m.width, height: m.height };
+             let nx = Math.round(raw.x / step) * step, ny = Math.round(raw.y / step) * step;
+             const lined = lineUpOn && !e.altKey
+               ? lineUp(raw, (z.machines || []).filter(o => o.id !== m.id), 7 * scaleX, 0.05 * upm, 4 * upm)
+               : null;
+             if (lined?.x != null) nx = lined.x;
+             if (lined?.y != null) ny = lined.y;
+             nx = Math.round(Math.max(0, Math.min(z.width - m.width, nx)) * 100) / 100;
+             ny = Math.round(Math.max(0, Math.min(z.height - m.height, ny)) * 100) / 100;
+             if (lined) guides = guidesFor({ x: nx, y: ny, width: m.width, height: m.height }, lined.hits, 0.3 * upm)
+               .map(g => ({ ...g, x1: g.x1 + z.x, x2: g.x2 + z.x, y1: g.y1 + z.y, y2: g.y2 + z.y }));
+             return { ...m, x: nx, y: ny };
+           });
+           return { ...z, machines: newMachines };
+         });
+         setSnapGuides(guides.length ? guides : null);
          update({ ...gym, zones: newZones }, false);
       } else if (dragState.mode === 'resize-machine') {
          const newZones = gym.zones.map(z => { if (z.id !== dragState.zoneId) return z; const newMachines = (z.machines || []).map(m => { if (m.id !== dragState.itemId) return m; let nw = snapToGrid(dragState.initialData.width + deltaX), nh = snapToGrid(dragState.initialData.height + deltaY); return { ...m, width: Math.max(10, nw), height: Math.max(10, nh) }; }); return { ...z, machines: newMachines }; });
@@ -1526,10 +1562,10 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
         update({ ...gym, dimensions: { ...dimensions, walls: newWalls } }, false);
       }
     };
-    const handleMouseUp = () => setDragState(null);
+    const handleMouseUp = () => { setDragState(null); setSnapGuides(null); };
     if (dragState) { window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mouseup', handleMouseUp); }
     return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
-  }, [dragState, gym, update, dimensions, annexes]);
+  }, [dragState, gym, update, dimensions, annexes, upm, lineUpOn]);
 
   const SECTIONS: { key: AdminSection; label: string; icon: any; iconClassName?: string }[] = [
     { key: 'gyms', label: 'Locations', icon: MapPin },
@@ -1840,6 +1876,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
                  entrance={entrance} 
                  floorColor={floorColor} 
                  annexes={annexes} 
+                 snapGuides={snapGuides?.map(g => ({ ...g, label: g.gap ? `${Math.round((g.gap / upm) * 100) / 100} m` : undefined }))}
                  onZoneClick={handleZoneClick} 
                  onMapClick={handleMapClick} 
                  selectedZoneId={selectedZoneId} 
@@ -2195,6 +2232,13 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
               <div className="p-6 space-y-6 animate-in slide-in-from-right-10 fade-in duration-300">
                  <div className="flex items-center justify-between"><h2 className="text-sm font-bold text-blue-400 uppercase tracking-wider flex items-center"><Dumbbell className="w-4 h-4 mr-2" />Equipment Editor</h2></div>
                  <div className="bg-slate-950/50 p-3 rounded border border-slate-800"><p className="text-xs text-slate-400 font-bold mb-1">{selectedZone.name}</p><p className="text-[10px] text-slate-500">Drag items to position. Use toolbar to add.</p></div>
+                 <label className="flex items-start gap-2 cursor-pointer select-none">
+                   <input type="checkbox" checked={lineUpOn} onChange={e => setLineUpOn(e.target.checked)} className="mt-0.5 h-4 w-4 accent-lime-500" />
+                   <span>
+                     <span className="block text-xs font-semibold text-slate-200">Line up with other machines</span>
+                     <span className="block text-[10px] text-slate-500 leading-snug">A dragged machine snaps into line when it comes close to lining up. Hold Option (Alt) while dragging to place it freely.</span>
+                   </span>
+                 </label>
                  {selectedMachineId ? (
                     <div className="space-y-4">
                         <div className="text-xs font-bold text-white border-b border-slate-800 pb-2">Selected Machine</div>

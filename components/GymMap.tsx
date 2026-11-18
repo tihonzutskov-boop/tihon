@@ -285,6 +285,9 @@ interface GymMapProps {
   selectedMachineId?: string | null;
   // Machines with a fixed real size: no resize handle, only moving and turning.
   lockedMachineIds?: Set<string>;
+  // What a machine being dragged in the editor lined up with: shared edges, and
+  // equal gaps with their size written on them. In map units.
+  snapGuides?: { x1: number; y1: number; x2: number; y2: number; label?: string }[];
 
   // Architectural Walls support
   selectedWallId?: string | null;
@@ -423,6 +426,7 @@ const GymMap: React.FC<GymMapProps> = ({
   onMachineResizeStart,
   selectedMachineId,
   lockedMachineIds,
+  snapGuides,
 
   selectedWallId = null,
   onWallClick,
@@ -1152,6 +1156,7 @@ const GymMap: React.FC<GymMapProps> = ({
           )}
 
           <g
+            data-map-content
             transform={isThumbnail ? `translate(${offsetX}, ${offsetY})` : `translate(${panX}, ${panY}) scale(${zoomScale}) translate(${offsetX}, ${offsetY})`}
             className={isThumbnail ? "transition-transform duration-700 ease-in-out" : "transition-none"}
           >
@@ -2197,6 +2202,37 @@ const GymMap: React.FC<GymMapProps> = ({
                 );
               })}
             </g>
+
+            {snapGuides && snapGuides.length > 0 && (() => {
+              // Lines a few screen pixels thick, however far the map is zoomed.
+              const unit = viewBoxWidth / (drawingSize?.w || 360) / zoomScale;
+              return (
+                <g className="pointer-events-none">
+                  {snapGuides.map((g, i) => {
+                    if (!g.label) {
+                      return <line key={i} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke="#a3e635" strokeWidth={1.5 * unit} strokeDasharray={`${5 * unit} ${4 * unit}`} />;
+                    }
+                    const across = g.y1 === g.y2;
+                    const tick = 5 * unit;
+                    const mx = (g.x1 + g.x2) / 2, my = (g.y1 + g.y2) / 2;
+                    return (
+                      <g key={i}>
+                        <line x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke="#a3e635" strokeWidth={2 * unit} />
+                        {across
+                          ? <path d={`M${g.x1} ${g.y1 - tick}v${2 * tick}M${g.x2} ${g.y2 - tick}v${2 * tick}`} stroke="#a3e635" strokeWidth={2 * unit} />
+                          : <path d={`M${g.x1 - tick} ${g.y1}h${2 * tick}M${g.x2 - tick} ${g.y2}h${2 * tick}`} stroke="#a3e635" strokeWidth={2 * unit} />}
+                        <text
+                          x={across ? mx : mx + 8 * unit} y={across ? my - 9 * unit : my}
+                          textAnchor={across ? 'middle' : 'start'} dominantBaseline="central"
+                          fontSize={11 * unit} fontWeight={800} fill="#a3e635"
+                          stroke="#020617" strokeWidth={3 * unit} paintOrder="stroke"
+                        >{g.label}</text>
+                      </g>
+                    );
+                  })}
+                </g>
+              );
+            })()}
 
             {hasWalk && (
               <WalkLayer
