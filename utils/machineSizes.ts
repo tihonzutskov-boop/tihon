@@ -13,7 +13,7 @@
 
 import { Gym, GymMachine, GymZone, GymDimensions, EquipmentItem, CableLayout } from '../types';
 import { machineShapeOf } from './machineShapes';
-import { DrawnKind } from './machineDrawings';
+import { DRAWINGS, DrawnKind } from './machineDrawings';
 import { cableStationExtent, cableStationSize, readCableLayout } from './cableStation';
 import { stretchRoom } from './roomStretch';
 
@@ -50,17 +50,32 @@ export const STANDARD_SIZES: Record<SizeKind, { name: string; size: RealSize }> 
   cableStation: { name: 'Cable station', size: { width: 4.0, length: 6.2 } },
   cableCrossover: { name: 'Cable crossover', size: { width: 1.2, length: 4.5 } },
   weightStack: { name: 'Weight-stack machine', size: { width: 1.2, length: 1.6 } },
+  // The owner's sketches, and the plate-loaded and functional kit made from them.
+  legExtension: { name: 'Leg extension', size: { width: 1, length: 1.2 } },
+  legCurl: { name: 'Leg curl (seated)', size: { width: 1.1, length: 1.2 } },
+  chestPress: { name: 'Chest press', size: { width: 1.05, length: 1.6 } },
+  hipAbductor: { name: 'Hip abductor', size: { width: 1.05, length: 1.25 } },
+  hipAdductor: { name: 'Hip adductor', size: { width: 1.1, length: 1.25 } },
+  shoulderPress: { name: 'Shoulder press', size: { width: 0.82, length: 1.18 } },
+  proneLegCurl: { name: 'Prone leg curl', size: { width: 0.85, length: 1.4 } },
+  plateChestPress: { name: 'Plate-loaded chest press', size: { width: 0.92, length: 1.42 } },
+  plateLegExtension: { name: 'Plate-loaded leg extension', size: { width: 0.94, length: 1.06 } },
+  plateShoulderPress: { name: 'Plate-loaded shoulder press', size: { width: 0.65, length: 1.1 } },
+  plateUpperChestPress: { name: 'Plate-loaded upper chest press', size: { width: 0.92, length: 1.42 } },
+  plateLowRow: { name: 'Plate-loaded low row', size: { width: 1.22, length: 1.42 } },
+  kettlebellRack: { name: 'Kettlebell rack', size: { width: 0.6, length: 1.6 } },
+  plyoBox: { name: 'Plyo box', size: { width: 0.61, length: 0.76 } },
+  sprintLane: { name: 'Sprint lane', size: { width: 1.6, length: 10 } },
 };
 
 /** The kinds with a top-view drawing; the rest show as a box. */
-const DRAWN: ReadonlySet<SizeKind> = new Set<SizeKind>([
-  'treadmill', 'bike', 'rower', 'elliptical', 'stairs', 'rack', 'bench', 'dumbbells',
-  'benchStation', 'legPress', 'smith', 'functionalTrainer', 'pulldown', 'cableStation',
-]);
+const DRAWN: ReadonlySet<SizeKind> = new Set<SizeKind>(
+  (Object.keys(STANDARD_SIZES) as SizeKind[]).filter(k => k !== 'cableCrossover' && k !== 'weightStack'),
+);
 
 const BY_EQUIPMENT: Record<string, SizeKind> = {
   'eq-leg-press': 'legPress',
-  'eq-leg-extension': 'weightStack',
+  'eq-leg-extension': 'legExtension',
   'eq-cable-crossover': 'cableCrossover',
   'eq-cable': 'cableCrossover',
   'eq-lat-pulldown': 'pulldown',
@@ -74,11 +89,30 @@ const kindFromName = (name: string): SizeKind | null => {
   const n = name.toLowerCase();
   if (/leg press|hack squat/.test(n)) return 'legPress';
   if (/smith/.test(n)) return 'smith';
-  if (/functional train(er|ing)|training rig/.test(n)) return 'functionalTrainer';
   if (/cable station|multi[ -]?(stack|station|gym)/.test(n)) return 'cableStation';
+  // Before the rig: "Dual Cable Cross / Functional Trainer" is a cable machine.
   if (/cable cross|crossover/.test(n)) return 'cableCrossover';
+  if (/functional train(er|ing)|training rig/.test(n)) return 'functionalTrainer';
+  // Plate-loaded machines before the weight-stack ones of the same name.
+  if (/plate[ -]?loaded/.test(n)) {
+    if (/low row/.test(n)) return 'plateLowRow';
+    if (/(upper|incline) chest press/.test(n)) return 'plateUpperChestPress';
+    if (/chest press/.test(n)) return 'plateChestPress';
+    if (/shoulder press/.test(n)) return 'plateShoulderPress';
+    if (/leg extension/.test(n)) return 'plateLegExtension';
+  }
+  if (/kettlebell rack/.test(n)) return 'kettlebellRack';
+  if (/plyo/.test(n)) return 'plyoBox';
+  if (/sprint (lane|track|strip)/.test(n)) return 'sprintLane';
   if (/pulldown|pull-down|lat pull|seated (cable )?row|low row|cable row/.test(n)) return 'pulldown';
   if (/bench press/.test(n)) return 'benchStation';
+  if (/abductor/.test(n)) return 'hipAbductor';
+  if (/adductor/.test(n)) return 'hipAdductor';
+  if (/(prone|lying) leg curl/.test(n)) return 'proneLegCurl';
+  if (/leg extension/.test(n)) return 'legExtension';
+  if (/leg curl/.test(n)) return 'legCurl';
+  if (/shoulder press/.test(n)) return 'shoulderPress';
+  if (/chest press/.test(n)) return 'chestPress';
   if (/chest press|shoulder press|leg extension|leg curl|pec deck|rear delt|abductor|adductor|ab crunch|tricep(s)? (press|extension) machine|bicep(s)? curl machine|preacher curl machine|glute (kickback|machine)|calf raise machine/.test(n)) return 'weightStack';
   return null;
 };
@@ -174,11 +208,16 @@ const turnBy = (facing: Facing, by: Facing): Facing => CLOCKWISE[(CLOCKWISE.inde
 // and power rack, and the Smith machine, have the bar along one long side.
 const FRONT_OF_DRAWING: Partial<Record<SizeKind, Facing>> = { benchStation: 'right', rack: 'left', smith: 'left' };
 
-/** Whether a machine's drawing stands upright, long side up and down: all do, but a cable station can be wider than long. */
+/** Whether a machine's drawing stands upright, long side up and down: most do, but a cable station and some of the sketches are wider than long. */
 const drawsUpright = (machine: { name?: string; equipmentId?: string; kind?: string; cableLayout?: CableLayout }): boolean => {
-  if (sizeKindOf(machine) !== 'cableStation') return true;
-  const [w, h] = cableStationExtent(readCableLayout(machine.cableLayout));
-  return h >= w;
+  const kind = sizeKindOf(machine);
+  if (kind === 'cableStation') {
+    const [w, h] = cableStationExtent(readCableLayout(machine.cableLayout));
+    return h >= w;
+  }
+  // Some of the owner's sketches are wider than long, as the machine is built.
+  const drawing = kind ? (DRAWINGS as Record<string, { size: [number, number] }>)[kind] : undefined;
+  return drawing ? drawing.size[1] >= drawing.size[0] : true;
 };
 
 type Placed = Pick<GymMachine, 'width' | 'height' | 'flipped' | 'name' | 'equipmentId' | 'kind' | 'cableLayout'>;

@@ -18,7 +18,8 @@ describe('sizeKindOf', () => {
     expect(sizeKindOf({ name: 'Power Rack 1' })).toBe('rack');
     expect(sizeKindOf({ name: '45° Leg Press' })).toBe('legPress');
     expect(sizeKindOf({ name: 'Dual Cable Cross' })).toBe('cableCrossover');
-    expect(sizeKindOf({ name: 'Chest Press' })).toBe('weightStack');
+    expect(sizeKindOf({ name: 'Chest Press' })).toBe('chestPress');
+    expect(sizeKindOf({ name: 'Pec Deck' })).toBe('weightStack');
     expect(sizeKindOf({ name: 'Smith Machine' })).toBe('smith');
   });
 
@@ -48,7 +49,7 @@ describe('sizeKindOf', () => {
   it('falls back to the Equipment Library item name, then gives up', () => {
     const eq = { id: 'eq-x', name: 'Commercial Running Treadmill', category: 'Cardio' } as EquipmentItem;
     expect(sizeKindOf({ name: 'Lane 4', equipmentId: 'eq-x' }, eq)).toBe('treadmill');
-    expect(sizeKindOf({ name: 'Plyo box' })).toBeNull();
+    expect(sizeKindOf({ name: 'Battle ropes' })).toBeNull();
   });
 });
 
@@ -79,10 +80,23 @@ describe('drawnKindOf', () => {
     expect(drawnKindOf({ name: 'Flat Bench Press' })).toBe('benchStation');
     expect(drawnKindOf({ name: 'Functional Trainer' })).toBe('functionalTrainer');
     expect(drawnKindOf({ name: 'Functional Training Rig' })).toBe('functionalTrainer');
+    expect(sizeKindOf({ name: 'Dual Cable Cross / Functional Trainer', equipmentId: 'eq-cable-crossover' })).toBe('cableCrossover');
     expect(drawnKindOf({ name: 'Lat Pulldown' })).toBe('pulldown');
     expect(drawnKindOf({ name: 'Dual Cable Cross' })).toBeNull();
-    expect(drawnKindOf({ name: 'Leg Extension' })).toBeNull();
-    expect(drawnKindOf({ name: 'Plyo box' })).toBeNull();
+    expect(drawnKindOf({ name: 'Leg Extension' })).toBe('legExtension');
+    expect(drawnKindOf({ name: 'Seated Leg Curl' })).toBe('legCurl');
+    expect(drawnKindOf({ name: 'Prone Leg Curl' })).toBe('proneLegCurl');
+    expect(drawnKindOf({ name: 'Hip Abductor' })).toBe('hipAbductor');
+    expect(drawnKindOf({ name: 'Hip Adductor' })).toBe('hipAdductor');
+    expect(drawnKindOf({ name: 'Shoulder Press' })).toBe('shoulderPress');
+    expect(drawnKindOf({ name: 'Plate-loaded Chest Press' })).toBe('plateChestPress');
+    expect(drawnKindOf({ name: 'Plate-loaded Upper Chest Press' })).toBe('plateUpperChestPress');
+    expect(drawnKindOf({ name: 'Plate-loaded Low Row' })).toBe('plateLowRow');
+    expect(drawnKindOf({ name: 'Seated Cable Row' })).toBe('pulldown');
+    expect(drawnKindOf({ name: 'Kettlebell Rack' })).toBe('kettlebellRack');
+    expect(drawnKindOf({ name: 'Plyo box' })).toBe('plyoBox');
+    expect(drawnKindOf({ name: 'Sprint lane' })).toBe('sprintLane');
+    expect(drawnKindOf({ name: 'Pec Deck' })).toBeNull();
   });
 });
 
@@ -189,7 +203,7 @@ describe('applyStandardSizes', () => {
   const gym = () => gymOf([zone('cardio', 0, 0, 200, 100, [
     machine('t1', 'Treadmill 1', 10, 10, 30, 60),
     machine('t2', 'Treadmill 2', 60, 10, 9, 21),
-    machine('box', 'Plyo box', 100, 10, 10, 10),
+    machine('box', 'Battle ropes', 100, 10, 10, 10),
   ])]);
 
   it('resizes what has a size, leaves the rest, and says which is which', () => {

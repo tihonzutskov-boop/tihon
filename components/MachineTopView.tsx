@@ -15,8 +15,9 @@ import { cableStationDrawing, readCableLayout } from '../utils/cableStation';
 /** A drawing's parts, painted in a palette. */
 export const DrawingParts: React.FC<{ drawing: Drawing; palette: Palette }> = ({ drawing, palette }) => (
   <>
-    {drawing.parts.map(([role, tag, attrs], i) =>
-      React.createElement(tag, { key: i, ...attrs, ...lookOf(role, palette, drawing.u) })
+    {drawing.parts.map(([role, tag, attrs, text], i) =>
+      // A part's own attributes win over its role's look: a fatter handle, say.
+      React.createElement(tag, { key: i, ...lookOf(role, palette, drawing.u), ...attrs }, text)
     )}
   </>
 );
