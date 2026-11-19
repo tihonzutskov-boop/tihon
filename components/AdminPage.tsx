@@ -2478,6 +2478,12 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
                             const size = standardSizeOf(next, equipmentOf(next));
                             return size ? { kind: next.kind, ...fitToSize(next, z, size, upm) } : { kind: next.kind };
                           });
+                          // Plates on horns or a weight stack: a tag on the machine, not a word in its name.
+                          const setPlates = (on: boolean) => reshapeMachine((mm, z) => {
+                            const next = { ...mm, plateLoaded: on || undefined };
+                            const size = standardSizeOf(next, equipmentOf(next));
+                            return size ? { plateLoaded: next.plateLoaded, ...fitToSize(next, z, size, upm) } : { plateLoaded: next.plateLoaded };
+                          });
                           const label = (k: SizeKind) => `${STANDARD_SIZES[k].name}${isDrawn(k) ? '' : ' (box)'}`;
                           return (
                             <div className="rounded border border-slate-800 bg-slate-950/50 p-2.5 space-y-1.5">
@@ -2491,6 +2497,10 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
                                 <option value="none">A plain box</option>
                               </select>
                               <p className="text-[10px] text-slate-500 leading-snug">The drawing and real size it gets on the map. Automatic goes by its name.</p>
+                              <label className="flex items-start gap-2 text-xs text-slate-300 pt-1 cursor-pointer">
+                                <input type="checkbox" checked={!!m.plateLoaded} onChange={e => setPlates(e.target.checked)} className="mt-0.5 accent-lime-500" />
+                                <span>Plate-loaded<span className="block text-[10px] text-slate-500 leading-snug">Plates on horns, not a weight stack. Chest press, leg extension, shoulder press and low rows then get their plate-loaded drawing.</span></span>
+                              </label>
                             </div>
                           );
                         })()}

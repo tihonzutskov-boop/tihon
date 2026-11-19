@@ -88,12 +88,22 @@ describe('drawnKindOf', () => {
     expect(drawnKindOf({ name: 'Prone Leg Curl' })).toBe('proneLegCurl');
     expect(drawnKindOf({ name: 'Hip Abductor' })).toBe('hipAbductor');
     expect(drawnKindOf({ name: 'Hip Adductor' })).toBe('hipAdductor');
-    expect(drawnKindOf({ name: 'Shoulder Press' })).toBe('shoulderPress');
-    expect(drawnKindOf({ name: 'Plate-loaded Chest Press' })).toBe('plateChestPress');
-    expect(drawnKindOf({ name: 'Plate-loaded Upper Chest Press' })).toBe('plateUpperChestPress');
-    expect(drawnKindOf({ name: 'Plate-loaded Low Row' })).toBe('plateLowRow');
+    expect(drawnKindOf({ name: 'Delts Machine' })).toBe('deltsMachine');
+    expect(drawnKindOf({ name: 'Rear Delt Fly' })).toBe('deltsMachine');
+    expect(drawnKindOf({ name: 'Shoulder Press' })).toBeNull();
+    // Plates or a stack is the machine's tag, not its name.
+    expect(drawnKindOf({ name: 'Plate-loaded Chest Press' })).toBe('chestPress');
+    expect(drawnKindOf({ name: 'Chest Press', plateLoaded: true })).toBe('plateChestPress');
+    expect(drawnKindOf({ name: 'Upper Chest Press', plateLoaded: true })).toBe('plateUpperChestPress');
+    expect(drawnKindOf({ name: 'Incline Chest Press' })).toBe('chestPress');
+    expect(drawnKindOf({ name: 'Leg Extension', plateLoaded: true })).toBe('plateLegExtension');
+    expect(drawnKindOf({ name: 'Shoulder Press', plateLoaded: true })).toBe('plateShoulderPress');
+    expect(drawnKindOf({ name: 'Low Row', plateLoaded: true })).toBe('plateLowRow');
+    expect(drawnKindOf({ name: 'Low Row' })).toBe('pulldown');
+    expect(drawnKindOf({ name: 'Leg Extension', plateLoaded: true, kind: 'legExtension' })).toBe('legExtension');
     expect(drawnKindOf({ name: 'Seated Cable Row' })).toBe('pulldown');
-    expect(drawnKindOf({ name: 'Kettlebell Rack' })).toBe('kettlebellRack');
+    expect(drawnKindOf({ name: 'Kettlebell' })).toBe('kettlebell');
+    expect(drawnKindOf({ name: 'Kettlebell Rack' })).toBe('kettlebell');
     expect(drawnKindOf({ name: 'Plyo box' })).toBe('plyoBox');
     expect(drawnKindOf({ name: 'Sprint lane' })).toBe('sprintLane');
     expect(drawnKindOf({ name: 'Pec Deck' })).toBeNull();

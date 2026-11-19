@@ -17,9 +17,9 @@ export interface Drawing { size: [number, number]; u: number; parts: Part[] }
 export type DrawnKind =
   | 'treadmill' | 'bike' | 'rower' | 'elliptical' | 'stairs' | 'rack' | 'bench' | 'dumbbells'
   | 'benchStation' | 'legPress' | 'smith' | 'functionalTrainer' | 'pulldown' | 'cableStation'
-  | 'legExtension' | 'legCurl' | 'chestPress' | 'hipAbductor' | 'hipAdductor' | 'shoulderPress' | 'proneLegCurl'
+  | 'legExtension' | 'legCurl' | 'chestPress' | 'hipAbductor' | 'hipAdductor' | 'deltsMachine' | 'proneLegCurl'
   | 'plateChestPress' | 'plateLegExtension' | 'plateShoulderPress' | 'plateUpperChestPress' | 'plateLowRow'
-  | 'kettlebellRack' | 'plyoBox' | 'sprintLane';
+  | 'kettlebell' | 'plyoBox' | 'sprintLane';
 
 export const DRAWINGS: Record<Exclude<DrawnKind, 'dumbbells' | 'cableStation'>, Drawing> = {
   // The owner's sketch: the bar along the long side with a plate at each end,
@@ -181,8 +181,8 @@ export const DRAWINGS: Record<Exclude<DrawnKind, 'dumbbells' | 'cableStation'>, 
     ['pad', 'rect', { x: 29, y: 207, width: 208, height: 131, rx: 60, transform: 'translate(16 -8)' }],
     ['pad', 'rect', { x: 54, y: 338, width: 158, height: 94, rx: 44, transform: 'translate(16 -8)' }],
     ['bar', 'path', { d: 'M12 239V325M254 239V325', transform: 'translate(16 -8)' }]] },
-  // #31 Shoulder press
-  shoulderPress: { size: [420, 290], u: 3.56, parts: [
+  // #31 Delts machine
+  deltsMachine: { size: [420, 290], u: 3.56, parts: [
     ['frame', 'rect', { x: 324, y: 4, width: 88, height: 254, rx: 6 }],
     ['pad', 'rect', { x: 345, y: 34, width: 47, height: 193, rx: 4 }],
     ['rail', 'path', { d: 'M18.5 181L90 268L118 269' }],
@@ -281,8 +281,8 @@ export const DRAWINGS: Record<Exclude<DrawnKind, 'dumbbells' | 'cableStation'>, 
     ['pad', 'rect', { x: 156, y: 4, width: 79, height: 43, rx: 10 }],
     ['pad', 'rect', { x: 144, y: 156, width: 103, height: 41, rx: 18 }],
     ['pad', 'rect', { x: 114.5, y: 214, width: 162, height: 116, rx: 45 }]] },
-  // #26 Kettlebell rack
-  kettlebellRack: { size: [60, 160], u: 1, parts: [
+  // #26 Kettlebell
+  kettlebell: { size: [60, 160], u: 1, parts: [
     ['frame', 'rect', { x: 4, y: 4, width: 52, height: 152, rx: 6 }],
     ['pad', 'circle', { cx: 30, cy: 16, r: 6 }],
     ['bar', 'path', { d: 'M25.8 12.4Q30 5.8 34.2 12.4' }],

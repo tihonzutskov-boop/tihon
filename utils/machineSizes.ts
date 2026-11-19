@@ -56,14 +56,14 @@ export const STANDARD_SIZES: Record<SizeKind, { name: string; size: RealSize }> 
   chestPress: { name: 'Chest press', size: { width: 1.05, length: 1.6 } },
   hipAbductor: { name: 'Hip abductor', size: { width: 1.05, length: 1.25 } },
   hipAdductor: { name: 'Hip adductor', size: { width: 1.1, length: 1.25 } },
-  shoulderPress: { name: 'Shoulder press', size: { width: 0.82, length: 1.18 } },
+  deltsMachine: { name: 'Delts machine', size: { width: 0.82, length: 1.18 } },
   proneLegCurl: { name: 'Prone leg curl', size: { width: 0.85, length: 1.4 } },
   plateChestPress: { name: 'Plate-loaded chest press', size: { width: 0.92, length: 1.42 } },
   plateLegExtension: { name: 'Plate-loaded leg extension', size: { width: 0.94, length: 1.06 } },
   plateShoulderPress: { name: 'Plate-loaded shoulder press', size: { width: 0.65, length: 1.1 } },
   plateUpperChestPress: { name: 'Plate-loaded upper chest press', size: { width: 0.92, length: 1.42 } },
   plateLowRow: { name: 'Plate-loaded low row', size: { width: 1.22, length: 1.42 } },
-  kettlebellRack: { name: 'Kettlebell rack', size: { width: 0.6, length: 1.6 } },
+  kettlebell: { name: 'Kettlebell', size: { width: 0.6, length: 1.6 } },
   plyoBox: { name: 'Plyo box', size: { width: 0.61, length: 0.76 } },
   sprintLane: { name: 'Sprint lane', size: { width: 1.6, length: 10 } },
 };
@@ -85,7 +85,9 @@ const BY_EQUIPMENT: Record<string, SizeKind> = {
 // Strength machines, by name. Checked before the cardio and free-weight kinds:
 // a bench press station is not a bench, and a "seated cable row" is a
 // pulldown/row station, not a rower.
-const kindFromName = (name: string): SizeKind | null => {
+// Whether a machine has plates on horns or a weight stack is its tag, not its name:
+// `plated` picks the plate-loaded drawing of the machines that have one.
+const kindFromName = (name: string, plated = false): SizeKind | null => {
   const n = name.toLowerCase();
   if (/leg press|hack squat/.test(n)) return 'legPress';
   if (/smith/.test(n)) return 'smith';
@@ -93,15 +95,8 @@ const kindFromName = (name: string): SizeKind | null => {
   // Before the rig: "Dual Cable Cross / Functional Trainer" is a cable machine.
   if (/cable cross|crossover/.test(n)) return 'cableCrossover';
   if (/functional train(er|ing)|training rig/.test(n)) return 'functionalTrainer';
-  // Plate-loaded machines before the weight-stack ones of the same name.
-  if (/plate[ -]?loaded/.test(n)) {
-    if (/low row/.test(n)) return 'plateLowRow';
-    if (/(upper|incline) chest press/.test(n)) return 'plateUpperChestPress';
-    if (/chest press/.test(n)) return 'plateChestPress';
-    if (/shoulder press/.test(n)) return 'plateShoulderPress';
-    if (/leg extension/.test(n)) return 'plateLegExtension';
-  }
-  if (/kettlebell rack/.test(n)) return 'kettlebellRack';
+  if (/low row/.test(n) && plated) return 'plateLowRow';
+  if (/kettlebell/.test(n)) return 'kettlebell';
   if (/plyo/.test(n)) return 'plyoBox';
   if (/sprint (lane|track|strip)/.test(n)) return 'sprintLane';
   if (/pulldown|pull-down|lat pull|seated (cable )?row|low row|cable row/.test(n)) return 'pulldown';
@@ -109,16 +104,18 @@ const kindFromName = (name: string): SizeKind | null => {
   if (/abductor/.test(n)) return 'hipAbductor';
   if (/adductor/.test(n)) return 'hipAdductor';
   if (/(prone|lying) leg curl/.test(n)) return 'proneLegCurl';
-  if (/leg extension/.test(n)) return 'legExtension';
+  if (/leg extension/.test(n)) return plated ? 'plateLegExtension' : 'legExtension';
   if (/leg curl/.test(n)) return 'legCurl';
-  if (/shoulder press/.test(n)) return 'shoulderPress';
-  if (/chest press/.test(n)) return 'chestPress';
+  if (/delt|lateral raise/.test(n)) return 'deltsMachine';
+  if (/shoulder press/.test(n) && plated) return 'plateShoulderPress';
+  if (/(upper|incline) chest press/.test(n)) return plated ? 'plateUpperChestPress' : 'chestPress';
+  if (/chest press/.test(n)) return plated ? 'plateChestPress' : 'chestPress';
   if (/chest press|shoulder press|leg extension|leg curl|pec deck|rear delt|abductor|adductor|ab crunch|tricep(s)? (press|extension) machine|bicep(s)? curl machine|preacher curl machine|glute (kickback|machine)|calf raise machine/.test(n)) return 'weightStack';
   return null;
 };
 
-const kindFromAnyName = (name: string | undefined): SizeKind | null =>
-  name ? kindFromName(name) || machineShapeOf({ name }) : null;
+const kindFromAnyName = (name: string | undefined, plated = false): SizeKind | null =>
+  name ? kindFromName(name, plated) || machineShapeOf({ name }) : null;
 
 export const isSizeKind = (kind: string | undefined): kind is SizeKind => !!kind && kind in STANDARD_SIZES;
 
@@ -129,18 +126,20 @@ export const isSizeKind = (kind: string | undefined): kind is SizeKind => !!kind
  * link and by name. A cable crossover from the library renamed "Cable
  * station" is a cable station.
  */
-export const sizeKindOf = (machine: { name?: string; equipmentId?: string; kind?: string }, equipment?: EquipmentItem): SizeKind | null => {
+export const sizeKindOf = (machine: { name?: string; equipmentId?: string; kind?: string; plateLoaded?: boolean }, equipment?: EquipmentItem): SizeKind | null => {
   if (machine.kind === 'none') return null;
   if (isSizeKind(machine.kind)) return machine.kind;
-  const linked = machine.equipmentId ? BY_EQUIPMENT[machine.equipmentId] || machineShapeOf({ equipmentId: machine.equipmentId }) : null;
-  return kindFromAnyName(machine.name) || linked || kindFromAnyName(equipment?.name);
+  const plated = !!machine.plateLoaded;
+  const linkedKind = machine.equipmentId ? BY_EQUIPMENT[machine.equipmentId] || machineShapeOf({ equipmentId: machine.equipmentId }) : null;
+  const linked = linkedKind === 'legExtension' && plated ? 'plateLegExtension' : linkedKind;
+  return kindFromAnyName(machine.name, plated) || linked || kindFromAnyName(equipment?.name, plated);
 };
 
 /** Whether a kind of machine has a top-view drawing, rather than showing as a box. */
 export const isDrawn = (kind: SizeKind): boolean => DRAWN.has(kind);
 
 /** Which drawing a machine gets on the map, or null when it shows as a box. */
-export const drawnKindOf = (machine: { name?: string; equipmentId?: string; kind?: string }): DrawnKind | null => {
+export const drawnKindOf = (machine: { name?: string; equipmentId?: string; kind?: string; plateLoaded?: boolean }): DrawnKind | null => {
   const kind = sizeKindOf(machine);
   return kind && DRAWN.has(kind) ? kind as DrawnKind : null;
 };
@@ -152,7 +151,7 @@ export const drawnKindOf = (machine: { name?: string; equipmentId?: string; kind
  * typical size of its kind. Null for kit nobody has given a size — it keeps
  * the size it was drawn at.
  */
-export const standardSizeOf = (machine: { name?: string; equipmentId?: string; kind?: string; cableLayout?: CableLayout }, equipment?: EquipmentItem): RealSize | null => {
+export const standardSizeOf = (machine: { name?: string; equipmentId?: string; kind?: string; plateLoaded?: boolean; cableLayout?: CableLayout }, equipment?: EquipmentItem): RealSize | null => {
   const kind = sizeKindOf(machine, equipment);
   if (kind === 'cableStation') return cableStationSize(readCableLayout(machine.cableLayout));
   const own = equipment?.sizeM;
@@ -209,7 +208,7 @@ const turnBy = (facing: Facing, by: Facing): Facing => CLOCKWISE[(CLOCKWISE.inde
 const FRONT_OF_DRAWING: Partial<Record<SizeKind, Facing>> = { benchStation: 'right', rack: 'left', smith: 'left' };
 
 /** Whether a machine's drawing stands upright, long side up and down: most do, but a cable station and some of the sketches are wider than long. */
-const drawsUpright = (machine: { name?: string; equipmentId?: string; kind?: string; cableLayout?: CableLayout }): boolean => {
+const drawsUpright = (machine: { name?: string; equipmentId?: string; kind?: string; plateLoaded?: boolean; cableLayout?: CableLayout }): boolean => {
   const kind = sizeKindOf(machine);
   if (kind === 'cableStation') {
     const [w, h] = cableStationExtent(readCableLayout(machine.cableLayout));
@@ -220,7 +219,7 @@ const drawsUpright = (machine: { name?: string; equipmentId?: string; kind?: str
   return drawing ? drawing.size[1] >= drawing.size[0] : true;
 };
 
-type Placed = Pick<GymMachine, 'width' | 'height' | 'flipped' | 'name' | 'equipmentId' | 'kind' | 'cableLayout'>;
+type Placed = Pick<GymMachine, 'width' | 'height' | 'flipped' | 'name' | 'equipmentId' | 'kind' | 'plateLoaded' | 'cableLayout'>;
 
 /**
  * Where the top of a machine's drawing points on the map. The drawing lies
