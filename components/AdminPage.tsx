@@ -817,7 +817,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
              const newZone = { ...clipboard.data, id: `zone-copy-${Date.now()}`, name: `${clipboard.data.name} (Copy)`, x: clipboard.data.x + 20, y: clipboard.data.y + 20 };
              update({ ...gym, zones: [...gym.zones, newZone] }, true); setSelectedZoneId(newZone.id);
          } else if (clipboard.type === 'machine' && editMode === 'machine' && selectedZone) {
-             const newMachine = { ...clipboard.data, id: `machine-copy-${Date.now()}`, name: `${clipboard.data.name} (Copy)`, x: clipboard.data.x + 10, y: clipboard.data.y + 10 };
+             const newMachine = { ...clipboard.data, id: `machine-copy-${Date.now()}`, x: clipboard.data.x + 10, y: clipboard.data.y + 10 };
              const newZones = gym.zones.map(z => { if (z.id === selectedZone.id) return { ...z, machines: [...(z.machines || []), newMachine] }; return z; });
              update({ ...gym, zones: newZones }, true); setSelectedMachineId(newMachine.id);
          } else if (clipboard.type === 'annex' && editMode === 'room') {
