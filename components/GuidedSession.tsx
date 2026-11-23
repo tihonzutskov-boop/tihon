@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { tagPlateLoaded } from '../utils/machineSizes';
 import { X, ArrowLeft, Check, Plus, Minus, Dumbbell, PlayCircle, MapPin } from 'lucide-react';
 import { WorkoutDay, Gym, EquipmentItem, LibraryExercise, Exercise, EffortRating, ExerciseLog, EFFORT_SCALE, JointStressArea, ALL_JOINT_STRESS_AREAS } from '../types';
 import { api } from '../services/api';
@@ -74,6 +75,8 @@ const formatRest = (seconds: number | undefined | null): string => {
 };
 
 const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, libraryExercises, onClose, onFinish }) => {
+  // The map draws plate-loaded machines by their library item's category.
+  const mapZones = useMemo(() => tagPlateLoaded(gym.zones, equipmentList), [gym.zones, equipmentList]);
   const exercises = day.exercises;
 
   // Planned for the whole day at once rather than per exercise, so each
@@ -627,7 +630,7 @@ const GuidedSession: React.FC<GuidedSessionProps> = ({ day, gym, equipmentList, 
               <>
               <div className="flex-1 min-h-0 relative">
               <GymMap
-                zones={gym.zones}
+                zones={mapZones}
                 dimensions={gym.dimensions}
                 entrance={gym.entrance}
                 floorColor={gym.floorColor}

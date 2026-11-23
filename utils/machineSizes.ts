@@ -125,6 +125,28 @@ const kindFromAnyName = (name: string | undefined, plated = false): SizeKind | n
 export const isPlateLoadedItem = (item: Pick<EquipmentItem, 'category'> | undefined): boolean =>
   !!item && /\bpla(te|et)/i.test(item.category || '');
 
+/**
+ * The zones with each machine marked plate-loaded or not by the category of its
+ * library item, so the map can pick the right sketch without the library. The
+ * same zones come back when nothing changes.
+ */
+export const tagPlateLoaded = (zones: GymZone[], equipment: EquipmentItem[]): GymZone[] => {
+  let changed = false;
+  const tagged = zones.map(zone => {
+    let zoneChanged = false;
+    const machines = (zone.machines || []).map(m => {
+      const item = equipment.find(e => e.id === m.equipmentId) || equipment.find(e => e.name === m.name);
+      if (!item || isPlateLoadedItem(item) === !!m.plateLoaded) return m;
+      zoneChanged = true;
+      return { ...m, plateLoaded: isPlateLoadedItem(item) };
+    });
+    if (!zoneChanged) return zone;
+    changed = true;
+    return { ...zone, machines };
+  });
+  return changed ? tagged : zones;
+};
+
 export const isSizeKind = (kind: string | undefined): kind is SizeKind => !!kind && kind in STANDARD_SIZES;
 
 /**

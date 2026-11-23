@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   sizeKindOf, standardSizeOf, fitToSize, turnQuarter, isAtSize, findOverlaps,
-  applyStandardSizes, isPlateLoadedItem, countOffSize, unitsPerMetreOf, STANDARD_SIZES, drawnKindOf, facingOf, rotateClockwise, setRoomSize,
+  applyStandardSizes, isPlateLoadedItem, tagPlateLoaded, countOffSize, unitsPerMetreOf, STANDARD_SIZES, drawnKindOf, facingOf, rotateClockwise, setRoomSize,
 } from './machineSizes';
 import { DEFAULT_CABLE_LAYOUT, setSide } from './cableStation';
 import { Gym, GymZone, GymMachine, EquipmentItem } from '../types';
@@ -296,5 +296,16 @@ describe('the gym scale', () => {
     expect([t.width, t.height]).toEqual([27, 63]);
     expect(report.gym.dimensions).toBe(g.dimensions);
     expect(report.gym.zones[0]).toMatchObject({ x: 0, y: 0, width: 600, height: 300 });
+  });
+});
+
+describe('tagPlateLoaded', () => {
+  const item = { id: 'eq-p', name: 'Chest press machine', category: 'Plaetd machine' } as EquipmentItem;
+  it('marks machines by their library item\'s category, and changes nothing otherwise', () => {
+    const zones = [zone('m', 0, 0, 100, 100, [{ ...machine('cp', 'Chest press machine', 0, 0, 10, 10), equipmentId: 'eq-p' }])];
+    const tagged = tagPlateLoaded(zones, [item]);
+    expect(drawnKindOf(tagged[0].machines![0])).toBe('plateChestPress');
+    expect(tagPlateLoaded(tagged, [item])).toBe(tagged);
+    expect(tagPlateLoaded(zones, [])).toBe(zones);
   });
 });

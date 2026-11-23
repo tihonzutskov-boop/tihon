@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { tagPlateLoaded } from '../utils/machineSizes';
 import { Flame, Loader2, TrendingUp, MapPin } from 'lucide-react';
 import { Gym, EquipmentItem } from '../types';
 import { api } from '../services/api';
@@ -38,6 +39,7 @@ const RankedRow: React.FC<{ name: string; uses: number; trainees: number; maxUse
 // Only counts sessions logged after this shipped — older logs carry no zone or
 // machine, so there is nothing earlier to show.
 const UsageHeatmap: React.FC<UsageHeatmapProps> = ({ gym, equipmentList }) => {
+  const mapZones = useMemo(() => tagPlateLoaded(gym.zones, equipmentList), [gym.zones, equipmentList]);
   const [range, setRange] = useState<Range>('30');
   const [usage, setUsage] = useState<GymUsage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -126,7 +128,7 @@ const UsageHeatmap: React.FC<UsageHeatmapProps> = ({ gym, equipmentList }) => {
           <div>
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 h-[480px] relative">
               <GymMap
-                zones={gym.zones}
+                zones={mapZones}
                 dimensions={gym.dimensions}
                 entrance={gym.entrance}
                 floorColor={gym.floorColor}

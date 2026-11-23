@@ -18,7 +18,7 @@ import { getExerciseLocations } from '../utils/exerciseMatcher';
 import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Eraser, Eye, EyeOff, Footprints, MapPin, LayoutTemplate, DoorOpen, Lock, Bath, Droplets, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle, Copy, ClipboardPaste, Dumbbell, Activity, Zap, Target, Layers, Box, Wind, RotateCcw, ArrowUpRight, ArrowUpLeft, ArrowDownRight, ArrowDownLeft, ArrowRight, ArrowUp, ArrowDown, MoveDown, Circle, Waves, Timer, Sparkles, Search, Video, Play, Film, Filter, X, ExternalLink, Compass, SlidersHorizontal, ChevronRight, Bookmark, BookmarkCheck, Camera, Users, Flame, Pencil, RotateCw, ArrowUpDown, Hand } from 'lucide-react';
 import { MACHINE_ICONS_LIST as MACHINE_ICONS, ICON_GROUPS } from '../utils/equipmentIcons';
 import { snapWallEndpoint } from '../utils/wallSnapping';
-import { standardSizeOf, sizeKindOf, fitToSize, rotateClockwise, facingOf, isAtSize, isDrawn, isPlateLoadedItem, STANDARD_SIZES, SizeKind, unitsPerMetreOf } from '../utils/machineSizes';
+import { standardSizeOf, sizeKindOf, fitToSize, rotateClockwise, facingOf, isAtSize, isDrawn, isPlateLoadedItem, tagPlateLoaded, STANDARD_SIZES, SizeKind, unitsPerMetreOf } from '../utils/machineSizes';
 import { cableStationSize, readCableLayout } from '../utils/cableStation';
 import CableStationEditor from './CableStationEditor';
 
@@ -474,6 +474,8 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
 
   // The library item a placed machine came from, by link or, for machines
   // placed before links were kept, by name.
+  // The map draws plate-loaded machines by their library item's category.
+  const mapZones = useMemo(() => tagPlateLoaded(zones, equipmentList), [zones, equipmentList]);
   const equipmentOf = useCallback(
     (m: { name?: string; equipmentId?: string }) =>
       equipmentList.find(e => e.id === m.equipmentId) || equipmentList.find(e => e.name === m.name),
@@ -1874,7 +1876,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
           }`}>
              <div className="absolute inset-0 p-4">
                <GymMap 
-                 zones={zones} 
+                 zones={mapZones} 
                  dimensions={dimensions} 
                  entrance={entrance} 
                  floorColor={floorColor} 
