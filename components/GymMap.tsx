@@ -1996,9 +1996,9 @@ const GymMap: React.FC<GymMapProps> = ({
                           const machineHeatEntry = machineHeat ? machineHeat[machine.id] : undefined;
                           const MachineIcon = getEquipmentIcon(machine.icon, machine.name, zone.type);
                           // Drawn from above instead of a box and icon, where
-                          // there is a drawing for it. The editor keeps boxes,
-                          // which are easier to drag and resize precisely.
-                          const topShape = !isEditable && !heatMode ? drawnKindOf(machine) : null;
+                          // there is a drawing for it, in the editor too: the whole
+                          // footprint stays grabbable, and a selected machine gets a ring.
+                          const topShape = !heatMode ? drawnKindOf(machine) : null;
 
                           return (
                             <g
@@ -2055,6 +2055,13 @@ const GymMap: React.FC<GymMapProps> = ({
                                   {/* The whole footprint stays tappable, gaps in the drawing included. */}
                                   <rect width={machine.width} height={machine.height} rx="4" fill="transparent" />
                                   <MachineTopView shape={topShape} width={machine.width} height={machine.height} color={zone.color} cableLayout={machine.cableLayout} flipped={machine.flipped} />
+                                  {showAdminSelected && (
+                                    <rect
+                                      width={machine.width} height={machine.height} rx="4"
+                                      fill="none" stroke="#3b82f6" strokeWidth={2} pointerEvents="none"
+                                      className="machine-pulse"
+                                    />
+                                  )}
                                   {(isUserTarget || showUserGlow || isPickup) && (
                                     <rect
                                       width={machine.width} height={machine.height} rx="4"
@@ -2087,7 +2094,8 @@ const GymMap: React.FC<GymMapProps> = ({
                                 />
                               )}
 
-                              {!topShape && (
+                              {/* No icon on a machine in the editor: its drawing or its box is enough. */}
+                              {!topShape && !isEditable && (
                               <g transform={`translate(${machine.width / 2}, ${machine.height / 2})`} className="pointer-events-none">
                                 {MachineIcon ? (
                                   <g transform={`scale(${Math.min(machine.width, machine.height) / 48}) translate(-12, -12)`}>
