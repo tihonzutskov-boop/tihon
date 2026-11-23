@@ -1773,7 +1773,7 @@ app.get('/api/equipment', requireAuth, async (req, res) => {
   try {
     client = await pool.connect();
     const result = await client.query(
-      `SELECT id, name, category, description, icon, default_footprint, size_m, muscle_groups,
+      `SELECT id, name, category, description, icon, default_footprint, size_m, plate_loaded, muscle_groups,
               CASE WHEN image_url <> '' THEN substr(md5(image_url), 1, 8) END AS image_v
        FROM equipment ORDER BY name ASC`
     );
@@ -1786,6 +1786,7 @@ app.get('/api/equipment', requireAuth, async (req, res) => {
       imageUrl: row.image_v ? mediaUrl('equipment', `${row.id}/image`, row.image_v) : '',
       defaultFootprint: row.default_footprint || undefined,
       sizeM: row.size_m || undefined,
+      plateLoaded: row.plate_loaded == null ? undefined : row.plate_loaded,
       muscleGroups: row.muscle_groups || []
     }));
     res.json(equipment);
@@ -1799,13 +1800,13 @@ app.get('/api/equipment', requireAuth, async (req, res) => {
 
 // POST Create Equipment
 app.post('/api/equipment', requireAdmin, async (req, res) => {
-  const { id, name, category, description, icon, imageUrl, defaultFootprint, sizeM, muscleGroups } = req.body;
+  const { id, name, category, description, icon, imageUrl, defaultFootprint, sizeM, plateLoaded, muscleGroups } = req.body;
   let client;
   try {
     client = await pool.connect();
     await client.query(
-      'INSERT INTO equipment (id, name, category, description, icon, image_url, default_footprint, muscle_groups, size_m) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
-      [id, name, category || '', description || '', icon || '', blobWrite(imageUrl) || '', JSON.stringify(defaultFootprint || null), JSON.stringify(muscleGroups || []), JSON.stringify(cleanSizeM(sizeM))]
+      'INSERT INTO equipment (id, name, category, description, icon, image_url, default_footprint, muscle_groups, size_m, plate_loaded) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+      [id, name, category || '', description || '', icon || '', blobWrite(imageUrl) || '', JSON.stringify(defaultFootprint || null), JSON.stringify(muscleGroups || []), JSON.stringify(cleanSizeM(sizeM)), typeof plateLoaded === 'boolean' ? plateLoaded : null]
     );
     res.json({ success: true, id });
   } catch (err) {
@@ -1819,20 +1820,20 @@ app.post('/api/equipment', requireAdmin, async (req, res) => {
 // PUT Update Equipment
 app.put('/api/equipment/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
-  const { name, category, description, icon, imageUrl, defaultFootprint, sizeM, muscleGroups } = req.body;
+  const { name, category, description, icon, imageUrl, defaultFootprint, sizeM, plateLoaded, muscleGroups } = req.body;
   let client;
   try {
     client = await pool.connect();
     // Upsert: the item being "updated" may be one of the client-side default
     // items that was never actually inserted into the database yet.
     await client.query(
-      `INSERT INTO equipment (id, name, category, description, icon, image_url, default_footprint, muscle_groups, size_m)
-       VALUES ($8, $1, $2, $3, $4, COALESCE($5::text, ''), $6, $7, $9)
+      `INSERT INTO equipment (id, name, category, description, icon, image_url, default_footprint, muscle_groups, size_m, plate_loaded)
+       VALUES ($8, $1, $2, $3, $4, COALESCE($5::text, ''), $6, $7, $9, $10)
        ON CONFLICT (id) DO UPDATE SET
          name=$1, category=$2, description=$3, icon=$4,
          image_url=COALESCE($5::text, equipment.image_url),
-         default_footprint=$6, muscle_groups=$7, size_m=$9`,
-      [name, category || '', description || '', icon || '', blobWrite(imageUrl), JSON.stringify(defaultFootprint || null), JSON.stringify(muscleGroups || []), id, JSON.stringify(cleanSizeM(sizeM))]
+         default_footprint=$6, muscle_groups=$7, size_m=$9, plate_loaded=$10`,
+      [name, category || '', description || '', icon || '', blobWrite(imageUrl), JSON.stringify(defaultFootprint || null), JSON.stringify(muscleGroups || []), id, JSON.stringify(cleanSizeM(sizeM)), typeof plateLoaded === 'boolean' ? plateLoaded : null]
     );
     res.json({ success: true });
   } catch (err) {

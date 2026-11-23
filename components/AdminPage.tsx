@@ -483,7 +483,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
   // A new machine's footprint: its kind's real size, standing lengthways, or
   // the old 4 × 4 square when nobody knows what it is yet.
   const placedSize = useCallback((eq: EquipmentItem) => {
-    const size = standardSizeOf({ name: eq.name, equipmentId: eq.id }, eq);
+    const size = standardSizeOf({ name: eq.name, equipmentId: eq.id, plateLoaded: eq.plateLoaded }, eq);
     return size
       ? { width: Math.round(size.width * upm * 100) / 100, height: Math.round(size.length * upm * 100) / 100 }
       : { width: 40, height: 40 };
@@ -578,7 +578,8 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
       icon: eq.icon || 'Dumbbell',
       longDescription: eq.description || '',
       videoUrl: '',
-      equipmentId: eq.id
+      equipmentId: eq.id,
+      ...(eq.plateLoaded != null ? { plateLoaded: eq.plateLoaded } : {}),
     };
 
     // Ensure the zone's equipmentIds includes this physical equipment's ID
@@ -621,6 +622,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
       id: `machine-${Date.now()}`,
       name: newEq.name,
       equipmentId: newEq.id,
+      ...(newEq.plateLoaded != null ? { plateLoaded: newEq.plateLoaded } : {}),
       x: Math.max(0, Math.min(Math.max(5, x), targetZoneObj.width - size.width)),
       y: Math.max(0, Math.min(Math.max(5, y), targetZoneObj.height - size.height)),
       ...size,
@@ -2478,12 +2480,6 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
                             const size = standardSizeOf(next, equipmentOf(next));
                             return size ? { kind: next.kind, ...fitToSize(next, z, size, upm) } : { kind: next.kind };
                           });
-                          // Plates on horns or a weight stack: a tag on the machine, not a word in its name.
-                          const setPlates = (on: boolean) => reshapeMachine((mm, z) => {
-                            const next = { ...mm, plateLoaded: on || undefined };
-                            const size = standardSizeOf(next, equipmentOf(next));
-                            return size ? { plateLoaded: next.plateLoaded, ...fitToSize(next, z, size, upm) } : { plateLoaded: next.plateLoaded };
-                          });
                           const label = (k: SizeKind) => `${STANDARD_SIZES[k].name}${isDrawn(k) ? '' : ' (box)'}`;
                           return (
                             <div className="rounded border border-slate-800 bg-slate-950/50 p-2.5 space-y-1.5">
@@ -2497,10 +2493,6 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
                                 <option value="none">A plain box</option>
                               </select>
                               <p className="text-[10px] text-slate-500 leading-snug">The drawing and real size it gets on the map. Automatic goes by its name.</p>
-                              <label className="flex items-start gap-2 text-xs text-slate-300 pt-1 cursor-pointer">
-                                <input type="checkbox" checked={!!m.plateLoaded} onChange={e => setPlates(e.target.checked)} className="mt-0.5 accent-lime-500" />
-                                <span>Plate-loaded<span className="block text-[10px] text-slate-500 leading-snug">Plates on horns, not a weight stack. Chest press, leg extension, shoulder press and low rows then get their plate-loaded drawing.</span></span>
-                              </label>
                             </div>
                           );
                         })()}

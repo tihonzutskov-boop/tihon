@@ -158,6 +158,7 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
   const [formFootprintH, setFormFootprintH] = useState('40');
   // This item's real size in metres; empty means the typical size of its kind.
   const [formSizeW, setFormSizeW] = useState('');
+  const [formPlated, setFormPlated] = useState(false);
   const [formSizeL, setFormSizeL] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -256,6 +257,7 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
     setFormFootprintH('40');
     setFormSizeW('');
     setFormSizeL('');
+    setFormPlated(false);
     setIsCreatingNew(true);
   };
 
@@ -272,6 +274,7 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
     setFormFootprintH(item.defaultFootprint?.height?.toString() || '40');
     setFormSizeW(item.sizeM ? String(item.sizeM.width) : '');
     setFormSizeL(item.sizeM ? String(item.sizeM.length) : '');
+    setFormPlated(!!item.plateLoaded);
     setIsCreatingNew(true);
   };
 
@@ -316,6 +319,7 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
         muscleGroups: formMuscleGroups,
         defaultFootprint: { width: w, height: h },
         sizeM,
+        plateLoaded: formPlated || undefined,
       };
       await api.saveEquipment(updated);
       onEquipmentChange(safeEquipmentList.map(item => item.id === updated.id ? updated : item));
@@ -331,6 +335,7 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
         muscleGroups: formMuscleGroups,
         defaultFootprint: { width: w, height: h },
         sizeM,
+        plateLoaded: formPlated || undefined,
       };
       await api.createEquipment(created);
       onEquipmentChange([...safeEquipmentList, created]);
@@ -878,9 +883,17 @@ const EquipmentLibrary: React.FC<EquipmentLibraryProps> = ({
                 </p>
               </div>
 
+              {/* Plates or a weight stack: picks which sketch machines placed from this item are drawn as. */}
+              <label className="flex items-start gap-2 text-xs text-slate-300 cursor-pointer">
+                <input type="checkbox" checked={formPlated} onChange={e => setFormPlated(e.target.checked)} className="mt-0.5 accent-lime-500" />
+                <span>Plate-loaded machine
+                  <span className="block text-[10px] text-slate-500 leading-snug">Tick it when this is loaded with plates on horns, not a weight stack: its machines get the plate-loaded sketch.</span>
+                </span>
+              </label>
+
               {/* Real size: every machine placed from this item takes it. */}
               {(() => {
-                const kind = sizeKindOf({ name: formName, equipmentId: editingItem?.id });
+                const kind = sizeKindOf({ name: formName, equipmentId: editingItem?.id, plateLoaded: formPlated });
                 const typical = kind ? STANDARD_SIZES[kind] : null;
                 return (
                   <div>

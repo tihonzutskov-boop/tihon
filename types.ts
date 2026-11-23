@@ -34,6 +34,7 @@ export interface EquipmentItem {
   // size of its kind (utils/machineSizes). Every machine placed from this item
   // takes it.
   sizeM?: { width: number; length: number };
+  plateLoaded?: boolean; // Plates on horns rather than a weight stack: machines placed from it get the plate-loaded drawing
   muscleGroups?: string[]; // Target muscle groups, matched against LibraryExercise.targetMuscle
 }
 
@@ -53,7 +54,7 @@ export interface GymMachine {
   imageUrl?: string;
   cableLayout?: CableLayout; // A cable station's towers and seats; its size follows from them
   flipped?: boolean; // Turned round to face the other way: its front at the bottom (or left) instead of the top (or right)
-  plateLoaded?: boolean; // Loaded with plates on horns rather than a weight stack: picks the plate-loaded drawing, by this tag and not by its name
+  plateLoaded?: boolean; // Copied from its Equipment Library item's Plate-loaded tag: picks the plate-loaded drawing, not its name
   kind?: string; // The kind of machine someone picked for its drawing and size ('none' for a plain box); otherwise worked out from its name
 }
 

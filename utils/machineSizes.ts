@@ -129,7 +129,8 @@ export const isSizeKind = (kind: string | undefined): kind is SizeKind => !!kind
 export const sizeKindOf = (machine: { name?: string; equipmentId?: string; kind?: string; plateLoaded?: boolean }, equipment?: EquipmentItem): SizeKind | null => {
   if (machine.kind === 'none') return null;
   if (isSizeKind(machine.kind)) return machine.kind;
-  const plated = !!machine.plateLoaded;
+  // The machine's own tag, else its library item's.
+  const plated = !!(machine.plateLoaded ?? equipment?.plateLoaded);
   const linkedKind = machine.equipmentId ? BY_EQUIPMENT[machine.equipmentId] || machineShapeOf({ equipmentId: machine.equipmentId }) : null;
   const linked = linkedKind === 'legExtension' && plated ? 'plateLegExtension' : linkedKind;
   return kindFromAnyName(machine.name, plated) || linked || kindFromAnyName(equipment?.name, plated);
@@ -292,7 +293,10 @@ export const applyStandardSizes = (gym: Gym, equipment: EquipmentItem[]): SizeRe
   const unknown: MachineRef[] = [];
   const zones = gym.zones.map(zone => ({
     ...zone,
-    machines: (zone.machines || []).map(m => {
+    machines: (zone.machines || []).map(original => {
+      // A machine takes its library item's Plate-loaded tag, which picks its sketch.
+      const tag = equipmentFor(original, equipment)?.plateLoaded;
+      const m = tag != null && original.plateLoaded == null ? { ...original, plateLoaded: tag } : original;
       const ref = { zoneId: zone.id, machineId: m.id, name: m.name };
       const size = standardSizeOf(m, equipmentFor(m, equipment));
       if (!size) { unknown.push(ref); return m; }

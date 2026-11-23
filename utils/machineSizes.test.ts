@@ -51,6 +51,13 @@ describe('sizeKindOf', () => {
     expect(sizeKindOf({ name: 'Lane 4', equipmentId: 'eq-x' }, eq)).toBe('treadmill');
     expect(sizeKindOf({ name: 'Battle ropes' })).toBeNull();
   });
+
+  it('takes plates or stack from the machine\'s tag, else from its library item', () => {
+    const plated = { id: 'eq-p', name: 'Chest Press', plateLoaded: true } as EquipmentItem;
+    expect(sizeKindOf({ name: 'Chest Press', equipmentId: 'eq-p' }, plated)).toBe('plateChestPress');
+    expect(sizeKindOf({ name: 'Chest Press', equipmentId: 'eq-p', plateLoaded: false }, plated)).toBe('chestPress');
+    expect(sizeKindOf({ name: 'Chest Press', equipmentId: 'eq-p' })).toBe('chestPress');
+  });
 });
 
 describe('standardSizeOf', () => {
@@ -224,6 +231,14 @@ describe('applyStandardSizes', () => {
     expect([t1.width, t1.height]).toEqual([9, 21]);
     // Already at its size: untouched.
     expect(report.gym.zones[0].machines!.find(m => m.id === 't2')).toEqual(gym().zones[0].machines![1]);
+  });
+
+  it('gives a machine its library item\'s Plate-loaded tag', () => {
+    const item = { id: 'eq-p', name: 'Chest Press', plateLoaded: true } as EquipmentItem;
+    const placed = gymOf([zone('m', 0, 0, 200, 100, [{ ...machine('cp', 'Chest Press', 10, 10, 10, 10), equipmentId: 'eq-p' }])]);
+    const m = applyStandardSizes(placed, [item]).gym.zones[0].machines![0];
+    expect(m.plateLoaded).toBe(true);
+    expect(drawnKindOf(m)).toBe('plateChestPress');
   });
 
   it('reports machines that end up overlapping', () => {
