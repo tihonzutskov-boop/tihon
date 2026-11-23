@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   sizeKindOf, standardSizeOf, fitToSize, turnQuarter, isAtSize, findOverlaps,
-  applyStandardSizes, countOffSize, unitsPerMetreOf, STANDARD_SIZES, drawnKindOf, facingOf, rotateClockwise, setRoomSize,
+  applyStandardSizes, isPlateLoadedItem, countOffSize, unitsPerMetreOf, STANDARD_SIZES, drawnKindOf, facingOf, rotateClockwise, setRoomSize,
 } from './machineSizes';
 import { DEFAULT_CABLE_LAYOUT, setSide } from './cableStation';
 import { Gym, GymZone, GymMachine, EquipmentItem } from '../types';
@@ -52,8 +52,10 @@ describe('sizeKindOf', () => {
     expect(sizeKindOf({ name: 'Battle ropes' })).toBeNull();
   });
 
-  it('takes plates or stack from the machine\'s tag, else from its library item', () => {
-    const plated = { id: 'eq-p', name: 'Chest Press', plateLoaded: true } as EquipmentItem;
+  it('takes plates or stack from the machine\'s tag, else from its library item\'s category', () => {
+    const plated = { id: 'eq-p', name: 'Chest Press', category: 'Plaetd machine' } as EquipmentItem;
+    expect(isPlateLoadedItem({ category: 'Plate-loaded machines' })).toBe(true);
+    expect(isPlateLoadedItem({ category: 'Machines' })).toBe(false);
     expect(sizeKindOf({ name: 'Chest Press', equipmentId: 'eq-p' }, plated)).toBe('plateChestPress');
     expect(sizeKindOf({ name: 'Chest Press', equipmentId: 'eq-p', plateLoaded: false }, plated)).toBe('chestPress');
     expect(sizeKindOf({ name: 'Chest Press', equipmentId: 'eq-p' })).toBe('chestPress');
@@ -234,7 +236,7 @@ describe('applyStandardSizes', () => {
   });
 
   it('gives a machine its library item\'s Plate-loaded tag', () => {
-    const item = { id: 'eq-p', name: 'Chest Press', plateLoaded: true } as EquipmentItem;
+    const item = { id: 'eq-p', name: 'Chest Press', category: 'Plaetd machine' } as EquipmentItem;
     const placed = gymOf([zone('m', 0, 0, 200, 100, [{ ...machine('cp', 'Chest Press', 10, 10, 10, 10), equipmentId: 'eq-p' }])]);
     const m = applyStandardSizes(placed, [item]).gym.zones[0].machines![0];
     expect(m.plateLoaded).toBe(true);

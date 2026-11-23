@@ -117,6 +117,14 @@ const kindFromName = (name: string, plated = false): SizeKind | null => {
 const kindFromAnyName = (name: string | undefined, plated = false): SizeKind | null =>
   name ? kindFromName(name, plated) || machineShapeOf({ name }) : null;
 
+/**
+ * Whether a library item is loaded with plates rather than a weight stack,
+ * going by its category: the owner keeps those in their own category, spelled
+ * however they typed it ("Plate-loaded machines", "Plaetd machine").
+ */
+export const isPlateLoadedItem = (item: Pick<EquipmentItem, 'category'> | undefined): boolean =>
+  !!item && /\bpla(te|et)/i.test(item.category || '');
+
 export const isSizeKind = (kind: string | undefined): kind is SizeKind => !!kind && kind in STANDARD_SIZES;
 
 /**
@@ -129,8 +137,8 @@ export const isSizeKind = (kind: string | undefined): kind is SizeKind => !!kind
 export const sizeKindOf = (machine: { name?: string; equipmentId?: string; kind?: string; plateLoaded?: boolean }, equipment?: EquipmentItem): SizeKind | null => {
   if (machine.kind === 'none') return null;
   if (isSizeKind(machine.kind)) return machine.kind;
-  // The machine's own tag, else its library item's.
-  const plated = !!(machine.plateLoaded ?? equipment?.plateLoaded);
+  // Plates or a stack comes from the library item's category, copied onto the machine when it was placed.
+  const plated = machine.plateLoaded ?? isPlateLoadedItem(equipment);
   const linkedKind = machine.equipmentId ? BY_EQUIPMENT[machine.equipmentId] || machineShapeOf({ equipmentId: machine.equipmentId }) : null;
   const linked = linkedKind === 'legExtension' && plated ? 'plateLegExtension' : linkedKind;
   return kindFromAnyName(machine.name, plated) || linked || kindFromAnyName(equipment?.name, plated);
@@ -294,9 +302,9 @@ export const applyStandardSizes = (gym: Gym, equipment: EquipmentItem[]): SizeRe
   const zones = gym.zones.map(zone => ({
     ...zone,
     machines: (zone.machines || []).map(original => {
-      // A machine takes its library item's Plate-loaded tag, which picks its sketch.
-      const tag = equipmentFor(original, equipment)?.plateLoaded;
-      const m = tag != null && original.plateLoaded == null ? { ...original, plateLoaded: tag } : original;
+      // A machine takes its library item's plates-or-stack, which picks its sketch.
+      const item = equipmentFor(original, equipment);
+      const m = item && isPlateLoadedItem(item) !== !!original.plateLoaded ? { ...original, plateLoaded: isPlateLoadedItem(item) } : original;
       const ref = { zoneId: zone.id, machineId: m.id, name: m.name };
       const size = standardSizeOf(m, equipmentFor(m, equipment));
       if (!size) { unknown.push(ref); return m; }

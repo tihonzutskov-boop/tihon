@@ -18,7 +18,7 @@ import { getExerciseLocations } from '../utils/exerciseMatcher';
 import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Eraser, Eye, EyeOff, Footprints, MapPin, LayoutTemplate, DoorOpen, Lock, Bath, Droplets, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle, Copy, ClipboardPaste, Dumbbell, Activity, Zap, Target, Layers, Box, Wind, RotateCcw, ArrowUpRight, ArrowUpLeft, ArrowDownRight, ArrowDownLeft, ArrowRight, ArrowUp, ArrowDown, MoveDown, Circle, Waves, Timer, Sparkles, Search, Video, Play, Film, Filter, X, ExternalLink, Compass, SlidersHorizontal, ChevronRight, Bookmark, BookmarkCheck, Camera, Users, Flame, Pencil, RotateCw, ArrowUpDown, Hand } from 'lucide-react';
 import { MACHINE_ICONS_LIST as MACHINE_ICONS, ICON_GROUPS } from '../utils/equipmentIcons';
 import { snapWallEndpoint } from '../utils/wallSnapping';
-import { standardSizeOf, sizeKindOf, fitToSize, rotateClockwise, facingOf, isAtSize, isDrawn, STANDARD_SIZES, SizeKind, unitsPerMetreOf } from '../utils/machineSizes';
+import { standardSizeOf, sizeKindOf, fitToSize, rotateClockwise, facingOf, isAtSize, isDrawn, isPlateLoadedItem, STANDARD_SIZES, SizeKind, unitsPerMetreOf } from '../utils/machineSizes';
 import { cableStationSize, readCableLayout } from '../utils/cableStation';
 import CableStationEditor from './CableStationEditor';
 
@@ -483,7 +483,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
   // A new machine's footprint: its kind's real size, standing lengthways, or
   // the old 4 × 4 square when nobody knows what it is yet.
   const placedSize = useCallback((eq: EquipmentItem) => {
-    const size = standardSizeOf({ name: eq.name, equipmentId: eq.id, plateLoaded: eq.plateLoaded }, eq);
+    const size = standardSizeOf({ name: eq.name, equipmentId: eq.id, plateLoaded: isPlateLoadedItem(eq) }, eq);
     return size
       ? { width: Math.round(size.width * upm * 100) / 100, height: Math.round(size.length * upm * 100) / 100 }
       : { width: 40, height: 40 };
@@ -579,7 +579,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
       longDescription: eq.description || '',
       videoUrl: '',
       equipmentId: eq.id,
-      ...(eq.plateLoaded != null ? { plateLoaded: eq.plateLoaded } : {}),
+      ...(isPlateLoadedItem(eq) ? { plateLoaded: true } : {}),
     };
 
     // Ensure the zone's equipmentIds includes this physical equipment's ID
@@ -622,7 +622,7 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
       id: `machine-${Date.now()}`,
       name: newEq.name,
       equipmentId: newEq.id,
-      ...(newEq.plateLoaded != null ? { plateLoaded: newEq.plateLoaded } : {}),
+      ...(isPlateLoadedItem(newEq) ? { plateLoaded: true } : {}),
       x: Math.max(0, Math.min(Math.max(5, x), targetZoneObj.width - size.width)),
       y: Math.max(0, Math.min(Math.max(5, y), targetZoneObj.height - size.height)),
       ...size,

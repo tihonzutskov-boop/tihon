@@ -201,8 +201,6 @@ ALTER TABLE gyms ADD COLUMN IF NOT EXISTS chain VARCHAR(120);
 -- An equipment item's real size in metres ({ width, length }), when this gym's
 -- model differs from the typical size of its kind. Machines placed from it take it.
 ALTER TABLE equipment ADD COLUMN IF NOT EXISTS size_m JSONB;
--- Whether it is loaded with plates rather than a weight stack, so its sketch is the plate-loaded one.
-ALTER TABLE equipment ADD COLUMN IF NOT EXISTS plate_loaded BOOLEAN;
 -- Provenance: what produced this plan, and which rule/data versions were in
 -- effect — so a plan can be explained (and reproduced) long after the fact.
 ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS generation_meta JSONB;
