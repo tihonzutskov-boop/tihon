@@ -18,7 +18,7 @@ import { getExerciseLocations } from '../utils/exerciseMatcher';
 import { ArrowLeft, Plus, Trash2, Move, Maximize2, MousePointer2, Save, Loader2, Check, Edit3, Eraser, Eye, EyeOff, Footprints, MapPin, LayoutTemplate, DoorOpen, Lock, Bath, Droplets, Palette, BoxSelect, SquareDashed, Undo2, Redo2, Scaling, Grid, PlusSquare, ArrowRightLeft, Cpu, ArrowLeftCircle, Copy, ClipboardPaste, Dumbbell, Activity, Zap, Target, Layers, Box, Wind, RotateCcw, ArrowUpRight, ArrowUpLeft, ArrowDownRight, ArrowDownLeft, ArrowRight, ArrowUp, ArrowDown, MoveDown, Circle, Waves, Timer, Sparkles, Search, Video, Play, Film, Filter, X, ExternalLink, Compass, SlidersHorizontal, ChevronRight, Bookmark, BookmarkCheck, Camera, Users, Flame, Pencil, RotateCw, ArrowUpDown, Hand } from 'lucide-react';
 import { MACHINE_ICONS_LIST as MACHINE_ICONS, ICON_GROUPS } from '../utils/equipmentIcons';
 import { snapWallEndpoint } from '../utils/wallSnapping';
-import { standardSizeOf, sizeKindOf, fitToSize, rotateClockwise, facingOf, isAtSize, isDrawn, isPlateLoadedItem, tagPlateLoaded, STANDARD_SIZES, SizeKind, unitsPerMetreOf } from '../utils/machineSizes';
+import { applyStandardSizes, standardSizeOf, sizeKindOf, fitToSize, rotateClockwise, facingOf, isAtSize, isDrawn, isPlateLoadedItem, tagPlateLoaded, STANDARD_SIZES, SizeKind, unitsPerMetreOf } from '../utils/machineSizes';
 import { cableStationSize, readCableLayout } from '../utils/cableStation';
 import CableStationEditor from './CableStationEditor';
 
@@ -471,9 +471,21 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
 
   // Equipment Library catalog state
   const [equipmentList, setEquipmentList] = useState<EquipmentItem[]>(DEFAULT_EQUIPMENT);
+  // Set once the Equipment Library has been fetched, so sizes are applied from it and not the defaults.
+  const [equipmentFetched, setEquipmentFetched] = useState(false);
 
   // The library item a placed machine came from, by link or, for machines
   // placed before links were kept, by name.
+  // Opening a gym puts every machine at its fixed size, once, as one undo step.
+  const sizedGymId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!equipmentFetched || sizedGymId.current === gym.id) return;
+    sizedGymId.current = gym.id;
+    const { gym: sized } = applyStandardSizes(gym, equipmentList);
+    const changed = sized.zones.some((z, i) => (z.machines || []).some((m, j) => m !== (gym.zones[i].machines || [])[j]));
+    if (changed) update(sized, true);
+  }, [equipmentFetched, gym, equipmentList, update]);
+
   // The map draws plate-loaded machines by their library item's category.
   const mapZones = useMemo(() => tagPlateLoaded(zones, equipmentList), [zones, equipmentList]);
   const equipmentOf = useCallback(
@@ -521,6 +533,8 @@ const GymLayoutEditor: React.FC<GymLayoutEditorProps> = ({ initialGym, gyms, onU
         }
       } catch (err) {
         console.error("Failed loading data inside AdminPage:", err);
+      } finally {
+        setEquipmentFetched(true);
       }
     };
     loadData();

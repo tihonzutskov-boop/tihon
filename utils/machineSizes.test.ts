@@ -309,3 +309,14 @@ describe('tagPlateLoaded', () => {
     expect(tagPlateLoaded(zones, [])).toBe(zones);
   });
 });
+
+describe('standardSizeOf for machines nobody has sketched', () => {
+  it('gives a strength machine of unknown kind a typical size, and leaves other kit alone', () => {
+    const stack = { id: 'eq-c', name: 'Calves Machine', category: 'Machines' } as EquipmentItem;
+    const plated = { id: 'eq-g', name: 'Gluteal Kickback', category: 'Plaetd machine' } as EquipmentItem;
+    const mat = { id: 'eq-m', name: 'Yoga Mat', category: 'Accessories' } as EquipmentItem;
+    expect(standardSizeOf({ name: 'Calves Machine' }, stack)).toEqual(STANDARD_SIZES.weightStack.size);
+    expect(standardSizeOf({ name: 'Gluteal Kickback' }, plated)).toEqual({ width: 1.2, length: 1.6 });
+    expect(standardSizeOf({ name: 'Yoga Mat' }, mat)).toBeNull();
+  });
+});

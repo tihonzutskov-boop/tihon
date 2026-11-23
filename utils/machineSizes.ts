@@ -187,8 +187,16 @@ export const standardSizeOf = (machine: { name?: string; equipmentId?: string; k
   if (kind === 'cableStation') return cableStationSize(readCableLayout(machine.cableLayout));
   const own = equipment?.sizeM;
   if (own && own.width > 0 && own.length > 0) return { width: Math.min(own.width, own.length), length: Math.max(own.width, own.length) };
-  return kind ? STANDARD_SIZES[kind].size : null;
+  if (kind) return STANDARD_SIZES[kind].size;
+  // A strength machine nobody has sketched or sized yet still takes a typical size,
+  // so every machine on the map has one: a weight stack, or one loaded with plates.
+  if (isPlateLoadedItem(equipment)) return GENERIC_PLATE_LOADED;
+  if (equipment?.category === 'Machines') return STANDARD_SIZES.weightStack.size;
+  return null;
 };
+
+/** The size of a plate-loaded machine nobody has given a kind or a size. */
+const GENERIC_PLATE_LOADED: RealSize = { width: 1.2, length: 1.6 };
 
 type Box = { x: number; y: number; width: number; height: number };
 
